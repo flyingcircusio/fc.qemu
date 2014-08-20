@@ -1,7 +1,8 @@
 from .exc import MigrationError
-from .vm import VM
 from .timeout import TimeOut
+from .vm import VM
 import logging
+import os.path
 import socket
 import time
 import xmlrpclib
@@ -31,6 +32,10 @@ class OutgoingVM(VM):
             # lower it on this side via socket.settimeout()
             except socket.error:
                 _log.debug('failed connecting, retrying later')
+
+        if not os.path.exists('/run/kvm.{}.cfg.in'.format(self.name)):
+                self.target.cancel(self.cookie)
+                raise RuntimeError('VM does not support migration (yet): missing .cfg.in file')
 
     def transfer_locks(self):
         self.assert_locks()

@@ -73,3 +73,6 @@ class IncomingVM(VM):
     def finish_incoming(self):
         self.monitor.assert_status('VM status: running')
         self.keep_listening = False
+
+    def cancel(self):
+        self.keep_listening = False
