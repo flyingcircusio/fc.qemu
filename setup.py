@@ -25,22 +25,20 @@ class PyTest(TestCommand):
         errno = pytest.main(pytest_args + ' --pyargs fc.livemig')
         sys.exit(errno)
 
-with open(p.join(p.dirname(__file__), 'version.txt')) as f:
-    version = f.read().strip()
 
 setup(
     name='fc.livemig',
-    version=version,
+    version='0.2dev',
     author='Christian Kauhaus',
     author_email='kc@gocept.com',
-    url='http:/flyingcircus.io/doc/',
+    url='http://bitbucket.org/flyingcircus/fc.livemig',
     description="""\
-VM live migration director""",
+Qemu live migration helpers""",
     packages=find_packages('src'),
     package_dir={'': 'src'},
     include_package_data=True,
     zip_safe=False,
-    license='ZPL',
+    license='BSD',
     namespace_packages=['fc'],
     install_requires=[
         'setuptools',
