@@ -7,3 +7,4 @@ bin
 .Python
 include
 *.egg-info
+lib64

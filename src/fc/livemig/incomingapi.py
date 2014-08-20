@@ -58,3 +58,8 @@ class IncomingAPI(object):
         """Incoming destroy."""
         _log.debug('received destroy request')
         return self.vm.destroy()
+
+    @authenticated
+    def cancel(self):
+        _log.info('received cancel request')
+        self.vm.cancel()

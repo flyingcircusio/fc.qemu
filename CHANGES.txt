@@ -1,0 +1,8 @@
+
+
+0.2.5 (unreleased)
+==================
+
+* Implement a safety-belt to prohibit migrating VMs that have not
+  yet been started with the supported /run/kvm.*.cfg.in format.
+
