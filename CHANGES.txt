@@ -1,6 +1,6 @@
 
 
-0.2.5 (unreleased)
+0.2.5 (2014-08-20)
 ==================
 
 * Implement a safety-belt to prohibit migrating VMs that have not
