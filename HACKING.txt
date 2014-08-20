@@ -1,0 +1,26 @@
+fc.livemig development
+======================
+
+Prepare working copy in a personal box::
+
+   services07 ~/gocept.net$ rsync -av portage-gocept/app-emulation/fc-livemig/files/fc.livemig/ ~/box/fc.livemig/
+
+Create virtualenv (on a 64 bit machine)::
+
+   kyle02 ~/box/fc.livemig$ virtualenv --system-site-packages .
+
+Install fc.livemig egg in develop mode::
+
+   kyle02 ~/box/fc.livemig$ bin/pip install -e .
+
+Run tests::
+
+   kyle02 ~/box/fc.livemig$ bin/python2.7 setup.py test
+
+Test migration::
+
+   lovejoy# ~ckauhaus/box/fc.livemig/bin/fc-livemig -v test03 incoming lovejoy
+   kyle02# ~ckauhaus/box/fc.livemig/bin/fc-livemig -v test03 outgoing lovejoy
+
+
+.. vim: set ft=rst:
