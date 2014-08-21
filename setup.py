@@ -28,7 +28,7 @@ class PyTest(TestCommand):
 
 setup(
     name='fc.livemig',
-    version='0.2.6.dev0',
+    version='0.2.6',
     author='Christian Kauhaus',
     author_email='kc@gocept.com',
     url='http://bitbucket.org/flyingcircus/fc.livemig',
