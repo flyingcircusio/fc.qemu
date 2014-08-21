@@ -1,6 +1,6 @@
 
 
-0.2.6 (unreleased)
+0.2.6 (2014-08-21)
 ==================
 
 - Fix incoming VM detection for an already locked _and_ started VM.
