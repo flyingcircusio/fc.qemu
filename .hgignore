@@ -8,3 +8,4 @@ bin
 include
 *.egg-info
 lib64
+local
