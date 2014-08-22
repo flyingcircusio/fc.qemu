@@ -3,7 +3,7 @@ import re
 import telnetlib
 import time
 import logging
-from fc.livemig.timeout import TimeOut
+from fc.qemu.timeout import TimeOut
 
 
 _log = logging.getLogger(__name__)
