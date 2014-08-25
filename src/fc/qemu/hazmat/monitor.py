@@ -1,4 +1,4 @@
-from .exc import MigrationError
+from ..exc import MigrationError
 import re
 import telnetlib
 import time
@@ -59,7 +59,7 @@ class Monitor(object):
     def assert_status(self, expected):
         status = self.status()
         if status != expected:
-            raise MigrationError(
+            raise RuntimeError(
                 'VM status mismatch: expected "{}" got "{}"'.format(
                     expected, status))
 

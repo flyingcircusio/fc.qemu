@@ -22,11 +22,12 @@ QEMU VM management utilities""",
     namespace_packages=['fc'],
     install_requires=[
         'setuptools',
-        'mock'
+        'mock',
+        'PyYaml'
     ],
     entry_points={
         'console_scripts': [
-            'fc-qemu = fc.qemu:main',
+            'fc-qemu = fc.qemu.main:main',
         ],
     },
 )

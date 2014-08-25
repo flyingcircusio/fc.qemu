@@ -1,60 +1,33 @@
-from .incomingvm import IncomingVM
-from .outgoingvm import OutgoingVM
+from .agent import Agent
 import argparse
-import logging
-import sys
-import socket
 
 
-def migrate_incoming(args):
-    with IncomingVM(args.vm, args.listen_host) as vm:
-        vm.run()
-    sys.exit(vm.migration_errorcode)
+class Commands(object):
 
+    def status(self, vm):
+        a = Agent(vm)
+        print a.status()
 
-def migrate_outgoing(args):
-    if args.migaddr:
-        migaddr = args.migaddr
-    else:
-        migaddr = args.ctladdr + '.sto'
-
-    # We hit some DNS resolver issue with Qemu here. Not sure why.
-    migaddr = socket.gethostbyname(migaddr)
-    with OutgoingVM(args.vm, args.ctladdr, migaddr) as vm:
-        vm.wait_for_incoming_agent()
-        vm.transfer_locks()
-        vm.migrate()
-
-    sys.exit(vm.migration_errorcode)
+    def start(self, vm):
+        a = Agent(vm)
+        a.start()
 
 
 def main():
-    a = argparse.ArgumentParser(description=__doc__)
-    a.add_argument('vm', metavar='VM', help='name of the VM to be migrated')
-    a.add_argument('-v', '--verbose', help='increase output level',
-                   action='store_true', default=False)
-
+    commands = Commands()
+    a = argparse.ArgumentParser(description="Qemu VM agent")
     sub = a.add_subparsers(title='subcommands')
 
-    incoming = sub.add_parser('incoming', help='initiate incoming migration')
-    incoming.add_argument('listen_host', help='host name/IP address to open '
-                          'listening XML-RPC port on (local interface)')
-    incoming.set_defaults(func=migrate_incoming)
+    p = sub.add_parser('status', help='Get the status of a VM.')
+    p.add_argument('vm', metavar='VM', help='name of the VM')
+    p.set_defaults(func=commands.status)
 
-    outgoing = sub.add_parser('outgoing', help='initiate outgoing migration')
-    outgoing.add_argument('-m', '--migaddr', metavar='HOST', default=None,
-                          help='IP address/host name to send actual VM '
-                          'contents to (default: {ctladdr}.sto)')
-    outgoing.add_argument('ctladdr', help='IP address/host name for the '
-                          'XML-RPC control connection')
-    outgoing.set_defaults(func=migrate_outgoing)
+    p = sub.add_parser('start', help='Start a VM.')
+    p.add_argument('vm', metavar='VM', help='name of the VM')
+    p.set_defaults(func=commands.start)
 
     args = a.parse_args()
-    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
-                        format='{} {}: %(levelname)s: %(message)s'.format(
-                            a.prog, args.vm))
-    args.func(args)
-
-
-if __name__ == '__main__':
-    main()
+    func = args.func
+    args = dict(args._get_kwargs())
+    del args['func']
+    func(**args)
