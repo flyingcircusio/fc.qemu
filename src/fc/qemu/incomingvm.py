@@ -35,8 +35,9 @@ class IncomingVM(VM):
             if self.monitor.status() == 'VM status: running':
                 _log.info('Incoming VM is locked and running. Nothing to do.')
             else:
-                _log.info('Incoming VM is locked but not running. Starting directly.')
-                self.initd('start')
+                _log.info('Incoming VM is locked but not running. Starting '
+                          'directly.')
+                self.initd('restart')
             return
 
         _log.info('Incoming server started for {}. Current cutoff at {}'.format(
