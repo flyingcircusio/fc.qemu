@@ -12,6 +12,10 @@ class Commands(object):
         a = Agent(vm)
         a.start()
 
+    def stop(self, vm):
+        a = Agent(vm)
+        a.stop()
+
 
 def main():
     commands = Commands()
@@ -25,6 +29,10 @@ def main():
     p = sub.add_parser('start', help='Start a VM.')
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.set_defaults(func=commands.start)
+
+    p = sub.add_parser('stop', help='Stop a VM.')
+    p.add_argument('vm', metavar='VM', help='name of the VM')
+    p.set_defaults(func=commands.stop)
 
     args = a.parse_args()
     func = args.func

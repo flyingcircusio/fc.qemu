@@ -77,7 +77,6 @@ class Qemu(object):
         # XXX hold a lock to avoid another process on the same machine to
         # interfere with the VM while we're on it. E.g. by locking the main
         # config file.
-        _log.warning('trying to recover')
         self.monitor.assert_status('VM status: running')
         for image in set(self.locks.available) - set(self.locks.held):
             try:
@@ -87,14 +86,15 @@ class Qemu(object):
 
         self.assert_locks()
 
+    def graceful_shutdown(self):
+        self.monitor.sendkey('ctrl-alt-delete')
 
     def destroy(self):
-        _log.info('destroying VM')
         # We use this destroy command in "fire-and-forget"-style because
         # sometimes the init script will complain even if we achieve what
         # we want: that the VM isn't running any longer. We check this
         # by contacting the monitor instead.
-        self.initd('destroy')
+
         timeout = TimeOut(5, interval=1, raise_on_timeout=True)
         while timeout.tick():
             status = self.monitor.status()

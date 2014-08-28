@@ -1,9 +1,4 @@
 from setuptools import setup, find_packages
-from setuptools.command.test import test as TestCommand
-import os.path as p
-import sys
-
-
 
 
 setup(
@@ -28,7 +23,8 @@ QEMU VM management utilities""",
     install_requires=[
         'setuptools',
         'mock',
-        'PyYaml'
+        'PyYaml',
+        'psutil',
     ],
     entry_points={
         'console_scripts': [

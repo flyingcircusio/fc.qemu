@@ -63,6 +63,9 @@ class Monitor(object):
                 'VM status mismatch: expected "{}" got "{}"'.format(
                     expected, status))
 
+    def sendkey(self, keys):
+        self._cmd('sendkey {}'.format(keys))
+
     def migrate(self, host, port):
         """Initiate migration (asynchronously)."""
         self._cmd('migrate_set_capability xbzrle on')

@@ -54,19 +54,21 @@ class Agent(object):
 
     @running(True)
     def stop(self):
-        timeout = TimeOut(120, interval=1)
-        self.qemu.stop()
+        timeout = TimeOut(30, interval=10)
+        print "Trying graceful shutdown ..."
+        self.qemu.graceful_shutdown()
         while timeout.tick():
-            if not self.qemu.running():
+            if not self.qemu.is_running():
                 self.ceph.stop_volumes()
                 break
+            print "Still running"
         else:
             self.kill()
 
     @running(True)
     def kill(self):
         timeout = TimeOut(15, interval=1, raise_on_timeout=True)
-        self.qemu.kill()
+        self.qemu.destroy()
         while timeout.tick():
             if not self.qemu.running():
                 self.ceph.stop_volumes()
