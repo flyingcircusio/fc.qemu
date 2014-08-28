@@ -1,7 +1,7 @@
-import subprocess
-
 from .monitor import Monitor
 import socket
+import subprocess
+import yaml
 
 
 HOSTNAME = socket.gethostname()
@@ -170,7 +170,8 @@ class Qemu(object):
         format = lambda s: s.format(
             hostname=HOSTNAME,
             suffix=SUFFIX,
-            config=self.configfile)
+            configfile=self.configfile,
+            monitor_port=self.monitor.port)
         self.local_args = [format(a) for a in self.args]
         self.local_config = format(self.config)
 
@@ -179,8 +180,8 @@ class Qemu(object):
         with open(self.configfile, 'w') as f:
             f.write(self.local_config)
 
-        with open(self.argsfile+'.in', 'w') as f:
-            yaml.dump(f, self.args)
+        with open(self.argfile+'.in', 'w') as f:
+            yaml.dump(self.args, f)
 
 
 def migrate_incoming(args):
