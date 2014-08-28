@@ -54,7 +54,7 @@ class Agent(object):
 
     @running(True)
     def stop(self):
-        timeout = TimeOut(30, interval=10)
+        timeout = TimeOut(10, interval=2)
         print "Trying graceful shutdown ..."
         self.qemu.graceful_shutdown()
         while timeout.tick():
@@ -63,10 +63,12 @@ class Agent(object):
                 break
             print "Still running"
         else:
+
             self.kill()
 
     @running(True)
     def kill(self):
+        print "Killing VM"
         timeout = TimeOut(15, interval=1, raise_on_timeout=True)
         self.qemu.destroy()
         while timeout.tick():
@@ -122,6 +124,7 @@ class Agent(object):
             '-runas nobody',
             '-serial file:/var/log/vm/{name}.log',
             '-display vnc={vnc}',
+            '-pidfile {{pidfile}}',
             '-vga cirrus',
             '-m {memory}',
             '-watchdog i6300esb',

@@ -1,4 +1,8 @@
+from ..lock import Locks
+from ..timeout import TimeOut
 from .monitor import Monitor
+import psutil
+import rbd
 import socket
 import subprocess
 import yaml
@@ -21,7 +25,7 @@ class Qemu(object):
 
     MONITOR_OFFSET = 20000
 
-    pidfile = '/run/kvm.{name}.pid'
+    pidfile = '/run/qemu.{name}.pid'
     configfile = '/run/qemu.{name}.cfg'
     argfile = '/run/qemu.{name}.args'
 
@@ -31,6 +35,13 @@ class Qemu(object):
 
         for f in ['pidfile', 'configfile', 'argfile']:
             setattr(self, f, getattr(self, f).format(**cfg))
+
+    @property
+    def proc(self):
+        pid = int(open(self.pidfile).read().strip())
+        proc = psutil.Process(pid)
+        assert proc.is_running()
+        return proc
 
     def start(self):
         self.prepare_config()
@@ -94,7 +105,7 @@ class Qemu(object):
         # sometimes the init script will complain even if we achieve what
         # we want: that the VM isn't running any longer. We check this
         # by contacting the monitor instead.
-
+        self.proc.kill()
         timeout = TimeOut(5, interval=1, raise_on_timeout=True)
         while timeout.tick():
             status = self.monitor.status()
@@ -108,7 +119,7 @@ class Qemu(object):
 
 
     def image_names(self):
-        prefix = self.name + '.'
+        prefix = self.cfg['name'] + '.'
         r = rbd.RBD()
         for img in r.list(self.ioctx):
             if img.startswith(prefix) and not '@' in img:
@@ -170,6 +181,7 @@ class Qemu(object):
         format = lambda s: s.format(
             hostname=HOSTNAME,
             suffix=SUFFIX,
+            pidfile=self.pidfile,
             configfile=self.configfile,
             monitor_port=self.monitor.port)
         self.local_args = [format(a) for a in self.args]
