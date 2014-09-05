@@ -1,7 +1,12 @@
+from .hazmat.ceph import Ceph
 from .hazmat.qemu import Qemu
+from .timeout import TimeOut
+from logging import getLogger
 import os.path
 import yaml
-from .timeout import TimeOut
+
+
+log = getLogger(__name__)
 
 
 def running(expected=True):
@@ -35,7 +40,19 @@ class Agent(object):
             raise RuntimeError("Could not find {}".format(cfg))
         self.cfg = yaml.load(open(cfg))
         self.qemu = Qemu(self.cfg)
-        #self.ceph = Ceph()
+        self.ceph = Ceph(self.cfg)
+        self.contexts = [self.qemu, self.ceph]
+
+    def __enter__(self):
+        for c in self.contexts:
+            c.__enter__()
+
+    def __exit__(self, exc_value, exc_type, exc_tb):
+        for c in self.contexts:
+            try:
+                c.__exit__(exc_value, exc_type, exc_tb)
+            except Exception:
+                log.exception('Error while leaving agent contexts.')
 
     def ensure(self):
         self.ensure_online_status()
@@ -44,13 +61,13 @@ class Agent(object):
     @running(False)
     def start(self):
         self.generate_config()
-        # self.ceph.start()
+        self.ceph.start()
         self.qemu.start()
 
     def status(self):
         """Determine status of the VM.
         """
-        return 'running' if self.qemu.is_running() else 'stopped'
+        print 'running' if self.qemu.is_running() else 'stopped'
 
     @running(True)
     def stop(self):
@@ -59,7 +76,7 @@ class Agent(object):
         self.qemu.graceful_shutdown()
         while timeout.tick():
             if not self.qemu.is_running():
-                self.ceph.stop_volumes()
+                self.ceph.stop()
                 break
             print "Still running"
         else:
@@ -72,8 +89,8 @@ class Agent(object):
         timeout = TimeOut(15, interval=1, raise_on_timeout=True)
         self.qemu.destroy()
         while timeout.tick():
-            if not self.qemu.running():
-                self.ceph.stop_volumes()
+            if not self.qemu.is_running():
+                self.ceph.stop()
                 break
 
     @running(False)
@@ -120,6 +137,7 @@ class Agent(object):
         self.qemu.args = [
             '-daemonize',
             '-nodefaults',
+            '-name {name},process=kvm.{name}',
             '-chroot {chroot}',
             '-runas nobody',
             '-serial file:/var/log/vm/{name}.log',
