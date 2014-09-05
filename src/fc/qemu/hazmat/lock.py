@@ -1,20 +1,19 @@
-from .config import CEPH_ID
+import fc.qemu.hazmat.ceph
 import collections
 import hashlib
-import logging
 
 
 class Lock(collections.namedtuple('Lock', ['image', 'locker_id', 'host'])):
 
     @property
     def mine(self):
-        return self.host == CEPH_ID
+        return self.host == fc.qemu.hazmat.ceph.CEPH_ID
 
 
 class Locks(object):
     """Container object for a collection of locks.
 
-    Note: Locks that are held by nobody do not appear in available. It just
+    Note: Locks that are held by nobody do not appear in `available`. It just
     means that *someone* locked it.
 
     """
@@ -33,15 +32,6 @@ class Locks(object):
         self.available[image_name] = lock
         if lock.mine:
             self.held[image_name] = lock
-
-    def acquired(self, image_name):
-        self.held[image_name] = self.available[image_name]
-
-    def released(self, image_name):
-        if image_name not in self.available:
-            raise KeyError('unknown lock', image_name)
-        if image_name in self.held:
-            del self.held[image_name]
 
     def auth_cookie(self):
         c = hashlib.sha1()
