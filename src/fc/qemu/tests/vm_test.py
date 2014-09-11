@@ -1,6 +1,5 @@
 from ..exc import LockError, MigrationError
 from ..lock import Locks
-from ..vm import VM
 import os
 import pkg_resources
 import pytest

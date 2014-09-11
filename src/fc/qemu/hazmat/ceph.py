@@ -44,7 +44,7 @@ class Ceph(object):
         prefix = self.cfg['name'] + '.'
         r = rbd.RBD()
         for img in r.list(self.ioctx):
-            if img.startswith(prefix) and not '@' in img:
+            if img.startswith(prefix) and '@' not in img:
                 yield img
 
     def images(self):
@@ -100,7 +100,7 @@ class Ceph(object):
     def assert_locks(self):
         self.query_locks()
         for image in self.image_names():
-            if not image in self.locks.held:
+            if image not in self.locks.held:
                 raise RuntimeError(
                     "I don't own all locks for {}".format(self.name),
                     self.locks.held.keys(), self.locks.available.keys())

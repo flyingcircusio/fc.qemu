@@ -39,4 +39,3 @@ class TimeOut(object):
             time.sleep(self.interval)
 
         return True
-

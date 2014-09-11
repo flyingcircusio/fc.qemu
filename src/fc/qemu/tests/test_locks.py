@@ -92,4 +92,3 @@ class TestLocks(object):
         l.add('test.swap', TestLocks.fake_locker('myhost', 2))
         l.add('test.root', TestLocks.fake_locker('myhost', 1))
         assert l.auth_cookie() == cookie1
-

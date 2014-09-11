@@ -1,12 +1,8 @@
-from .exc import MigrationError, LockError
 from .incomingapi import IncomingAPI
 from .timeout import TimeOut
 from .vm import VM
 import logging
-import os
 import SimpleXMLRPCServer
-import socket
-import subprocess
 import time
 
 _log = logging.getLogger(__name__)
@@ -40,8 +36,9 @@ class IncomingVM(VM):
                 self.initd('restart')
             return
 
-        _log.info('Incoming server started for {}. Current cutoff at {}'.format(
-            self.name, self.timeout.cutoff))
+        _log.info('Incoming server started for {}. '
+                  'Current cutoff at {}'.format(
+                      self.name, self.timeout.cutoff))
         s = SimpleXMLRPCServer.SimpleXMLRPCServer(
             (self.listen_host, self.port), logRequests=False,
             allow_none=True)
