@@ -28,10 +28,16 @@ ceph-deploy admin $HOSTNAME
 chmod +r /etc/ceph/ceph.client.admin.keyring
 
 # Create demo VM
-ceph osd pool create foobar 128
-rbd create --size 100 foobar/foobar00.root
-rbd create --size 100 foobar/foobar00.swap
-rbd create --size 100 foobar/foobar00.tmp
+ceph osd pool create test 128
+
+# Create a
+cat >> /usr/sbin/create-vm <<EOF
+#!/bin/bash
+rbd create --size 100 test/$1.root
+rbd create --size 100 test/$1.swap
+rbd create --size 100 test/$1.tmp
+EOF
+chmod +x /usr/sbin/create-vm
 
 rm -rf /etc/qemu/vm
 mkdir -p /etc/qemu/vm

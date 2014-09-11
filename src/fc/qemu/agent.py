@@ -3,6 +3,7 @@ from .hazmat.qemu import Qemu, QemuNotRunning
 from .timeout import TimeOut
 from logging import getLogger
 import os.path
+import subprocess
 import yaml
 
 
@@ -70,9 +71,11 @@ class Agent(object):
     def status(self):
         """Determine status of the VM.
         """
-        print 'running' if self.qemu.is_running() else 'stopped'
-        for lock in self.ceph.locks.available.values():
-            print lock.image, lock.client_id, lock.lock_id
+        print 'online' if self.qemu.is_running() else 'offline'
+        locks = self.ceph.locks.available.items()
+        locks.sort()
+        for name, lock in locks:
+            print 'lock: {}@{}'.format(lock.image, lock.lock_id)
 
     @running(True)
     def stop(self):
@@ -100,7 +103,8 @@ class Agent(object):
 
     @running(False)
     def create(self):
-        pass
+        subprocess.check_call('create-vm {}'.format(self.cfg['name']),
+                              shell=True)
 
     @running(False)
     def delete(self):
