@@ -1,9 +1,36 @@
 from .agent import Agent
 import argparse
+import ConfigParser
 import logging
+import os.path
 import sys
 
 logger = logging.getLogger(__name__)
+
+
+def load_system_config():
+    # System-wide config - pretty hacky
+    sysconfig = ConfigParser.SafeConfigParser()
+    sysconfig.read(os.path.dirname(__file__) + '/defaults.conf')
+    sysconfig.read('/etc/qemu/fc-qemu.conf')
+
+    # QEMU
+    accelerator = sysconfig.get('qemu', 'accelerator')
+    if accelerator:
+        Agent.accelerator = '   accel = "{}"'.format(accelerator)
+    if sysconfig.getboolean('qemu', 'vhost'):
+        Agent.vhost = '    vhost = "on"'
+    Agent.vnc = sysconfig.get('qemu', 'vnc')
+    Agent.timeout_graceful = sysconfig.getint('qemu', 'timeout-graceful')
+
+    # CEPH
+    from .hazmat import ceph
+    Agent.ceph_id = sysconfig.get('ceph', 'client-id')
+    ceph.CEPH_CLUSTER = sysconfig.get('ceph', 'cluster', 'ceph')
+    ceph.CEPH_LOCK_HOST = sysconfig.get('ceph', 'lock_host')
+    # Not sure whether it makes sense to hardcode this. Weird that qemu
+    # doesn't want to see client.<name>.
+    ceph.CEPH_CLIENT = Agent.ceph_id
 
 
 def init_logging(verbose=True):
@@ -47,6 +74,8 @@ def main():
     del args['vm']
 
     init_logging()
+
+    load_system_config()
 
     agent = Agent(vm)
     with agent:

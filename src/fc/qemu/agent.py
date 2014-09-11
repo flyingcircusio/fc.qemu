@@ -1,5 +1,5 @@
 from .hazmat.ceph import Ceph
-from .hazmat.qemu import Qemu
+from .hazmat.qemu import Qemu, QemuNotRunning
 from .timeout import TimeOut
 from logging import getLogger
 import os.path
@@ -22,14 +22,13 @@ def running(expected=True):
 class Agent(object):
     """The agent to control a single VM."""
 
-    #accelerator = '    accel = "kvm"'
+    # Those values can be overriden using the /etc/qemu/fc-agent.conf
+    # config file. The defaults are intended for testing purposes.
     accelerator = ''
-    #vhost = '  vhost = "on"'
     vhost = ''
-    # ceph_id = '{hostname}'
     ceph_id = 'admin'
-    # vnc = '{hostname}.mgm.{suffix}:{id}'
     vnc = 'localhost:1'
+    timeout_graceful = 30
 
     def __init__(self, name):
         if '.' in name:
@@ -42,6 +41,7 @@ class Agent(object):
         self.qemu = Qemu(self.cfg)
         self.ceph = Ceph(self.cfg)
         self.contexts = [self.qemu, self.ceph]
+        self.vnc = self.vnc.format(**self.cfg)
 
     def __enter__(self):
         for c in self.contexts:
@@ -62,25 +62,29 @@ class Agent(object):
     def start(self):
         self.generate_config()
         self.ceph.start()
-        self.qemu.start()
+        try:
+            self.qemu.start()
+        except QemuNotRunning:
+            self.ceph.stop
 
     def status(self):
         """Determine status of the VM.
         """
         print 'running' if self.qemu.is_running() else 'stopped'
+        for lock in self.ceph.locks.available.values():
+            print lock.image, lock.client_id, lock.lock_id
 
     @running(True)
     def stop(self):
-        timeout = TimeOut(10, interval=2)
+        timeout = TimeOut(self.timeout_graceful, interval=1)
         print "Trying graceful shutdown ..."
         self.qemu.graceful_shutdown()
         while timeout.tick():
             if not self.qemu.is_running():
                 self.ceph.stop()
+                print "Graceful shutdown succeeded."
                 break
-            print "Still running"
         else:
-
             self.kill()
 
     @running(True)
@@ -91,6 +95,7 @@ class Agent(object):
         while timeout.tick():
             if not self.qemu.is_running():
                 self.ceph.stop()
+                print "Killing VM succeeded."
                 break
 
     @running(False)
