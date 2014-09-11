@@ -1,9 +1,8 @@
 from ..exc import MigrationError
+from fc.qemu.timeout import TimeOut
+import logging
 import re
 import telnetlib
-import time
-import logging
-from fc.qemu.timeout import TimeOut
 
 
 _log = logging.getLogger(__name__)
@@ -94,7 +93,6 @@ class Monitor(object):
         `acceptable_interim` nor `target` is reached, this function
         raises an exception.
         """
-        give_up = time.time() + timeout
         timeout = TimeOut(timeout, .5)
         while timeout.tick():
             if timeout.interval < 5:

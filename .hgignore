@@ -1,15 +1,19 @@
 syntax: glob
 
-.vagrant
-local
-*.pyc
 *.egg
-lib
-bin
-.Python
-include
 *.egg-info
+*.pyc
+.cache
+.coverage
+.installed.cfg
+.Python
+.vagrant
+bin
+develop-eggs/
+htmlcov
+include
+lib
 lib64
 local
-.installed.cfg
-develop-eggs/
+local
+report.xml
