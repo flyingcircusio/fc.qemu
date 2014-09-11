@@ -11,3 +11,5 @@ include
 *.egg-info
 lib64
 local
+.installed.cfg
+develop-eggs/
