@@ -13,6 +13,10 @@ HOSTNAME = socket.gethostname()  # XXX
 SUFFIX = 'rzob.gocept.net'  # XXX
 
 
+class QemuNotRunning(Exception):
+    """Something happened and we're sure Qemu isn't running."""
+
+
 class Qemu(object):
 
     executable = 'qemu-system-x86_64'
@@ -26,6 +30,7 @@ class Qemu(object):
 
     MONITOR_OFFSET = 20000
 
+    # XXX support old pid
     pidfile = '/run/qemu.{name}.pid'
     configfile = '/run/qemu.{name}.cfg'
     argfile = '/run/qemu.{name}.args'
@@ -51,10 +56,15 @@ class Qemu(object):
         self.prepare_config()
         with open('/proc/sys/vm/compact_memory', 'w') as f:
             f.write('1')
-        subprocess.check_call(
-            '{executable} {args}'.format(executable=self.executable,
-                                         args=' '.join(self.local_args)),
-            shell=True)
+        try:
+            subprocess.check_call(
+                '{executable} {args}'.format(executable=self.executable,
+                                             args=' '.join(self.local_args)),
+                shell=True)
+        except subprocess.CalledProcessError:
+            # Did not start. Not running.
+            log.error('Failed to start qemu.')
+            raise QemuNotRunning()
         assert self.is_running()
 
     def is_running(self):

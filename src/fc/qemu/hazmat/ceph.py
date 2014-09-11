@@ -1,16 +1,16 @@
-import rados
-import rbd
-import socket
 from .lock import Locks
 import logging
-
+import rados
+import rbd
 
 logger = logging.getLogger(__name__)
 
-CEPH_CLUSTER = 'ceph'  # XXX
-CEPH_ID = socket.gethostname()  # XXX
-CEPH_CLIENT = 'client.admin'
-# XXX CEPH_CLIENT='client.{}'.format(CEPH_ID)
+# Those settings are overwritten by the system config from /etc/qemu/fc-
+# agent.conf. The default values in main() support testing.
+
+CEPH_CLUSTER = None
+CEPH_LOCK_HOST = None
+CEPH_CLIENT = 'admin'
 
 
 class Ceph(object):
@@ -20,7 +20,9 @@ class Ceph(object):
         self.ceph_conf = '/etc/ceph/{}.conf'.format(CEPH_CLUSTER)
 
     def __enter__(self):
-        self.rados = rados.Rados(conffile=self.ceph_conf, name=CEPH_CLIENT)
+        self.rados = rados.Rados(
+            conffile=self.ceph_conf,
+            name='client.'+CEPH_CLIENT)
         self.rados.connect()
         self.ioctx = self.rados.open_ioctx(self.cfg['resource_group'])
         self.query_locks()
@@ -35,7 +37,7 @@ class Ceph(object):
 
     def stop(self):
         for image in self.image_names():
-            print "Releasing lock for ", image
+            print "Releasing lock for", image
             self.release_lock(image)
 
     def image_names(self):
@@ -56,7 +58,7 @@ class Ceph(object):
         """Collect all locks for all images of this VM.
 
         list_lockers returns:
-            [{'lockers': [(locker_id, host, address), ...],
+            [{'lockers': [(client_id, lock_id, address), ...],
               'exclusive': bool,
               'tag': str}, ...]
         """
@@ -65,9 +67,11 @@ class Ceph(object):
             self.locks.add(name, img.list_lockers())
 
     def acquire_lock(self, image_name):
+        if image_name in self.locks.held:
+            return
         with rbd.Image(self.ioctx, image_name) as img:
             try:
-                img.lock_exclusive(CEPH_ID)
+                img.lock_exclusive(CEPH_LOCK_HOST)
             except rbd.ImageBusy:
                 raise Exception('failed to acquire lock', image_name)
             except rbd.ImageExists:
@@ -80,12 +84,15 @@ class Ceph(object):
         """Release lock.
         """
         lock = self.locks.available[image_name]
-        if lock.host != CEPH_ID:
+        if not lock.mine:
             raise Exception('refusing to release lock held by another host',
                             lock)
         with rbd.Image(self.ioctx, image_name) as img:
             try:
-                img.break_lock(lock.locker_id, CEPH_ID)
+                # We cannot unlock as the client names aren't predictable
+                # and we verify that we have the right to break the lock
+                # anyway.
+                img.break_lock(lock.client_id, lock.lock_id)
             except rbd.ImageNotFound:
                 # lock has already been released
                 pass
