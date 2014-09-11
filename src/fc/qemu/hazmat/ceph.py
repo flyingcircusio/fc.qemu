@@ -39,6 +39,7 @@ class Ceph(object):
         for image in self.image_names():
             print "Releasing lock for", image
             self.release_lock(image)
+        self.query_locks()
 
     def image_names(self):
         prefix = self.cfg['name'] + '.'
@@ -80,11 +81,11 @@ class Ceph(object):
             finally:
                 self.query_locks()
 
-    def release_lock(self, image_name):
+    def release_lock(self, image_name, force=False):
         """Release lock.
         """
         lock = self.locks.available[image_name]
-        if not lock.mine:
+        if not lock.mine and not force:
             raise Exception('refusing to release lock held by another host',
                             lock)
         with rbd.Image(self.ioctx, image_name) as img:
