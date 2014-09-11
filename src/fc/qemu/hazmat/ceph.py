@@ -1,7 +1,7 @@
-from .lock import Locks
 import logging
 import rados
 import rbd
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +13,99 @@ CEPH_LOCK_HOST = None
 CEPH_CLIENT = 'admin'
 
 
+def cmd(cmdline):
+    print cmdline
+    subprocess.check_call(cmdline, shell=True)
+
+
+class Volume(object):
+
+    mapped = False
+
+    def __init__(self, ioctx, name):
+        self.ioctx = ioctx
+        self.name = name
+        self.rbd = rbd.RBD()
+
+    @property
+    def fullname(self):
+        return self.ioctx.name + '/' + self.name
+
+    @property
+    def image(self):
+        return rbd.Image(self.ioctx, self.name)
+
+    def exists(self):
+        return self.name in self.rbd.list(self.ioctx)
+
+    def ensure_presence(self):
+        if self.name in self.rbd.list(self.ioctx):
+            return
+        self.rbd.create(self.ioctx, self.name, 1024)
+
+    def ensure_size(self, size):
+        if self.image.size() == size:
+            return
+        self.image.resize(size)
+
+    def lock(self):
+        self.image.lock_exclusive(CEPH_LOCK_HOST)
+
+    def lock_status(self):
+        """Return None if not locked and the lock_id if it is."""
+        try:
+            lockers = self.image.list_lockers()
+        except rbd.ImageNotFound:
+            return None
+        if not lockers:
+            return
+        # For some reasons list_lockers may just return an empty list instead
+        # of a dict. Say what?
+        lockers = lockers['lockers']
+        if not len(lockers) == 1:
+            raise NotImplementedError("I'm not prepared for shared locks")
+        client_id, lock_id, addr = lockers[0]
+        return client_id, lock_id
+
+    def unlock(self):
+        locked_by = self.lock_status()
+        if not locked_by:
+            return
+        client_id, lock_id = locked_by
+        if lock_id != CEPH_LOCK_HOST:
+            raise RuntimeError("Can not break lock for {} held by host {}."
+                               .format(self.name, lock_id))
+        self.image.break_lock(client_id, lock_id)
+
+    def mkswap(self):
+        self.map()
+        try:
+            cmd('mkswap -f "/dev/rbd/{}"'.format(self.fullname))
+        finally:
+            self.unmap()
+
+    def mkfs(self):
+        self.map()
+        try:
+            cmd('mkfs -q -m 1 -t ext4 "/dev/rbd/{}"'.format(self.fullname))
+            cmd('tune2fs -e remount-ro "/dev/rbd/{}"'.format(self.fullname))
+        finally:
+            self.unmap()
+
+    def map(self):
+        if self.mapped:
+            return
+        cmd('rbd --id "{}" map {}'.format(CEPH_CLIENT, self.fullname))
+        self.mapped = True
+
+    def unmap(self):
+        if not self.mapped:
+            return
+        cmd('rbd --id "{}" unmap /dev/rbd/{}'.format(CEPH_CLIENT,
+                                                     self.fullname))
+        self.mapped = False
+
+
 class Ceph(object):
 
     def __init__(self, cfg):
@@ -22,86 +115,51 @@ class Ceph(object):
     def __enter__(self):
         self.rados = rados.Rados(
             conffile=self.ceph_conf,
-            name='client.'+CEPH_CLIENT)
+            name='client.' + CEPH_CLIENT)
         self.rados.connect()
         self.ioctx = self.rados.open_ioctx(self.cfg['resource_group'])
-        self.query_locks()
+
+        self.root = Volume(self.ioctx, self.cfg['name'] + '.root')
+        self.swap = Volume(self.ioctx, self.cfg['name'] + '.swap')
+        self.tmp = Volume(self.ioctx, self.cfg['name'] + '.tmp')
+
+        self.volumes = [self.root, self.swap, self.tmp]
 
     def __exit__(self, exc_value, exc_type, exc_tb):
         self.ioctx.close()
         self.rados.shutdown()
 
     def start(self):
-        for image in self.image_names():
-            self.acquire_lock(image)
+        self.ensure_root_volume()
+        self.ensure_tmp_volume()
+        self.ensure_swap_volume()
+
+    def ensure_root_volume(self):
+        if not self.root.exists():
+            cmd('create-vm {}'.format(self.cfg['name']))
+        self.root.lock()
+
+    def ensure_swap_volume(self):
+        self.swap.ensure_presence()
+        self.swap.lock()
+        self.swap.ensure_size(
+            max(1024, self.cfg['memory']) * 1024**2)
+        self.swap.mkswap()
+
+    def ensure_tmp_volume(self):
+        self.tmp.ensure_presence()
+        self.tmp.lock()
+        self.tmp.ensure_size(
+            max(5*1024, self.cfg['disk']*1024/10) * 1024**2)
+        self.tmp.mkfs()
+
+    def locks(self):
+        for vol in self.volumes:
+            status = vol.lock_status()
+            if not status:
+                continue
+            yield vol.name, status[1]
 
     def stop(self):
-        for image in self.image_names():
-            print "Releasing lock for", image
-            self.release_lock(image)
-        self.query_locks()
-
-    def image_names(self):
-        prefix = self.cfg['name'] + '.'
-        r = rbd.RBD()
-        for img in r.list(self.ioctx):
-            if img.startswith(prefix) and '@' not in img:
-                yield img
-
-    def images(self):
-        for name in self.image_names():
-            with rbd.Image(self.ioctx, name) as i:
-                yield name, i
-
-    # Lock management
-
-    def query_locks(self):
-        """Collect all locks for all images of this VM.
-
-        list_lockers returns:
-            [{'lockers': [(client_id, lock_id, address), ...],
-              'exclusive': bool,
-              'tag': str}, ...]
-        """
-        self.locks = Locks()
-        for name, img in self.images():
-            self.locks.add(name, img.list_lockers())
-
-    def acquire_lock(self, image_name):
-        if image_name in self.locks.held:
-            return
-        with rbd.Image(self.ioctx, image_name) as img:
-            try:
-                img.lock_exclusive(CEPH_LOCK_HOST)
-            except rbd.ImageBusy:
-                raise Exception('failed to acquire lock', image_name)
-            except rbd.ImageExists:
-                # we hold the lock already
-                pass
-            finally:
-                self.query_locks()
-
-    def release_lock(self, image_name, force=False):
-        """Release lock.
-        """
-        lock = self.locks.available[image_name]
-        if not lock.mine and not force:
-            raise Exception('refusing to release lock held by another host',
-                            lock)
-        with rbd.Image(self.ioctx, image_name) as img:
-            try:
-                # We cannot unlock as the client names aren't predictable
-                # and we verify that we have the right to break the lock
-                # anyway.
-                img.break_lock(lock.client_id, lock.lock_id)
-            except rbd.ImageNotFound:
-                # lock has already been released
-                pass
-
-    def assert_locks(self):
-        self.query_locks()
-        for image in self.image_names():
-            if image not in self.locks.held:
-                raise RuntimeError(
-                    "I don't own all locks for {}".format(self.name),
-                    self.locks.held.keys(), self.locks.available.keys())
+        for vol in self.volumes:
+            vol.unlock()

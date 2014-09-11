@@ -36,13 +36,20 @@ def test_simple_vm_lifecycle(vm, capsys):
 
     assert status() == 'offline\n'
 
-    vm.create()
-    out, err = capsys.readouterr()
-    assert out == ''
-
-    assert status() == 'offline\n'
-
     vm.start()
+
+    out, err = capsys.readouterr()
+    assert out == """\
+create-vm test00
+rbd --id "admin" map test/test00.tmp
+mkfs -q -m 1 -t ext4 "/dev/rbd/test/test00.tmp"
+tune2fs -e remount-ro "/dev/rbd/test/test00.tmp"
+rbd --id "admin" unmap /dev/rbd/test/test00.tmp
+rbd --id "admin" map test/test00.swap
+mkswap -f "/dev/rbd/test/test00.swap"
+rbd --id "admin" unmap /dev/rbd/test/test00.swap
+"""
+
     assert status() == """\
 online
 lock: test00.root@localhost
