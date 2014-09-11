@@ -34,8 +34,6 @@ ceph osd pool create test 128
 cat >> /usr/sbin/create-vm <<EOF
 #!/bin/bash
 rbd create --size 100 test/$1.root
-rbd create --size 100 test/$1.swap
-rbd create --size 100 test/$1.tmp
 EOF
 chmod +x /usr/sbin/create-vm
 

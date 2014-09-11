@@ -1,10 +1,12 @@
 from ..timeout import TimeOut
 from .monitor import Monitor
+import glob
+import logging
+import os.path
 import psutil
 import socket
 import subprocess
 import yaml
-import logging
 
 
 log = logging.getLogger(__name__)
@@ -53,14 +55,14 @@ class Qemu(object):
         return proc
 
     def start(self):
+        if not os.path.exists('/dev/kvm'):
+            raise RuntimeError('Refusing to start without /dev/kvm support.')
         self.prepare_config()
         with open('/proc/sys/vm/compact_memory', 'w') as f:
             f.write('1')
         try:
-            subprocess.check_call(
-                '{executable} {args}'.format(executable=self.executable,
-                                             args=' '.join(self.local_args)),
-                shell=True)
+            cmd = '{} {}'.format(self.executable, ' '.join(self.local_args))
+            subprocess.check_call(cmd, shell=True)
         except subprocess.CalledProcessError:
             # Did not start. Not running.
             log.error('Failed to start qemu.')
@@ -124,6 +126,10 @@ class Qemu(object):
             status = self.monitor.status()
             if status == '':
                 break
+
+    def clean_run_files(self):
+        for runfile in glob.glob('/run/qemu.*'):
+            os.unlink(runfile)
 
     def prepare_config(self):
         format = lambda s: s.format(

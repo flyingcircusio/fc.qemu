@@ -3,7 +3,6 @@ from .hazmat.qemu import Qemu, QemuNotRunning
 from .timeout import TimeOut
 from logging import getLogger
 import os.path
-import subprocess
 import yaml
 
 
@@ -72,10 +71,8 @@ class Agent(object):
         """Determine status of the VM.
         """
         print 'online' if self.qemu.is_running() else 'offline'
-        locks = self.ceph.locks.available.items()
-        locks.sort()
-        for name, lock in locks:
-            print 'lock: {}@{}'.format(lock.image, lock.lock_id)
+        for lock in self.ceph.locks():
+            print 'lock: {}@{}'.format(*lock)
 
     @running(True)
     def stop(self):
@@ -84,11 +81,14 @@ class Agent(object):
         self.qemu.graceful_shutdown()
         while timeout.tick():
             if not self.qemu.is_running():
-                self.ceph.stop()
-                print "Graceful shutdown succeeded."
                 break
         else:
             self.kill()
+            return
+
+        self.ceph.stop()
+        self.qemu.clean_run_files()
+        print "Graceful shutdown succeeded."
 
     @running(True)
     def kill(self):
@@ -97,14 +97,11 @@ class Agent(object):
         self.qemu.destroy()
         while timeout.tick():
             if not self.qemu.is_running():
-                self.ceph.stop()
-                print "Killing VM succeeded."
                 break
 
-    @running(False)
-    def create(self):
-        subprocess.check_call('create-vm {}'.format(self.cfg['name']),
-                              shell=True)
+        self.qemu.clean_run_files()
+        self.ceph.stop()
+        print "Killing VM succeeded."
 
     @running(False)
     def delete(self):
@@ -119,6 +116,16 @@ class Agent(object):
     @running(True)
     def outmigrate(self):
         pass
+
+    def lock(self):
+        print "Assuming all Ceph locks."
+        for vol in self.ceph.volumes:
+            vol.lock()
+
+    @running(False)
+    def unlock(self):
+        print "Releasing all Ceph locks."
+        self.ceph.stop()
 
     # Helper methods
 
