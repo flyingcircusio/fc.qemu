@@ -1,4 +1,4 @@
-from ..exc import MigrationError
+from ...exc import MigrationError
 from ..monitor import Monitor
 import pytest
 import socket
