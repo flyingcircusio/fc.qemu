@@ -2,6 +2,8 @@ from .hazmat.ceph import Ceph
 from .hazmat.qemu import Qemu, QemuNotRunning
 from .timeout import TimeOut
 from logging import getLogger
+import fcntl
+import os
 import os.path
 import yaml
 
@@ -17,6 +19,14 @@ def running(expected=True):
             return f(self, *args, **kw)
         return checked
     return wrap
+
+
+def locked(f):
+    def locked(self, *args, **kw):
+        fd = os.open(self.configfile, os.O_RDONLY)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        return f(self, *args, **kw)
+    return locked
 
 
 class Agent(object):
@@ -37,6 +47,7 @@ class Agent(object):
             cfg = '/etc/qemu/vm/{}.cfg'.format(name)
         if not os.path.isfile(cfg):
             raise RuntimeError("Could not find {}".format(cfg))
+        self.configfile = cfg
         self.enc = yaml.load(open(cfg))
         self.cfg = self.enc['parameters']
         self.cfg['name'] = self.enc['name']
@@ -56,11 +67,13 @@ class Agent(object):
             except Exception:
                 log.exception('Error while leaving agent contexts.')
 
+    @locked
     def ensure(self):
         return
         self.ensure_online_status()
         self.ensure_online_disk_size()
 
+    @locked
     @running(False)
     def start(self):
         self.generate_config()
@@ -83,6 +96,7 @@ class Agent(object):
             print 'lock: {}@{}'.format(*lock)
         return status
 
+    @locked
     @running(True)
     def stop(self):
         timeout = TimeOut(self.timeout_graceful, interval=1)
@@ -99,6 +113,7 @@ class Agent(object):
         self.qemu.clean_run_files()
         print "Graceful shutdown succeeded."
 
+    @locked
     @running(True)
     def kill(self):
         print "Killing VM"
@@ -112,25 +127,30 @@ class Agent(object):
         self.ceph.stop()
         print "Killing VM succeeded."
 
+    @locked
     @running(False)
     def delete(self):
         # XXX require a safety belt: make an online check that this
         # VM really should be deleted.
         pass
 
+    @locked
     @running(False)
     def inmigrate(self):
         pass
 
+    @locked
     @running(True)
     def outmigrate(self):
         pass
 
+    @locked
     def lock(self):
         print "Assuming all Ceph locks."
         for vol in self.ceph.volumes:
             vol.lock()
 
+    @locked
     @running(False)
     def unlock(self):
         print "Releasing all Ceph locks."
