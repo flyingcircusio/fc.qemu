@@ -58,6 +58,10 @@ def main():
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.set_defaults(func='status')
 
+    p = sub.add_parser('ensure', help='Ensure proper status of the VM.')
+    p.add_argument('vm', metavar='VM', help='name of the VM')
+    p.set_defaults(func='ensure')
+
     p = sub.add_parser('start', help='Start a VM.')
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.set_defaults(func='start')
