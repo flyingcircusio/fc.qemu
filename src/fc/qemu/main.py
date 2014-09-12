@@ -15,6 +15,7 @@ def load_system_config():
     sysconfig.read('/etc/qemu/fc-qemu.conf')
 
     # QEMU
+    from .hazmat import qemu
     accelerator = sysconfig.get('qemu', 'accelerator')
     if accelerator:
         Agent.accelerator = '   accel = "{}"'.format(accelerator)
@@ -22,6 +23,7 @@ def load_system_config():
         Agent.vhost = '    vhost = "on"'
     Agent.vnc = sysconfig.get('qemu', 'vnc')
     Agent.timeout_graceful = sysconfig.getint('qemu', 'timeout-graceful')
+    Agent.this_host = sysconfig.get('ceph', 'lock_host')
 
     # CEPH
     from .hazmat import ceph

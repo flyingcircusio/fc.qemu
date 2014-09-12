@@ -11,9 +11,6 @@ import yaml
 
 log = logging.getLogger(__name__)
 
-HOSTNAME = socket.gethostname()  # XXX
-SUFFIX = 'rzob.gocept.net'  # XXX
-
 
 class QemuNotRunning(Exception):
     """Something happened and we're sure Qemu isn't running."""
@@ -32,7 +29,6 @@ class Qemu(object):
 
     MONITOR_OFFSET = 20000
 
-    # XXX support old pid
     pidfile = '/run/qemu.{name}.pid'
     configfile = '/run/qemu.{name}.cfg'
     argfile = '/run/qemu.{name}.args'
@@ -62,7 +58,9 @@ class Qemu(object):
             f.write('1')
         try:
             cmd = '{} {}'.format(self.executable, ' '.join(self.local_args))
-            subprocess.check_call(cmd, shell=True)
+            # We explicitly close all fds for the child to avoid
+            # inheriting locks infinitely.
+            subprocess.check_call(cmd, shell=True, close_fds=True)
         except subprocess.CalledProcessError:
             # Did not start. Not running.
             log.error('Failed to start qemu.')
@@ -128,13 +126,11 @@ class Qemu(object):
                 break
 
     def clean_run_files(self):
-        for runfile in glob.glob('/run/qemu.*'):
+        for runfile in glob.glob('/run/qemu.{}.*'.format(self.cfg['name'])):
             os.unlink(runfile)
 
     def prepare_config(self):
         format = lambda s: s.format(
-            hostname=HOSTNAME,
-            suffix=SUFFIX,
             pidfile=self.pidfile,
             configfile=self.configfile,
             monitor_port=self.monitor.port)
