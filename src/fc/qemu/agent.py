@@ -37,7 +37,9 @@ class Agent(object):
             cfg = '/etc/qemu/vm/{}.cfg'.format(name)
         if not os.path.isfile(cfg):
             raise RuntimeError("Could not find {}".format(cfg))
-        self.cfg = yaml.load(open(cfg))
+        self.enc = yaml.load(open(cfg))
+        self.cfg = self.enc['parameters']
+        self.cfg['name'] = self.enc['name']
         self.qemu = Qemu(self.cfg)
         self.ceph = Ceph(self.cfg)
         self.contexts = [self.qemu, self.ceph]
@@ -55,6 +57,7 @@ class Agent(object):
                 log.exception('Error while leaving agent contexts.')
 
     def ensure(self):
+        return
         self.ensure_online_status()
         self.ensure_online_disk_size()
 
