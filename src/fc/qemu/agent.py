@@ -289,7 +289,7 @@ class Agent(object):
 [netdev "{ifname}"]
   type = "tap"
   ifname = "{ifname}"
-  script = "/etc/qemu/ifup"
-  downscript = "/etc/qemu/ifdown"
+  script = "/etc/kvm/kvm-ifup"
+  downscript = "/etc/kvm/kvm-ifdown"
 {vhost}
 """.format(ifname=ifname, mac=net_config['mac'], vhost=self.vhost)
