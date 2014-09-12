@@ -23,8 +23,9 @@ def running(expected=True):
 
 def locked(f):
     def locked(self, *args, **kw):
-        fd = os.open(self.configfile, os.O_RDONLY)
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        if not self._configfile_fd:
+          self._configfile_fd = os.open(self.configfile, os.O_RDONLY)
+        fcntl.flock(self._configfile_fd, fcntl.LOCK_EX)
         return f(self, *args, **kw)
     return locked
 
@@ -34,11 +35,14 @@ class Agent(object):
 
     # Those values can be overriden using the /etc/qemu/fc-agent.conf
     # config file. The defaults are intended for testing purposes.
+    this_host = ''
     accelerator = ''
     vhost = ''
     ceph_id = 'admin'
     vnc = 'localhost:1'
     timeout_graceful = 30
+
+    _configfile_fd = None
 
     def __init__(self, name):
         if '.' in name:
@@ -69,9 +73,28 @@ class Agent(object):
 
     @locked
     def ensure(self):
-        return
-        self.ensure_online_status()
+        if not self.cfg['online']:
+            self.ensure_offline()
+            return
+        if self.cfg['kvm_host'] != self.this_host:
+            # Initiate outmigrate.
+            self.ensure_offline()
+            return
+        self.ensure_online()
         self.ensure_online_disk_size()
+
+    def ensure_offline(self):
+        if self.qemu.is_running():
+            print "VM should not be running here."
+            self.stop()
+
+    def ensure_online(self):
+        if not self.qemu.is_running():
+            print "VM should be running here."
+            self.start()
+
+    def ensure_online_disk_size(self):
+        pass
 
     @locked
     @running(False)
@@ -164,9 +187,7 @@ class Agent(object):
         """Generate a new Qemu config (and options) for a freshly
         starting VM.
 
-        The configs are intended to be non-host-specific and can use {hostname}
-        and {suffix} formatting that will later be filled in when actually
-        starting VM.
+        The configs are intended to be non-host-specific.
 
         This two-step behaviour is needed to support migrating VMs
         and keeping arguments consistent while allowing to localize arguments
