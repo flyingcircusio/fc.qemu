@@ -73,9 +73,15 @@ class Agent(object):
     def status(self):
         """Determine status of the VM.
         """
-        print 'online' if self.qemu.is_running() else 'offline'
+        if self.qemu.is_running():
+            status = 0 
+            print 'online'
+        else:
+            status = 1
+            print 'offline'
         for lock in self.ceph.locks():
             print 'lock: {}@{}'.format(*lock)
+        return status
 
     @running(True)
     def stop(self):

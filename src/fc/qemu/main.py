@@ -91,4 +91,4 @@ def main():
 
     agent = Agent(vm)
     with agent:
-        getattr(agent, func)(**args)
+        sys.exit(getattr(agent, func)(**args) or 0)
