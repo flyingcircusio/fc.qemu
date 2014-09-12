@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 def load_system_config():
     # System-wide config - pretty hacky
     sysconfig = ConfigParser.SafeConfigParser()
-    sysconfig.read(os.path.dirname(__file__) + '/defaults.conf')
+    sysconfig.read(os.path.dirname(__file__) + '/default.conf')
     sysconfig.read('/etc/qemu/fc-qemu.conf')
 
     # QEMU
