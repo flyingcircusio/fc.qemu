@@ -1,0 +1,10 @@
+
+
+0.4
+===
+
+- get daemon to continuously ensure up/down condition
+- init script for the daemon
+- live migration
+- daemon provides inmigrate RPC, not each process
+- offline disk downsize

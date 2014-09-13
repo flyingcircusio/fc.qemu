@@ -1,9 +1,13 @@
 
 
-0.2.7 (unreleased)
-==================
+0.3 (unreleased)
+================
 
-- Nothing changed yet.
+- Refactor and rename to 'fc.qemu'.
+  Integrate most functionality that was previously placed in our
+  init scripts and localconfig (fc.agent) utilities.
+
+- Add a lot of test coverage.
 
 
 0.2.6 (2014-08-21)
