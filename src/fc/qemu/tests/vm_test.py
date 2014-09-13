@@ -68,7 +68,7 @@ lock: test00.tmp@localhost
     assert status() == 'offline\n'
 
 
-def test_simple_vm_lifecycle_ensure(vm, capsys):
+def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys):
     def status():
         capsys.readouterr()
         vm.status()
@@ -101,6 +101,47 @@ lock: test00.tmp@localhost
 """
 
     vm.cfg['online'] = False
+    vm.save()
+    vm.ensure()
+    assert status() == 'offline\n'
+
+    vm.delete()
+    assert status() == 'offline\n'
+
+
+def test_simple_vm_lifecycle_ensure_moving_away(vm, capsys):
+    def status():
+        capsys.readouterr()
+        vm.status()
+        out, err = capsys.readouterr()
+        return out
+
+    assert status() == 'offline\n'
+
+    vm.ensure()
+
+    out, err = capsys.readouterr()
+    assert out == """\
+VM should be running here.
+create-vm test00
+rbd --id "admin" map test/test00.tmp
+mkfs -q -m 1 -t ext4 "/dev/rbd/test/test00.tmp"
+tune2fs -e remount-ro "/dev/rbd/test/test00.tmp"
+rbd --id "admin" unmap /dev/rbd/test/test00.tmp
+rbd --id "admin" map test/test00.swap
+mkswap -f "/dev/rbd/test/test00.swap"
+rbd --id "admin" unmap /dev/rbd/test/test00.swap
+resizing disk for VM to 5 GiB
+"""
+
+    assert status() == """\
+online
+lock: test00.root@localhost
+lock: test00.swap@localhost
+lock: test00.tmp@localhost
+"""
+
+    vm.cfg['kvm_host'] = 'somewhereelse'
     vm.save()
     vm.ensure()
     assert status() == 'offline\n'
