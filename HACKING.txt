@@ -5,11 +5,14 @@ Prepare working copy in a personal box::
 
     $ hg clone https://bitbucket.org/flyingcirucs/fc.qemu
     $ cd fc.qemu
+    $ vagrant up
+    $ vagrant ssh
+    $ cd /vagrant
     $ virtualenv-2.7 .
-    $ bin/pip install -r requirements.txt
 
 Run the tests:
 
+    $ bin/pip install -r requirements.txt
     $ bin/py.test
 
 
