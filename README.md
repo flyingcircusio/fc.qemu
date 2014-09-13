@@ -24,7 +24,7 @@ The config file format is YAML.
 Format:
 
     name: test00
-        parameters:
+    parameters:
         id: 12345
         resource_group: test
 
