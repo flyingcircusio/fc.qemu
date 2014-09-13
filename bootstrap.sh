@@ -33,7 +33,7 @@ ceph osd pool create test 128
 # Create a
 cat >> /usr/sbin/create-vm <<EOF
 #!/bin/bash
-rbd create --size 100 test/$1.root
+rbd create --size 100 test/\$1.root
 EOF
 chmod +x /usr/sbin/create-vm
 
@@ -46,10 +46,10 @@ cat >> /etc/kvm/kvm-ifup <<EOF
 #!/bin/bash
 EOF
 chmod +x /etc/kvm/kvm-ifup
-cp /etc/qemu/ifup /etc/qemu/ifdown
+cp /etc/kvm/kvm-ifup /etc/kvm/kvm-ifdown
 
 cd /vagrant
 virtualenv --system-site-packages .
 bin/pip install -e .
 
-
+touch /dev/kvm
