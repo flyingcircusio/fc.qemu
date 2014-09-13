@@ -24,10 +24,26 @@ def running(expected=True):
 def locked(f):
     def locked(self, *args, **kw):
         if not self._configfile_fd:
-          self._configfile_fd = os.open(self.configfile, os.O_RDONLY)
+            self._configfile_fd = os.open(self.configfile, os.O_RDONLY)
         fcntl.flock(self._configfile_fd, fcntl.LOCK_EX)
-        return f(self, *args, **kw)
+        try:
+            return f(self, *args, **kw)
+        finally:
+            fcntl.flock(self._configfile_fd, fcntl.LOCK_UN)
     return locked
+
+
+def swap_size(memory):
+    if memory > 2048:
+        swap = memory / 2
+    else:
+        swap = 1024
+    return swap * 1024**2
+
+
+def tmp_size(disk):
+    # disk in GiB, return Bytes
+    return max(5*1024, disk*1024/10) * 1024**2
 
 
 class Agent(object):
@@ -46,19 +62,26 @@ class Agent(object):
 
     def __init__(self, name):
         if '.' in name:
-            cfg = name
+            self.configfile = name
         else:
-            cfg = '/etc/qemu/vm/{}.cfg'.format(name)
-        if not os.path.isfile(cfg):
-            raise RuntimeError("Could not find {}".format(cfg))
-        self.configfile = cfg
-        self.enc = yaml.load(open(cfg))
+            self.configfile = '/etc/qemu/vm/{}.cfg'.format(name)
+        if not os.path.isfile(self.configfile):
+            raise RuntimeError("Could not find {}".format(self.configfile))
+
+        self.enc = yaml.load(open(self.configfile))
         self.cfg = self.enc['parameters']
+        self.name = self.enc['name']
         self.cfg['name'] = self.enc['name']
+        self.cfg['swap_size'] = swap_size(self.cfg['memory'])
+        self.cfg['tmp_size'] = tmp_size(self.cfg['disk'])
         self.qemu = Qemu(self.cfg)
         self.ceph = Ceph(self.cfg)
         self.contexts = [self.qemu, self.ceph]
         self.vnc = self.vnc.format(**self.cfg)
+
+    def save(self):
+        with open(self.configfile, 'w') as f:
+            f.write(yaml.dump(self.enc))
 
     def __enter__(self):
         for c in self.contexts:
@@ -94,7 +117,13 @@ class Agent(object):
             self.start()
 
     def ensure_online_disk_size(self):
-        pass
+        """Trigger block resize action for the root disk via Qemu monitor."""
+        target_size = self.cfg['disk'] * (1024**3)
+        if self.ceph.root.image.size() > target_size:
+            return
+
+        print 'resizing disk for VM to {} GiB'.format(self.cfg['disk'])
+        self.qemu.resize_root(target_size)
 
     @locked
     @running(False)
@@ -110,7 +139,7 @@ class Agent(object):
         """Determine status of the VM.
         """
         if self.qemu.is_running():
-            status = 0 
+            status = 0
             print 'online'
         else:
             status = 1

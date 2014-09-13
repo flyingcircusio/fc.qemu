@@ -15,7 +15,6 @@ def load_system_config():
     sysconfig.read('/etc/qemu/fc-qemu.conf')
 
     # QEMU
-    from .hazmat import qemu
     accelerator = sysconfig.get('qemu', 'accelerator')
     if accelerator:
         Agent.accelerator = '   accel = "{}"'.format(accelerator)

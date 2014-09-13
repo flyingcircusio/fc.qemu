@@ -1,11 +1,15 @@
-name: "test00"
-id: 2345
-memory: 256
-interfaces:
-  srv:
-    mac: aa-bb-cc-dd-ee-ff
-  fe:
-    mac: aa-bb-cc-00-ee-ff
-cores: 1
-resource_group: test
-disk: 5
+name: test00
+parameters:
+  cores: 1
+  disk: 5
+  id: 2345
+  interfaces:
+    fe: {mac: aa-bb-cc-00-ee-ff}
+    srv: {mac: aa-bb-cc-dd-ee-ff}
+  kvm_host: localhost
+  memory: 256
+  name: test00
+  online: true
+  resource_group: test
+  swap_size: 1073741824
+  tmp_size: 5368709120

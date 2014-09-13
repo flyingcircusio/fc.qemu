@@ -41,10 +41,11 @@ rm -rf /etc/qemu/vm
 mkdir -p /etc/qemu/vm
 ln -s /vagrant/foobar00.cfg /etc/qemu/vm/
 
-cat >> /etc/qemu/ifup <<EOF
+mkdir /etc/kvm
+cat >> /etc/kvm/kvm-ifup <<EOF
 #!/bin/bash
 EOF
-chmod +x /etc/qemu/ifup
+chmod +x /etc/kvm/kvm-ifup
 cp /etc/qemu/ifup /etc/qemu/ifdown
 
 cd /vagrant

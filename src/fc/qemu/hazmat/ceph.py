@@ -142,15 +142,13 @@ class Ceph(object):
     def ensure_swap_volume(self):
         self.swap.ensure_presence()
         self.swap.lock()
-        self.swap.ensure_size(
-            max(1024, self.cfg['memory']) * 1024**2)
+        self.swap.ensure_size(self.cfg['swap_size'])
         self.swap.mkswap()
 
     def ensure_tmp_volume(self):
         self.tmp.ensure_presence()
         self.tmp.lock()
-        self.tmp.ensure_size(
-            max(5*1024, self.cfg['disk']*1024/10) * 1024**2)
+        self.tmp.ensure_size(self.cfg['tmp_size'])
         self.tmp.mkfs()
 
     def locks(self):
