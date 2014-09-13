@@ -49,7 +49,25 @@ class Volume(object):
         self.image.resize(size)
 
     def lock(self):
-        self.image.lock_exclusive(CEPH_LOCK_HOST)
+        retry = 3
+        while retry:
+            try:
+                self.image.lock_exclusive(CEPH_LOCK_HOST)
+            except (rbd.ImageBusy, rbd.ImageExists):
+                status = self.lock_status()
+                if status is None:
+                    # Someone had the lock but released it in between.
+                    # Lets try again
+                    retry -= 1
+                    continue
+                if status[1] == CEPH_LOCK_HOST:
+                    # That's locked for us already. We just re-use
+                    # the existing lock.
+                    return
+                raise
+        raise rbd.ImageBusy(
+            'Could not acquire lock - tried multiple times. '
+            'Someone seems to be racing me.')
 
     def lock_status(self):
         """Return None if not locked and the lock_id if it is."""
@@ -73,8 +91,8 @@ class Volume(object):
             return
         client_id, lock_id = locked_by
         if lock_id != CEPH_LOCK_HOST:
-            raise RuntimeError("Can not break lock for {} held by host {}."
-                               .format(self.name, lock_id))
+            raise rbd.ImageBusy("Can not break lock for {} held by host {}."
+                                .format(self.name, lock_id))
         self.image.break_lock(client_id, lock_id)
 
     def mkswap(self):
