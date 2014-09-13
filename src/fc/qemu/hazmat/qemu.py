@@ -4,7 +4,6 @@ import glob
 import logging
 import os.path
 import psutil
-import socket
 import subprocess
 import yaml
 
@@ -124,6 +123,10 @@ class Qemu(object):
             status = self.monitor.status()
             if status == '':
                 break
+
+    def resize_root(self, size):
+        size = size / 1024**2  # MiB
+        self.monitor._cmd('block_resize virtio0 {}'.format(size))
 
     def clean_run_files(self):
         for runfile in glob.glob('/run/qemu.{}.*'.format(self.cfg['name'])):
