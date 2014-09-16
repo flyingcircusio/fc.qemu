@@ -1,6 +1,6 @@
 
 
-0.4 (unreleased)
+0.4 (2014-09-16)
 ================
 
 - Allow selecting the specific command line to call for creating a VM
