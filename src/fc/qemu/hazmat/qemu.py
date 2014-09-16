@@ -64,6 +64,7 @@ class Qemu(object):
             # Did not start. Not running.
             log.error('Failed to start qemu.')
             raise QemuNotRunning()
+        self.monitor.reset()
         assert self.is_running()
 
     def is_running(self):
@@ -76,6 +77,7 @@ class Qemu(object):
         try:
             assert proc.name() == 'kvm.{name}'.format(**self.cfg)
         except Exception:
+            print "process name does not match"
             log.error('Process name does not match. '
                       'Expected kvm.{} got {}'.format(
                           self.cfg['name'], proc.name()))
@@ -117,7 +119,7 @@ class Qemu(object):
         # sometimes the init script will complain even if we achieve what
         # we want: that the VM isn't running any longer. We check this
         # by contacting the monitor instead.
-        self.proc().kill()
+        self.proc().terminate()
         timeout = TimeOut(5, interval=1, raise_on_timeout=True)
         while timeout.tick():
             status = self.monitor.status()

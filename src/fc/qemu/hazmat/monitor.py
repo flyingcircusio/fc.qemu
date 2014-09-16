@@ -25,6 +25,9 @@ class Monitor(object):
         if '(qemu)' not in res:
             raise RuntimeError('failed to establish monitor connection', res)
 
+    def reset(self):
+        self._connect()
+
     def _cmd(self, command):
         """Issue a monitor command and return QEMU's response.
 
@@ -36,10 +39,11 @@ class Monitor(object):
         _log.debug('mon <<< %s', command)
         self.conn.write(command + '\n')
         res = self.conn.read_until('(qemu)', self.timeout)
+        if res == '':  # Connection went away
+            _log.debug('mon >>> EOF')
+            self.conn = None
+            return ''
         _log.debug('mon >>> %s', res)
-        if '(qemu)' not in res:
-            raise MigrationError('communication problem with QEMU monitor',
-                                 command, res)
         r_strip_echo = re.compile(r'^.*' + re.escape(command) + '\S*\r\n')
         output = r_strip_echo.sub('', res).replace('\r\n', '\n')
         return output.replace('(qemu)', '')
