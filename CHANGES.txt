@@ -3,7 +3,8 @@
 0.4 (unreleased)
 ================
 
-- Nothing changed yet.
+- Allow selecting the specific command line to call for creating a VM
+  using a config file + formatting syntax.
 
 
 0.3 (2014-09-13)
