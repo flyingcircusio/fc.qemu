@@ -6,6 +6,8 @@
 - Allow selecting the specific command line to call for creating a VM
   using a config file + formatting syntax.
 
+- Add test coverage to show that we gracefully recover from crashed VMs
+  upon a subsequent 'ensure'.
 
 0.3 (2014-09-13)
 ================
