@@ -32,6 +32,7 @@ def load_system_config():
     # Not sure whether it makes sense to hardcode this. Weird that qemu
     # doesn't want to see client.<name>.
     ceph.CEPH_CLIENT = Agent.ceph_id
+    ceph.CREATE_VM = sysconfig.get('ceph', 'create-vm')
 
 
 def init_logging(verbose=True):

@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 CEPH_CLUSTER = None
 CEPH_LOCK_HOST = None
 CEPH_CLIENT = 'admin'
+CREATE_VM = None
 
 
 def cmd(cmdline):
@@ -154,7 +155,7 @@ class Ceph(object):
 
     def ensure_root_volume(self):
         if not self.root.exists():
-            cmd('create-vm {}'.format(self.cfg['name']))
+            cmd(CREATE_VM.format(**self.cfg))
         self.root.lock()
 
     def ensure_swap_volume(self):
