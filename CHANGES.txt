@@ -1,7 +1,7 @@
 
 
-0.4.1 (unreleased)
-================
+0.4.1 (2014-09-24)
+==================
 
 - Do not require the PID to match the machine name for determining
   online status. This caused issues for VMs with names longer than 11
