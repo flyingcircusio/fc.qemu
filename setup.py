@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='fc.qemu',
-    version='0.4.1dev0',
+    version='0.4.1',
     author='Christian Kauhaus, Christian Theune',
     author_email='mail@gocept.com',
     url='http://bitbucket.org/flyingcircus/fc.qemu',
