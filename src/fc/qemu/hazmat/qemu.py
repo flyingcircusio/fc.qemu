@@ -21,6 +21,7 @@ class Qemu(object):
 
     # This cfg is the cfg from the agent.
     cfg = None
+    require_kvm = True
 
     # The non-hosts-specific config configuration of this Qemu instance.
     args = ()
@@ -50,7 +51,7 @@ class Qemu(object):
         return proc
 
     def start(self):
-        if not os.path.exists('/dev/kvm'):
+        if self.require_kvm and not os.path.exists('/dev/kvm'):
             raise RuntimeError('Refusing to start without /dev/kvm support.')
         self.prepare_config()
         with open('/proc/sys/vm/compact_memory', 'w') as f:
@@ -72,17 +73,19 @@ class Qemu(object):
             self.monitor.assert_status('VM status: running')
         except Exception:
             return False
-
-        proc = self.proc()
-        try:
-            assert proc.name() == 'kvm.{name}'.format(**self.cfg)
-        except Exception:
-            print "process name does not match"
-            log.error('Process name does not match. '
-                      'Expected kvm.{} got {}'.format(
-                          self.cfg['name'], proc.name()))
-            return False
         return True
+        # XXX we used to validate the process name but this bit us on
+        # long machine name.
+        # proc = self.proc()
+        # try:
+        #     assert proc.name() == 'kvm.{name}'.format(**self.cfg)
+        # except Exception:
+        #     print "process name does not match"
+        #     log.error('Process name does not match. '
+        #               'Expected kvm.{} got {}'.format(
+        #                   self.cfg['name'], proc.name()))
+        #     return False
+        # return True
 
     def status(self):
         return self.monitor.status()
