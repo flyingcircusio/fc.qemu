@@ -18,6 +18,9 @@ def load_system_config():
     accelerator = sysconfig.get('qemu', 'accelerator')
     if accelerator:
         Agent.accelerator = '   accel = "{}"'.format(accelerator)
+    else:
+        from .hazmat.qemu import Qemu
+        Qemu.require_kvm = False
     if sysconfig.getboolean('qemu', 'vhost'):
         Agent.vhost = '    vhost = "on"'
     Agent.vnc = sysconfig.get('qemu', 'vnc')

@@ -1,9 +1,11 @@
 
 
-0.5 (unreleased)
+0.4.1 (unreleased)
 ================
 
-- Nothing changed yet.
+- Do not require the PID to match the machine name for determining
+  online status. This caused issues for VMs with names longer than 11
+  characters: http://status.flyingcircus.io/incidents/3j8wsrszlx2w
 
 
 0.4 (2014-09-16)
