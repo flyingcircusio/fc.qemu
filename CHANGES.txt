@@ -1,13 +1,16 @@
+Release notes
+=============
 
 
 0.4.2 (unreleased)
-==================
+------------------
 
-- Nothing changed yet.
+- Rate limit entropy transfer from host to guest (#13751).
+- Add 'restart' command to simplify VM restarts.
 
 
 0.4.1 (2014-09-24)
-==================
+------------------
 
 - Do not require the PID to match the machine name for determining
   online status. This caused issues for VMs with names longer than 11
@@ -15,7 +18,7 @@
 
 
 0.4 (2014-09-16)
-================
+----------------
 
 - Allow selecting the specific command line to call for creating a VM
   using a config file + formatting syntax.
@@ -24,7 +27,7 @@
   upon a subsequent 'ensure'.
 
 0.3 (2014-09-13)
-================
+----------------
 
 - Refactor and rename to 'fc.qemu'.
   Integrate most functionality that was previously placed in our
@@ -34,13 +37,13 @@
 
 
 0.2.6 (2014-08-21)
-==================
+------------------
 
 - Fix incoming VM detection for an already locked _and_ started VM.
 
 
 0.2.5 (2014-08-20)
-==================
+------------------
 
 * Implement a safety-belt to prohibit migrating VMs that have not
   yet been started with the supported /run/kvm.*.cfg.in format.
