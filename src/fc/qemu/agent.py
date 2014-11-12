@@ -3,6 +3,7 @@ from .hazmat.qemu import Qemu, QemuNotRunning
 from .timeout import TimeOut
 from logging import getLogger
 import fcntl
+import socket
 import os
 import os.path
 import yaml
@@ -149,11 +150,13 @@ class Agent(object):
         return status
 
     @locked
-    @running(True)
     def stop(self):
         timeout = TimeOut(self.timeout_graceful, interval=1)
         print "Trying graceful shutdown ..."
-        self.qemu.graceful_shutdown()
+        try:
+            self.qemu.graceful_shutdown()
+        except socket.error:
+            pass
         while timeout.tick():
             if not self.qemu.is_running():
                 break
@@ -164,6 +167,12 @@ class Agent(object):
         self.ceph.stop()
         self.qemu.clean_run_files()
         print "Graceful shutdown succeeded."
+
+    @locked
+    def restart(self):
+        print "Restarting VM..."
+        self.stop()
+        self.start()
 
     @locked
     @running(True)
@@ -290,6 +299,8 @@ class Agent(object):
 
 [device]
   driver = "virtio-rng-pci"
+  max-bytes = "1024"
+  period = "100"
 
 # Guest agent support
 [device]

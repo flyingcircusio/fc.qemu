@@ -75,6 +75,10 @@ def main():
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.set_defaults(func='stop')
 
+    p = sub.add_parser('restart', help='Restart a VM.')
+    p.add_argument('vm', metavar='VM', help='name of the VM')
+    p.set_defaults(func='restart')
+
     p = sub.add_parser('lock', help='Assume all locks of a VM.')
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.set_defaults(func='lock')
