@@ -22,7 +22,7 @@ def load_system_config():
         from .hazmat.qemu import Qemu
         Qemu.require_kvm = False
     if sysconfig.getboolean('qemu', 'vhost'):
-        Agent.vhost = '    vhost = "on"'
+        Agent.vhost = '  vhost = "on"'
     Agent.vnc = sysconfig.get('qemu', 'vnc')
     Agent.timeout_graceful = sysconfig.getint('qemu', 'timeout-graceful')
     Agent.this_host = sysconfig.get('ceph', 'lock_host')

@@ -31,7 +31,7 @@ chmod +r /etc/ceph/ceph.client.admin.keyring
 ceph osd pool create test 128
 
 # Create a
-cat >> /usr/sbin/create-vm <<EOF
+cat > /usr/sbin/create-vm <<EOF
 #!/bin/bash
 rbd create --size 100 test/\$1.root
 EOF
