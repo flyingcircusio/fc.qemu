@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.4.3 (unreleased)
+0.4.3 (2014-11-13)
 ------------------
 
 - Read Qemu config file template from `/etc/qemu/qemu.vm.cfg.in`.
