@@ -17,3 +17,5 @@ lib64
 local
 local
 report.xml
+ceph.*
+dist

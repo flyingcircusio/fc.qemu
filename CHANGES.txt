@@ -5,7 +5,8 @@ Release notes
 0.4.3 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Read Qemu config file template from `/etc/qemu/qemu.vm.cfg.in`.
+- Fix tests and documentation.
 
 
 0.4.2 (2014-11-12)

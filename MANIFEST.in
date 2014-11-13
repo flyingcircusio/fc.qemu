@@ -1,0 +1,3 @@
+include *.txt
+include fc-qemu.conf
+recursive-include src *.cfg.in

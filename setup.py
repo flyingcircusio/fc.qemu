@@ -1,5 +1,9 @@
 from setuptools import setup, find_packages
 
+with open('README.txt') as f:
+    readme = f.read()
+with open('CHANGES.txt') as f:
+    readme += f.read()
 
 setup(
     name='fc.qemu',
@@ -7,8 +11,8 @@ setup(
     author='Christian Kauhaus, Christian Theune',
     author_email='mail@gocept.com',
     url='http://bitbucket.org/flyingcircus/fc.qemu',
-    description="""\
-QEMU VM management utilities""",
+    description='Qemu VM management utilities',
+    long_description=readme,
     packages=find_packages('src'),
     package_dir={'': 'src'},
     include_package_data=True,
