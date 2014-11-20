@@ -93,7 +93,7 @@ class Agent(object):
 
     def save(self):
         with open(self.configfile, 'w') as f:
-            f.write(yaml.dump(self.enc))
+            yaml.dump(self.enc, f)
 
     def __enter__(self):
         for c in self.contexts:
