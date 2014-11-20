@@ -30,12 +30,18 @@ chmod +r /etc/ceph/ceph.client.admin.keyring
 # Create demo VM
 ceph osd pool create test 128
 
-# Create a
-cat > /usr/sbin/create-vm <<EOF
-#!/bin/bash
-rbd create --size 100 test/\$1.root
-EOF
-chmod +x /usr/sbin/create-vm
+# Dummy versions of required helper scripts
+cat > /usr/local/sbin/create-vm <<_EOF_
+#!/bin/sh
+rbd create --size 100 "test/\${1}.root"
+_EOF_
+chmod +x /usr/local/sbin/create-vm
+
+cat > /usr/local/sbin/shrink-vm <<_EOF_
+#!/bin/sh
+exit 0
+_EOF_
+chmod +x /usr/local/sbin/shrink-vm
 
 rm -rf /etc/qemu/vm
 mkdir -p /etc/qemu/vm

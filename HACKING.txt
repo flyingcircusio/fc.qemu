@@ -3,17 +3,15 @@ fc.qemu development
 
 Prepare working copy in a personal box::
 
-    $ hg clone https://bitbucket.org/flyingcirucs/fc.qemu
-    $ cd fc.qemu
-    $ vagrant up
-    $ vagrant ssh
-    $ cd /vagrant
-    $ virtualenv-2.7 .
+    host$ hg clone https://bitbucket.org/flyingcirucs/fc.qemu
+    host$ cd fc.qemu
+    host$ vagrant up
+    host$ vagrant ssh
+    vm$ cd /vagrant
+    vm$ sudo ./bootstrap.sh
 
-Run the tests:
+Run the tests::
 
-    $ bin/pip install -r requirements.txt
-    $ sudo bin/py.test
-
+    vm$ sudo bin/py.test
 
 .. vim: set ft=rst:
