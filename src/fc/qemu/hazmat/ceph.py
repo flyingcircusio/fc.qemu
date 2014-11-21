@@ -1,3 +1,4 @@
+from __future__ import print_function
 import logging
 import rados
 import rbd
@@ -12,10 +13,11 @@ CEPH_CLUSTER = None
 CEPH_LOCK_HOST = None
 CEPH_CLIENT = 'admin'
 CREATE_VM = None
+SHRINK_VM = None
 
 
 def cmd(cmdline):
-    print cmdline
+    print(cmdline)
     subprocess.check_call(cmdline, shell=True)
 
 
@@ -36,16 +38,21 @@ class Volume(object):
     def image(self):
         return rbd.Image(self.ioctx, self.name)
 
+    @property
+    def size(self):
+        """Image size in Bytes."""
+        return self.image.size()
+
     def exists(self):
         return self.name in self.rbd.list(self.ioctx)
 
-    def ensure_presence(self):
+    def ensure_presence(self, size=1024):
         if self.name in self.rbd.list(self.ioctx):
             return
-        self.rbd.create(self.ioctx, self.name, 1024)
+        self.rbd.create(self.ioctx, self.name, size)
 
     def ensure_size(self, size):
-        if self.image.size() == size:
+        if self.size == size:
             return
         self.image.resize(size)
 
@@ -96,7 +103,12 @@ class Volume(object):
                                 .format(self.name, lock_id))
         self.image.break_lock(client_id, lock_id)
 
+    def discard(self):
+        """Fills the whole image with zeros and unclaims the space."""
+        self.image.discard(0, self.size)
+
     def mkswap(self):
+        self.discard()
         self.map()
         try:
             cmd('mkswap -f "/dev/rbd/{}"'.format(self.fullname))
@@ -104,6 +116,7 @@ class Volume(object):
             self.unmap()
 
     def mkfs(self):
+        self.discard()
         self.map()
         try:
             cmd('mkfs -q -m 1 -t ext4 "/dev/rbd/{}"'.format(self.fullname))
@@ -153,19 +166,31 @@ class Ceph(object):
         self.ensure_tmp_volume()
         self.ensure_swap_volume()
 
+    def shrink_root(self):
+        target_size = self.cfg['disk'] * 1024**3
+        if self.root.size <= target_size:
+            return
+        try:
+            cmd(SHRINK_VM.format(image=self.root.name, **self.cfg))
+        except subprocess.CalledProcessError:
+            raise RuntimeError(
+                'unrecoverable error while shrinking root volume',
+                self.cfg['name'])
+
     def ensure_root_volume(self):
         if not self.root.exists():
             cmd(CREATE_VM.format(**self.cfg))
+        self.shrink_root()
         self.root.lock()
 
     def ensure_swap_volume(self):
-        self.swap.ensure_presence()
+        self.swap.ensure_presence(self.cfg['swap_size'])
         self.swap.lock()
         self.swap.ensure_size(self.cfg['swap_size'])
         self.swap.mkswap()
 
     def ensure_tmp_volume(self):
-        self.tmp.ensure_presence()
+        self.tmp.ensure_presence(self.cfg['tmp_size'])
         self.tmp.lock()
         self.tmp.ensure_size(self.cfg['tmp_size'])
         self.tmp.mkfs()

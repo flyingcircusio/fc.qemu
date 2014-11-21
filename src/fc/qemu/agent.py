@@ -1,3 +1,4 @@
+from __future__ import print_function
 from .hazmat.ceph import Ceph
 from .hazmat.qemu import Qemu, QemuNotRunning
 from .timeout import TimeOut
@@ -59,7 +60,7 @@ class Agent(object):
     ceph_id = 'admin'
     vnc = 'localhost:1'
     timeout_graceful = 30
-    config_template_path = [
+    vm_config_template_path = [
         '/etc/qemu/qemu.vm.cfg.in',
         pkg_resources.resource_filename(__name__, 'qemu.vm.cfg.in')
     ]
@@ -86,9 +87,9 @@ class Agent(object):
         self.ceph = Ceph(self.cfg)
         self.contexts = [self.qemu, self.ceph]
         self.vnc = self.vnc.format(**self.cfg)
-        for cand in self.config_template_path:
+        for cand in self.vm_config_template_path:
             if os.path.exists(cand):
-                self.config_template = cand
+                self.vm_config_template = cand
                 break
 
     def save(self):
@@ -120,12 +121,12 @@ class Agent(object):
 
     def ensure_offline(self):
         if self.qemu.is_running():
-            print "VM should not be running here."
+            print('VM should not be running here.')
             self.stop()
 
     def ensure_online(self):
         if not self.qemu.is_running():
-            print "VM should be running here."
+            print('VM should be running here.')
             self.start()
 
     def ensure_online_disk_size(self):
@@ -134,14 +135,14 @@ class Agent(object):
         if self.ceph.root.image.size() >= target_size:
             return
 
-        print 'resizing disk for VM to {} GiB'.format(self.cfg['disk'])
+        print('resizing disk for VM to {} GiB'.format(self.cfg['disk']))
         self.qemu.resize_root(target_size)
 
     @locked
     @running(False)
     def start(self):
         self.generate_config()
-        print 'Using Qemu config template {}'.format(self.config_template)
+        print('Using Qemu config template {}'.format(self.vm_config_template))
         self.ceph.start()
         try:
             self.qemu.start()
@@ -153,18 +154,18 @@ class Agent(object):
         """
         if self.qemu.is_running():
             status = 0
-            print 'online'
+            print('online')
         else:
             status = 1
-            print 'offline'
+            print('offline')
         for lock in self.ceph.locks():
-            print 'lock: {}@{}'.format(*lock)
+            print('lock: {}@{}'.format(*lock))
         return status
 
     @locked
     def stop(self):
         timeout = TimeOut(self.timeout_graceful, interval=1)
-        print "Trying graceful shutdown ..."
+        print('Trying graceful shutdown ...')
         try:
             self.qemu.graceful_shutdown()
         except socket.error:
@@ -178,18 +179,18 @@ class Agent(object):
 
         self.ceph.stop()
         self.qemu.clean_run_files()
-        print "Graceful shutdown succeeded."
+        print('Graceful shutdown succeeded.')
 
     @locked
     def restart(self):
-        print "Restarting VM..."
+        print('Restarting VM...')
         self.stop()
         self.start()
 
     @locked
     @running(True)
     def kill(self):
-        print "Killing VM"
+        print('Killing VM')
         timeout = TimeOut(15, interval=1, raise_on_timeout=True)
         self.qemu.destroy()
         while timeout.tick():
@@ -198,7 +199,7 @@ class Agent(object):
 
         self.qemu.clean_run_files()
         self.ceph.stop()
-        print "Killing VM succeeded."
+        print('Killing VM succeeded.')
 
     @locked
     @running(False)
@@ -219,14 +220,14 @@ class Agent(object):
 
     @locked
     def lock(self):
-        print "Assuming all Ceph locks."
+        print('Assuming all Ceph locks.')
         for vol in self.ceph.volumes:
             vol.lock()
 
     @locked
     @running(False)
     def unlock(self):
-        print "Releasing all Ceph locks."
+        print('Releasing all Ceph locks.')
         self.ceph.stop()
 
     # Helper methods
@@ -284,7 +285,7 @@ class Agent(object):
 {vhost}
 """.format(ifname=ifname, mac=net_config['mac'], vhost=self.vhost))
 
-        with open(self.config_template) as f:
+        with open(self.vm_config_template) as f:
             tpl = f.read()
         self.qemu.config = tpl.format(
             accelerator=self.accelerator, ceph_id=self.ceph_id,

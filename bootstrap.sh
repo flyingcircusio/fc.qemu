@@ -33,13 +33,15 @@ ceph osd pool create test 128
 # Dummy versions of required helper scripts
 cat > /usr/local/sbin/create-vm <<_EOF_
 #!/bin/sh
-rbd create --size 100 "test/\${1}.root"
+test "\$1" = -I || exit 1
+rbd create --size 5120 "test/\${2}.root"
 _EOF_
 chmod +x /usr/local/sbin/create-vm
+rm -f /usr/sbin/create-vm  # old script location
 
 cat > /usr/local/sbin/shrink-vm <<_EOF_
 #!/bin/sh
-exit 0
+echo "fake shrink-vm pool=\$1 image=\$2 disk=\$3"
 _EOF_
 chmod +x /usr/local/sbin/shrink-vm
 
