@@ -44,7 +44,7 @@ def test_simple_vm_lifecycle_start_stop(vm, capsys):
 
     out, err = capsys.readouterr()
     assert ("""\
-create-vm test00
+create-vm -I test00
 rbd --id "admin" map test/test00.tmp
 mkfs -q -m 1 -t ext4 "/dev/rbd/test/test00.tmp"
 tune2fs -e remount-ro "/dev/rbd/test/test00.tmp"
@@ -149,7 +149,7 @@ lock: test00.tmp@localhost
 """
 
     vm.qemu.proc().kill()
-    vm.qemu.proc().wait(10)
+    vm.qemu.proc().wait(3)
     assert status() == """\
 offline
 lock: test00.root@localhost

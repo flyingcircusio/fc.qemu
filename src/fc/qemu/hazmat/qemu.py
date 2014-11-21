@@ -55,7 +55,7 @@ class Qemu(object):
             raise RuntimeError('Refusing to start without /dev/kvm support.')
         self.prepare_config()
         with open('/proc/sys/vm/compact_memory', 'w') as f:
-            f.write('1')
+            f.write('1\n')
         try:
             cmd = '{} {}'.format(self.executable, ' '.join(self.local_args))
             # We explicitly close all fds for the child to avoid

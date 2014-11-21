@@ -36,6 +36,7 @@ def load_system_config():
     # doesn't want to see client.<name>.
     ceph.CEPH_CLIENT = Agent.ceph_id
     ceph.CREATE_VM = sysconfig.get('ceph', 'create-vm')
+    ceph.SHRINK_VM = sysconfig.get('ceph', 'shrink-vm')
 
 
 def init_logging(verbose=True):

@@ -1,13 +1,12 @@
 from ..ceph import Ceph, Volume
-from rbd import ImageNotFound, ImageBusy
+import rbd
 import os.path
 import pytest
-import subprocess
 
 
 @pytest.yield_fixture
-def ceph():
-    cfg = {'resource_group': 'test', 'name': 'test00'}
+def ceph_inst():
+    cfg = {'resource_group': 'test', 'name': 'test00', 'disk': 10}
     ceph = Ceph(cfg)
     ceph.__enter__()
     yield ceph
@@ -15,20 +14,23 @@ def ceph():
 
 
 @pytest.yield_fixture
-def volume(ceph):
-    subprocess.call('rbd rm test/othervolume', shell=True)
-    volume = Volume(ceph.ioctx, 'othervolume')
+def volume(ceph_inst):
+    try:
+        rbd.RBD().remove(ceph_inst.ioctx, 'othervolume')
+    except rbd.ImageNotFound:
+        pass
+    volume = Volume(ceph_inst.ioctx, 'othervolume')
     yield volume
     lock = volume.lock_status()
     if lock is not None:
         volume.image.break_lock(*lock)
-    subprocess.call('rbd rm test/othervolume', shell=True)
+    rbd.RBD().remove(ceph_inst.ioctx, 'othervolume')
 
 
 def test_volume_presence(volume):
     assert volume.fullname == 'test/othervolume'
     assert not volume.exists()
-    with pytest.raises(ImageNotFound):
+    with pytest.raises(rbd.ImageNotFound):
         volume.image
     volume.ensure_presence()
     assert volume.image
@@ -39,12 +41,12 @@ def test_volume_presence(volume):
 def test_volume_size(volume):
     volume.ensure_presence()
     assert volume.image
-    assert volume.image.size() == 1024
+    assert volume.size == 1024
     volume.ensure_size(2048)
-    assert volume.image.size() == 2048
+    assert volume.size == 2048
     # Call ensure multiple times to help triggering caching code paths.
     volume.ensure_size(2048)
-    assert volume.image.size() == 2048
+    assert volume.size == 2048
 
 
 def test_volume_shared_lock_protection(volume):
@@ -78,9 +80,9 @@ def test_volume_locking(volume):
     volume.unlock()
 
     volume.image.lock_exclusive('someotherhost')
-    with pytest.raises(ImageBusy):
+    with pytest.raises(rbd.ImageBusy):
         volume.lock()
-    with pytest.raises(ImageBusy):
+    with pytest.raises(rbd.ImageBusy):
         # Can not unlock locks that someone else holds.
         volume.unlock()
 
@@ -107,3 +109,24 @@ def test_volume_map_unmap(volume):
     assert not os.path.exists('/dev/rbd/test/othervolume')
     volume.unmap()
     assert not os.path.exists('/dev/rbd/test/othervolume')
+
+
+def test_call_shrink_vm(ceph_inst, capfd):
+    ceph_inst.root.ensure_presence(ceph_inst.cfg['disk'] * 1024**3 + 4096)
+    try:
+        ceph_inst.ensure_root_volume()
+        stdout, stderr = capfd.readouterr()
+        assert 'shrink-vm pool=test image=test00.root disk=10' in stdout
+    finally:
+        rbd.RBD().remove(ceph_inst.ioctx, ceph_inst.root.name)
+
+
+def test_shrink_vm_raises_if_nonzero_exit(ceph_inst):
+    ceph_inst.root.ensure_presence(ceph_inst.cfg['disk'] * 1024**3 + 4096)
+    from ...hazmat import ceph
+    ceph.SHRINK_VM = '/bin/false'
+    try:
+        with pytest.raises(RuntimeError):
+            ceph_inst.shrink_root()
+    finally:
+        rbd.RBD().remove(ceph_inst.ioctx, ceph_inst.root.name)
