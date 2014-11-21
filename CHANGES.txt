@@ -2,8 +2,8 @@ Release notes
 =============
 
 
-0.5 (unreleased)
-------------------
+0.5 (2014-11-21)
+----------------
 
 - Root filesystem shrink during VM start (#13414).
 - Add 'force-unlock' action to break stale locks (e.g., after a VM host went
