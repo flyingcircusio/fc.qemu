@@ -93,12 +93,12 @@ class Volume(object):
         client_id, lock_id, addr = lockers[0]
         return client_id, lock_id
 
-    def unlock(self):
+    def unlock(self, force=False):
         locked_by = self.lock_status()
         if not locked_by:
             return
         client_id, lock_id = locked_by
-        if lock_id != CEPH_LOCK_HOST:
+        if not force and lock_id != CEPH_LOCK_HOST:
             raise rbd.ImageBusy("Can not break lock for {} held by host {}."
                                 .format(self.name, lock_id))
         self.image.break_lock(client_id, lock_id)
@@ -205,3 +205,7 @@ class Ceph(object):
     def stop(self):
         for vol in self.volumes:
             vol.unlock()
+
+    def force_unlock(self):
+        for vol in self.volumes:
+            vol.unlock(force=True)

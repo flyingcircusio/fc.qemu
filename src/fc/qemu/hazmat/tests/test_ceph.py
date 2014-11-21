@@ -87,6 +87,13 @@ def test_volume_locking(volume):
         volume.unlock()
 
 
+def test_force_unlock(volume):
+    volume.ensure_presence()
+    volume.image.lock_exclusive('someotherhost')
+    volume.unlock(force=True)
+    assert volume.lock_status() is None
+
+
 def test_volume_mkswap(volume):
     volume.ensure_presence()
     volume.ensure_size(5*1024**2)

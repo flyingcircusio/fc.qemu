@@ -88,6 +88,11 @@ def main():
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.set_defaults(func='unlock')
 
+    p = sub.add_parser('force-unlock', help="Release all locks of a VM even "
+                       "if we don't own them.")
+    p.add_argument('vm', metavar='VM', help='name of the VM')
+    p.set_defaults(func='force_unlock')
+
     args = a.parse_args()
     func = args.func
     vm = args.vm
