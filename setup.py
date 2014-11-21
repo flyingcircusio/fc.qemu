@@ -7,7 +7,7 @@ with open('CHANGES.txt') as f:
 
 setup(
     name='fc.qemu',
-    version='0.5',
+    version='0.5.1.dev0',
     author='Christian Kauhaus, Christian Theune',
     author_email='mail@gocept.com',
     url='http://bitbucket.org/flyingcircus/fc.qemu',
