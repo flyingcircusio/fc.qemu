@@ -18,7 +18,7 @@ def running(expected=True):
     def wrap(f):
         def checked(self, *args, **kw):
             if self.qemu.is_running() != expected:
-                raise RuntimeError('action not allowed')
+                raise RuntimeError('action not allowed - VM is still running')
             return f(self, *args, **kw)
         return checked
     return wrap
@@ -229,6 +229,12 @@ class Agent(object):
     def unlock(self):
         print('Releasing all Ceph locks.')
         self.ceph.stop()
+
+    @running(False)
+    def force_unlock(self):
+        print('Breaking all Ceph locks for {}.'.format(self.name))
+        self.ceph.force_unlock()
+
 
     # Helper methods
 
