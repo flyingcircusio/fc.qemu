@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.5.1 (unreleased)
+0.5.1 (2014-11-22)
 ------------------
 
 - Bugfix: remove Ceph discard call since it seems to be unstable (#13414).
