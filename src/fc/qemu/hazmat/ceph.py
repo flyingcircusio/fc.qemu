@@ -103,12 +103,7 @@ class Volume(object):
                                 .format(self.name, lock_id))
         self.image.break_lock(client_id, lock_id)
 
-    def discard(self):
-        """Fills the whole image with zeros and unclaims the space."""
-        self.image.discard(0, self.size)
-
     def mkswap(self):
-        self.discard()
         self.map()
         try:
             cmd('mkswap -f "/dev/rbd/{}"'.format(self.fullname))
@@ -116,7 +111,6 @@ class Volume(object):
             self.unmap()
 
     def mkfs(self):
-        self.discard()
         self.map()
         try:
             cmd('mkfs -q -m 1 -t ext4 "/dev/rbd/{}"'.format(self.fullname))

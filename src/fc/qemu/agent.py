@@ -121,12 +121,12 @@ class Agent(object):
 
     def ensure_offline(self):
         if self.qemu.is_running():
-            print('VM should not be running here.')
+            log.info('VM %s should not be running here', self.name)
             self.stop()
 
     def ensure_online(self):
         if not self.qemu.is_running():
-            print('VM should be running here.')
+            log.info('VM %s should be running here', self.name)
             self.start()
 
     def ensure_online_disk_size(self):
@@ -134,17 +134,18 @@ class Agent(object):
         target_size = self.cfg['disk'] * (1024**3)
         if self.ceph.root.image.size() >= target_size:
             return
-
-        print('resizing disk for VM to {} GiB'.format(self.cfg['disk']))
+        log.info('Online disk resize for VM %s to %s GiB', self.name,
+                 self.cfg['disk'])
         self.qemu.resize_root(target_size)
 
     @locked
     @running(False)
     def start(self):
         self.generate_config()
-        print('Using Qemu config template {}'.format(self.vm_config_template))
+        log.info('Using Qemu config template %s', self.vm_config_template)
         self.ceph.start()
         try:
+            log.info('Starting VM %s', self.name)
             self.qemu.start()
         except QemuNotRunning:
             self.ceph.stop
@@ -165,7 +166,7 @@ class Agent(object):
     @locked
     def stop(self):
         timeout = TimeOut(self.timeout_graceful, interval=1)
-        print('Trying graceful shutdown ...')
+        log.info('Trying graceful shutdown of VM %s...', self.name)
         try:
             self.qemu.graceful_shutdown()
         except socket.error:
@@ -179,18 +180,18 @@ class Agent(object):
 
         self.ceph.stop()
         self.qemu.clean_run_files()
-        print('Graceful shutdown succeeded.')
+        log.info('Graceful shutdown of %s succeeded', self.name)
 
     @locked
     def restart(self):
-        print('Restarting VM...')
+        log.info('Restarting VM %s', self.name)
         self.stop()
         self.start()
 
     @locked
     @running(True)
     def kill(self):
-        print('Killing VM')
+        log.info('Killing VM %s', self.name)
         timeout = TimeOut(15, interval=1, raise_on_timeout=True)
         self.qemu.destroy()
         while timeout.tick():
@@ -199,7 +200,7 @@ class Agent(object):
 
         self.qemu.clean_run_files()
         self.ceph.stop()
-        print('Killing VM succeeded.')
+        log.info('Killing VM %s succeeded', self.name)
 
     @locked
     @running(False)
@@ -220,19 +221,19 @@ class Agent(object):
 
     @locked
     def lock(self):
-        print('Assuming all Ceph locks.')
+        log.info('Assuming all Ceph locks for VM %s', self.name)
         for vol in self.ceph.volumes:
             vol.lock()
 
     @locked
     @running(False)
     def unlock(self):
-        print('Releasing all Ceph locks.')
+        log.info('Releasing all Ceph locks for VM %s', self.name)
         self.ceph.stop()
 
     @running(False)
     def force_unlock(self):
-        print('Breaking all Ceph locks for {}.'.format(self.name))
+        log.info('Breaking all Ceph locks for VM %s', self.name)
         self.ceph.force_unlock()
 
 

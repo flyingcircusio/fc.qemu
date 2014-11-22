@@ -53,8 +53,6 @@ def init_logging(verbose=True):
     console.setLevel(level)
     logging.getLogger('').addHandler(console)
 
-    logger.info('$ ' + ' '.join(sys.argv))
-
 
 def main():
     a = argparse.ArgumentParser(description="Qemu VM agent")

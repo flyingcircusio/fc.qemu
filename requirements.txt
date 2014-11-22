@@ -1,5 +1,6 @@
 -e .
+setuptools
 pytest
 pytest-cov
 pytest-sugar
-setuptools
+pytest-capturelog

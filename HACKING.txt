@@ -7,11 +7,10 @@ Prepare working copy in a personal box::
     host$ cd fc.qemu
     host$ vagrant up
     host$ vagrant ssh
-    vm$ cd /vagrant
-    vm$ sudo ./bootstrap.sh
 
 Run the tests::
 
+    vm$ cd /vagrant
     vm$ sudo bin/py.test
 
 .. vim: set ft=rst:

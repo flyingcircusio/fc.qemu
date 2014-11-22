@@ -5,7 +5,8 @@ Release notes
 0.5.1 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Bugfix: remove Ceph discard call since it seems to be unstable (#13414).
+- Improve operability by reworking what is logged to fc-qemu.log.
 
 
 0.5 (2014-11-21)

@@ -1,14 +1,15 @@
 from ..agent import Agent
+import logging
 import os
 import pkg_resources
 import pytest
 import shutil
 import subprocess
+import sys
 
 
 @pytest.yield_fixture
 def clean_environment():
-
     def clean():
         subprocess.call('pkill -f qemu', shell=True)
         subprocess.call('rbd rm test/test00.swap', shell=True)
@@ -68,7 +69,7 @@ lock: test00.tmp@localhost
     assert status() == 'offline\n'
 
 
-def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys):
+def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys, caplog):
     def status():
         capsys.readouterr()
         vm.status()
@@ -80,7 +81,7 @@ def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys):
     vm.ensure()
 
     out, err = capsys.readouterr()
-    assert 'VM should be running here' in out
+    assert 'VM test00 should be running here' in caplog.text()
     assert status() == """\
 online
 lock: test00.root@localhost
@@ -97,7 +98,7 @@ lock: test00.tmp@localhost
     assert status() == 'offline\n'
 
 
-def test_simple_vm_lifecycle_ensure_moving_away(vm, capsys):
+def test_simple_vm_lifecycle_ensure_moving_away(vm, capsys, caplog):
     def status():
         capsys.readouterr()
         vm.status()
@@ -109,7 +110,7 @@ def test_simple_vm_lifecycle_ensure_moving_away(vm, capsys):
     vm.ensure()
 
     out, err = capsys.readouterr()
-    assert 'VM should be running here' in out
+    assert 'VM test00 should be running here' in caplog.text()
     assert status() == """\
 online
 lock: test00.root@localhost
@@ -126,7 +127,7 @@ lock: test00.tmp@localhost
     assert status() == 'offline\n'
 
 
-def test_crashed_vm_clean_restart(vm, capsys):
+def test_crashed_vm_clean_restart(vm, capsys, caplog):
     def status():
         capsys.readouterr()
         vm.status()
@@ -140,7 +141,7 @@ offline
     vm.ensure()
 
     out, err = capsys.readouterr()
-    assert 'VM should be running here' in out
+    assert 'VM test00 should be running here' in caplog.text()
     assert status() == """\
 online
 lock: test00.root@localhost
