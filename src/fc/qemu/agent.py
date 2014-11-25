@@ -2,6 +2,8 @@ from __future__ import print_function
 from .hazmat.ceph import Ceph
 from .hazmat.qemu import Qemu, QemuNotRunning
 from .timeout import TimeOut
+from .incoming import IncomingServer
+from .outgoing import Outgoing
 from logging import getLogger
 import pkg_resources
 import fcntl
@@ -58,7 +60,6 @@ class Agent(object):
     accelerator = ''
     vhost = ''
     ceph_id = 'admin'
-    vnc = 'localhost:1'
     timeout_graceful = 30
     vm_config_template_path = [
         '/etc/qemu/qemu.vm.cfg.in',
@@ -86,7 +87,8 @@ class Agent(object):
         self.qemu = Qemu(self.cfg)
         self.ceph = Ceph(self.cfg)
         self.contexts = [self.qemu, self.ceph]
-        self.vnc = self.vnc.format(**self.cfg)
+        for attr in ['migration_ctl_address']:
+            setattr(self, attr, getattr(self, attr).format(**self.cfg))
         for cand in self.vm_config_template_path:
             if os.path.exists(cand):
                 self.vm_config_template = cand
@@ -212,12 +214,18 @@ class Agent(object):
     @locked
     @running(False)
     def inmigrate(self):
-        pass
+        if self.ceph.is_unlocked():
+            # The VM isn't running at all. Just start it directly.
+            self.start()
+            return
+        server = IncomingServer(self)
+        server.run()
 
     @locked
     @running(True)
-    def outmigrate(self):
-        pass
+    def outmigrate(self, target):
+        client = Outgoing(self, target)
+        return client()
 
     @locked
     def lock(self):
@@ -236,7 +244,6 @@ class Agent(object):
         log.info('Breaking all Ceph locks for VM %s', self.name)
         self.ceph.force_unlock()
 
-
     # Helper methods
 
     # CAREFUL: changing anything in this config files will cause maintenance w/
@@ -254,25 +261,22 @@ class Agent(object):
         """
         if not os.path.exists('/var/log/vm'):
             os.makedirs('/var/log/vm')
-        chroot = '/srv/vm/{name}'.format(name=self.cfg['name'])
-        if not os.path.exists(chroot):
-            os.makedirs(chroot)
 
         self.qemu.args = [
             '-daemonize',
             '-nodefaults',
             '-name {name},process=kvm.{name}',
-            '-chroot {chroot}',
+            '-chroot {{chroot}}',
             '-runas nobody',
             '-serial file:/var/log/vm/{name}.log',
-            '-display vnc={vnc}',
+            '-display vnc={{vnc}}',
             '-pidfile {{pidfile}}',
             '-vga cirrus',
             '-m {memory}',
             '-watchdog i6300esb',
             '-watchdog-action reset',
             '-readconfig {{configfile}}']
-        self.qemu.args = [a.format(vnc=self.vnc, chroot=chroot, **self.cfg)
+        self.qemu.args = [a.format(**self.cfg)
                           for a in self.qemu.args]
 
         netconfig = []

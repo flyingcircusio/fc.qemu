@@ -1,4 +1,5 @@
 from __future__ import print_function
+import hashlib
 import logging
 import rados
 import rbd
@@ -160,7 +161,12 @@ class Ceph(object):
         self.ensure_tmp_volume()
         self.ensure_swap_volume()
 
+    def stop(self):
+        self.unlock()
+
     def shrink_root(self):
+        # Note: we trust the called script to lock and unlock
+        # the root image.
         target_size = self.cfg['disk'] * 1024**3
         if self.root.size <= target_size:
             return
@@ -196,10 +202,36 @@ class Ceph(object):
                 continue
             yield vol.name, status[1]
 
-    def stop(self):
+    def is_unlocked(self):
+        for vol in self.volumes:
+            if vol.lock_status():
+                return False
+        return True
+
+    def lock(self):
+        for vol in self.volumes:
+            vol.lock()
+
+    def unlock(self):
         for vol in self.volumes:
             vol.unlock()
 
     def force_unlock(self):
         for vol in self.volumes:
             vol.unlock(force=True)
+
+    def auth_cookie(self):
+        """This is a cookie that can be used to validate that a party
+        has access to Ceph.
+
+        Used to authenticate migration requests.
+
+        """
+        c = hashlib.sha1()
+        for vol in self.volumes:
+            status = [vol.name]
+            lock = vol.lock_status()
+            if lock:
+                status.extend(lock)
+            c.update('\0'.join(status) + '\0')
+        return c.hexdigest()

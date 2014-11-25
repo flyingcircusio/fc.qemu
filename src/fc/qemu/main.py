@@ -15,17 +15,20 @@ def load_system_config():
     sysconfig.read('/etc/qemu/fc-qemu.conf')
 
     # QEMU
+    from .hazmat.qemu import Qemu
     accelerator = sysconfig.get('qemu', 'accelerator')
     if accelerator:
         Agent.accelerator = '   accel = "{}"'.format(accelerator)
     else:
-        from .hazmat.qemu import Qemu
         Qemu.require_kvm = False
     if sysconfig.getboolean('qemu', 'vhost'):
         Agent.vhost = '  vhost = "on"'
-    Agent.vnc = sysconfig.get('qemu', 'vnc')
     Agent.timeout_graceful = sysconfig.getint('qemu', 'timeout-graceful')
     Agent.this_host = sysconfig.get('ceph', 'lock_host')
+    Agent.migration_ctl_address = sysconfig.get(
+        'qemu', 'migration-ctl-address')
+    Qemu.migration_address = sysconfig.get('qemu', 'migration-address')
+    Qemu.vnc = sysconfig.get('qemu', 'vnc')
 
     # CEPH
     from .hazmat import ceph
@@ -90,6 +93,16 @@ def main():
                        "if we don't own them.")
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.set_defaults(func='force_unlock')
+
+    p = sub.add_parser('inmigrate', help='Start incoming migration for a VM.')
+    p.add_argument('vm', metavar='VM', help='name of the VM')
+    p.set_defaults(func='inmigrate')
+
+    p = sub.add_parser('outmigrate', help='Start outgoing migration for a VM.')
+    p.add_argument('vm', metavar='VM', help='name of the VM')
+    p.add_argument(
+        'target', help='hostname:port of the target expecting inmigration')
+    p.set_defaults(func='outmigrate')
 
     args = a.parse_args()
     func = args.func
