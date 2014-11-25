@@ -2,6 +2,7 @@ from ..exc import MigrationError
 from fc.qemu.timeout import TimeOut
 import logging
 import re
+import socket
 import telnetlib
 
 
@@ -36,7 +37,7 @@ class Monitor(object):
         """
         if not self.conn:
             self._connect()
-        _log.debug('mon <<< %s', command)
+        print ('mon <<< %s', command)
         self.conn.write(command + '\n')
         res = self.conn.read_until('(qemu)', self.timeout)
         if res == '':  # Connection went away
@@ -69,11 +70,18 @@ class Monitor(object):
     def sendkey(self, keys):
         self._cmd('sendkey {}'.format(keys))
 
-    def migrate(self, host, port):
+    def migrate(self, address):
         """Initiate migration (asynchronously)."""
         self._cmd('migrate_set_capability xbzrle on')
         self._cmd('migrate_set_capability auto-converge on')
-        res = self._cmd('migrate -d tcp:{}:{}'.format(host, port)).strip()
+        # I looked around the qemu code and their version of getaddrinfo()
+        # is really picky about DNS for some reason. Passing in a resolved
+        # address directly circumvents this. I asked Benoit about this.
+        address = address.split(':')
+        if address[0] == 'tcp':
+            address[1] = socket.gethostbyname(address[1])
+        address = ':'.join(address)
+        res = self._cmd('migrate -d {}'.format(address)).strip()
         if res:
             raise MigrationError('error while initiating migration', res)
 

@@ -22,10 +22,15 @@ class Qemu(object):
     # This cfg is the cfg from the agent.
     cfg = None
     require_kvm = True
+    migration_address = None
 
     # The non-hosts-specific config configuration of this Qemu instance.
     args = ()
     config = ''
+
+    # Host-specific qemu configuration
+    chroot = '/srv/vm/{name}'
+    vnc = 'localhost:1'
 
     MONITOR_OFFSET = 20000
 
@@ -35,7 +40,7 @@ class Qemu(object):
 
     def __init__(self, cfg):
         self.cfg = cfg
-        for f in ['pidfile', 'configfile', 'argfile']:
+        for f in ['pidfile', 'configfile', 'argfile', 'migration_address']:
             setattr(self, f, getattr(self, f).format(**cfg))
 
     def __enter__(self):
@@ -50,23 +55,38 @@ class Qemu(object):
         assert proc.is_running()
         return proc
 
-    def start(self):
+    def _start(self, additional_args=()):
         if self.require_kvm and not os.path.exists('/dev/kvm'):
             raise RuntimeError('Refusing to start without /dev/kvm support.')
         self.prepare_config()
         with open('/proc/sys/vm/compact_memory', 'w') as f:
             f.write('1\n')
         try:
-            cmd = '{} {}'.format(self.executable, ' '.join(self.local_args))
+            cmd = '{} {} {}'.format(
+                self.executable,
+                ' '.join(self.local_args),
+                ' '.join(additional_args))
             # We explicitly close all fds for the child to avoid
             # inheriting locks infinitely.
+            print cmd
             subprocess.check_call(cmd, shell=True, close_fds=True)
         except subprocess.CalledProcessError:
             # Did not start. Not running.
             log.error('Failed to start qemu.')
             raise QemuNotRunning()
         self.monitor.reset()
+
+    def start(self):
+        self._start()
         assert self.is_running()
+
+    def inmigrate(self):
+        self._start(['-incoming {}'.format(self.migration_address)])
+        self.monitor.assert_status('VM status: paused (inmigrate)')
+        return self.migration_address
+
+    def migrate(self, address):
+        self.monitor.migrate(address)
 
     def is_running(self):
         try:
@@ -138,10 +158,17 @@ class Qemu(object):
             os.unlink(runfile)
 
     def prepare_config(self):
+        chroot = self.chroot.format(**self.cfg)
+        if not os.path.exists(chroot):
+            os.makedirs(chroot)
+
         format = lambda s: s.format(
             pidfile=self.pidfile,
             configfile=self.configfile,
-            monitor_port=self.monitor.port)
+            monitor_port=self.monitor.port,
+            vnc=self.vnc.format(**self.cfg),
+            chroot=chroot,
+            **self.cfg)
         self.local_args = [format(a) for a in self.args]
         self.local_config = format(self.config)
 
@@ -152,3 +179,10 @@ class Qemu(object):
 
         with open(self.argfile+'.in', 'w') as f:
             yaml.dump(self.args, f)
+
+    def get_running_config(self):
+        """Return the host-independent version of the current running
+        config."""
+        args = yaml.load(open(self.argfile+'.in', 'r').read())
+        config = open(self.configfile+'.in', 'r').read()
+        return args, config
