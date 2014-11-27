@@ -37,7 +37,6 @@ class Monitor(object):
         """
         if not self.conn:
             self._connect()
-        print ('mon <<< %s', command)
         self.conn.write(command + '\n')
         res = self.conn.read_until('(qemu)', self.timeout)
         if res == '':  # Connection went away

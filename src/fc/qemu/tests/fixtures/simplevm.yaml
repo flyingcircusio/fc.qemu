@@ -6,7 +6,7 @@ parameters:
   interfaces:
     fe: {mac: aa-bb-cc-00-ee-ff}
     srv: {mac: aa-bb-cc-dd-ee-ff}
-  kvm_host: localhost
+  kvm_host: host1
   memory: 256
   name: test00
   online: true

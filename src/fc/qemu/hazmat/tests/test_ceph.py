@@ -51,7 +51,7 @@ def test_volume_size(volume):
 
 def test_volume_shared_lock_protection(volume):
     volume.ensure_presence()
-    volume.image.lock_shared('localhost', 'a')
+    volume.image.lock_shared('host1', 'a')
     volume.image.lock_shared('remotehost', 'a')
     with pytest.raises(NotImplementedError):
         volume.lock_status()
@@ -68,12 +68,12 @@ def test_volume_locking(volume):
     volume.ensure_presence()
     assert volume.lock_status() is None
     volume.lock()
-    assert volume.lock_status()[1] == 'localhost'
+    assert volume.lock_status()[1] == 'host1'
     # We want to smoothen out that some other process has locked the same image
     # for the same tag already and assume that this is another incarnation of
     # us - for that we have our own lock.
     volume.lock()
-    assert volume.lock_status()[1] == 'localhost'
+    assert volume.lock_status()[1] == 'host1'
     volume.unlock()
     assert volume.lock_status() is None
     # We can call unlock twice if it isn't locked.

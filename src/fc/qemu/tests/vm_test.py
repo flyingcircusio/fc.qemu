@@ -57,9 +57,9 @@ rbd --id "admin" unmap /dev/rbd/test/test00.swap
 
     assert status() == """\
 online
-lock: test00.root@localhost
-lock: test00.swap@localhost
-lock: test00.tmp@localhost
+lock: test00.root@host1
+lock: test00.swap@host1
+lock: test00.tmp@host1
 """
 
     vm.stop()
@@ -84,9 +84,9 @@ def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys, caplog):
     assert 'VM test00 should be running here' in caplog.text()
     assert status() == """\
 online
-lock: test00.root@localhost
-lock: test00.swap@localhost
-lock: test00.tmp@localhost
+lock: test00.root@host1
+lock: test00.swap@host1
+lock: test00.tmp@host1
 """
 
     vm.cfg['online'] = False
@@ -113,9 +113,9 @@ def test_simple_vm_lifecycle_ensure_moving_away(vm, capsys, caplog):
     assert 'VM test00 should be running here' in caplog.text()
     assert status() == """\
 online
-lock: test00.root@localhost
-lock: test00.swap@localhost
-lock: test00.tmp@localhost
+lock: test00.root@host1
+lock: test00.swap@host1
+lock: test00.tmp@host1
 """
 
     vm.cfg['kvm_host'] = 'somewhereelse'
@@ -144,26 +144,26 @@ offline
     assert 'VM test00 should be running here' in caplog.text()
     assert status() == """\
 online
-lock: test00.root@localhost
-lock: test00.swap@localhost
-lock: test00.tmp@localhost
+lock: test00.root@host1
+lock: test00.swap@host1
+lock: test00.tmp@host1
 """
 
     vm.qemu.proc().kill()
     vm.qemu.proc().wait(3)
     assert status() == """\
 offline
-lock: test00.root@localhost
-lock: test00.swap@localhost
-lock: test00.tmp@localhost
+lock: test00.root@host1
+lock: test00.swap@host1
+lock: test00.tmp@host1
 """
 
     vm.ensure()
     assert status() == """\
 online
-lock: test00.root@localhost
-lock: test00.swap@localhost
-lock: test00.tmp@localhost
+lock: test00.root@host1
+lock: test00.swap@host1
+lock: test00.tmp@host1
 """
 
     vm.stop()
