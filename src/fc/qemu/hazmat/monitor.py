@@ -74,9 +74,8 @@ class Monitor(object):
         """Initiate migration (asynchronously)."""
         self._cmd('migrate_set_capability xbzrle on')
         self._cmd('migrate_set_capability auto-converge on')
-        # I looked around the qemu code and their version of getaddrinfo()
-        # is really picky about DNS for some reason. Passing in a resolved
-        # address directly circumvents this. I asked Benoit about this.
+        # We are running qemu with chroot at the moment which causes us to
+        # not be able to resolve names. :( See #13837.
         address = address.split(':')
         if address[0] == 'tcp':
             address[1] = socket.gethostbyname(address[1])
