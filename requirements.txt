@@ -2,5 +2,4 @@
 setuptools
 pytest
 pytest-cov
-pytest-sugar
 pytest-capturelog
