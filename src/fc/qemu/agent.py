@@ -259,9 +259,6 @@ class Agent(object):
         to the host running or receiving the VM.
 
         """
-        if not os.path.exists('/var/log/vm'):
-            os.makedirs('/var/log/vm')
-
         self.qemu.args = [
             '-daemonize',
             '-nodefaults',

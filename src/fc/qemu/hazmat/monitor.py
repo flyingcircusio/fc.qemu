@@ -37,16 +37,19 @@ class Monitor(object):
         """
         if not self.conn:
             self._connect()
+        _log.info('[mon] (qemu) {}'.format(command))
         self.conn.write(command + '\n')
         res = self.conn.read_until('(qemu)', self.timeout)
         if res == '':  # Connection went away
-            _log.debug('mon >>> EOF')
+            _log.info('[mon] \\EOF')
             self.conn = None
             return ''
-        _log.debug('mon >>> %s', res)
         r_strip_echo = re.compile(r'^.*' + re.escape(command) + '\S*\r\n')
         output = r_strip_echo.sub('', res).replace('\r\n', '\n')
-        return output.replace('(qemu)', '')
+        output = output.replace('(qemu)', '')
+        show_res = output.replace('\n', '\n[mon] ')
+        _log.info('[mon] {}'.format(show_res))
+        return output
 
     def status(self):
         """VM status summary.

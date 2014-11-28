@@ -32,26 +32,29 @@ class IncomingServer(object):
     def __init__(self, agent):
         self.agent = agent
         self.bind_address = parse_address(self.agent.migration_ctl_address)
-        self.timeout = TimeOut(900, raise_on_timeout=True)
+        self.timeout = TimeOut(900)
 
     def run(self):
-        _log.info('Incoming server started for {}. '
-                  'Current cutoff at {}'.format(
-                      self.agent.name, self.timeout.cutoff))
+        _log.info('[server] waiting for incoming {}.'.format(self.agent.name))
         s = SimpleXMLRPCServer.SimpleXMLRPCServer(
             self.bind_address, logRequests=False, allow_none=True)
-        _log.info('listening on {}'.format(self.bind_address))
+        _log.info('[server] listening on http://{}:{}/'.format(
+            *self.bind_address))
         s.timeout = 1
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()
         while self.timeout.tick():
-            _log.info('Waiting for request ({} until cut-off)'.format(
-                self.timeout.remaining))
+            _log.debug('[server] idle ({:d}s remaining)'.format(
+                int(self.timeout.remaining)))
             s.handle_request()
             if not self.keep_listening:
                 break
+        else:
+            _log.info('[server] timed out.')
+            return 1
 
-        _log.info('VM migration completed, exiting')
+        _log.info('[server] migration completed')
+        return 0
 
     def extend_cutoff_time(self, timeout=30):
         self.timeout.cutoff = time.time() + timeout
@@ -86,12 +89,12 @@ class IncomingAPI(object):
     @authenticated
     def ping(self):
         """Check connectivity and extend timeout."""
-        _log.info('got pinged')
+        _log.info('[server] ping()')
         self.server.extend_cutoff_time()
 
     @authenticated
     def acquire_locks(self):
-        _log.info('acquiring locks')
+        _log.info('[server] acquire_locks()')
         return self.server.acquire_locks()
 
     @authenticated
@@ -101,27 +104,27 @@ class IncomingAPI(object):
         `addr` is a host name of IP address which specifies where KVM
         should open its port.
         """
-        _log.debug('prepare incoming vm')
+        _log.info('[server] prepare_incoming()')
         return self.server.prepare_incoming(args, config)
 
     @authenticated
     def finish_incoming(self):
-        _log.debug('finish incoming')
+        _log.info('[server] finish_incoming()')
         self.server.finish_incoming()
 
     @authenticated
     def rescue(self):
         """Incoming rescue."""
-        _log.debug('received rescue request')
+        _log.info('[server] rescue()')
         return self.server.rescue()
 
     @authenticated
     def destroy(self):
         """Incoming destroy."""
-        _log.debug('received destroy request')
+        _log.info('[server] destroy()')
         return self.server.destroy()
 
     @authenticated
     def cancel(self):
-        _log.info('received cancel request')
+        _log.info('[server] cancel()')
         self.server.cancel()

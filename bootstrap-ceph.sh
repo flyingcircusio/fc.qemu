@@ -11,6 +11,7 @@ osd pool default size = 1
 EOF
 ceph-deploy mon create-initial host1 host2
 ceph-deploy osd create host1:/var/local/osd0 host2:/var/local/osd1
+ceph-deploy osd activate host1:/var/local/osd0 host2:/var/local/osd1
 ceph-deploy admin host1 host2
 
 # Create demo VM pool

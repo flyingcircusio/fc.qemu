@@ -68,7 +68,7 @@ class Qemu(object):
                 ' '.join(additional_args))
             # We explicitly close all fds for the child to avoid
             # inheriting locks infinitely.
-            print cmd
+            log.info('[qemu] {}'.format(cmd))
             subprocess.check_call(cmd, shell=True, close_fds=True)
         except subprocess.CalledProcessError:
             # Did not start. Not running.
@@ -158,6 +158,9 @@ class Qemu(object):
             os.unlink(runfile)
 
     def prepare_config(self):
+        if not os.path.exists('/var/log/vm'):
+            os.makedirs('/var/log/vm')
+
         chroot = self.chroot.format(**self.cfg)
         if not os.path.exists(chroot):
             os.makedirs(chroot)
