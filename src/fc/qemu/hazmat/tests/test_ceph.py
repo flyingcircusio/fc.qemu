@@ -19,6 +19,7 @@ def volume(ceph_inst):
         rbd.RBD().remove(ceph_inst.ioctx, 'othervolume')
     except rbd.ImageNotFound:
         pass
+
     volume = Volume(ceph_inst.ioctx, 'othervolume')
     yield volume
     lock = volume.lock_status()
@@ -119,6 +120,11 @@ def test_volume_map_unmap(volume):
 
 
 def test_call_shrink_vm(ceph_inst, capfd):
+    try:
+        rbd.RBD().remove(ceph_inst.ioctx, 'test00.root')
+    except rbd.ImageNotFound:
+        pass
+
     ceph_inst.root.ensure_presence(ceph_inst.cfg['disk'] * 1024**3 + 4096)
     try:
         ceph_inst.ensure_root_volume()

@@ -1,11 +1,9 @@
 from ..agent import Agent
-import logging
 import os
 import pkg_resources
 import pytest
 import shutil
 import subprocess
-import sys
 
 
 @pytest.yield_fixture
@@ -188,3 +186,7 @@ def test_vm_tmpsize():
     assert tmp_size(50) == 5120 * 1024**2
     assert tmp_size(100) == 10240 * 1024**2
     assert tmp_size(200) == 20480 * 1024**2
+
+
+def test_vm_migration():
+    subprocess.check_call('/vagrant/test-migration.sh', shell=True)

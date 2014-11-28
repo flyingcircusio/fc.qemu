@@ -168,8 +168,8 @@ sudo -u vagrant bin/pip install -r requirements.txt
 file { "/etc/qemu/fc-qemu.conf":
     content => "
 [qemu]
-accelerator = kvm
-vhost = true
+accelerator =
+vhost = false
 vnc = ${hostname}:{id}
 timeout-graceful = 120
 migration-address = tcp:${hostname}:{id}
