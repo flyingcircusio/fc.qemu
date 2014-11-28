@@ -1,10 +1,10 @@
 
-
-0.4
+0.6
 ===
 
-- get daemon to continuously ensure up/down condition
-- init script for the daemon
 - live migration
-- daemon provides inmigrate RPC, not each process
-- offline disk downsize
+
+0.7
+===
+
+- integration with locking volumes internally to support backy
