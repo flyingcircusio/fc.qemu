@@ -36,6 +36,8 @@ class IncomingServer(object):
         self.bind_address = parse_address(self.agent.migration_ctl_address)
         self.timeout = TimeOut(900)
 
+    _now = time.time
+
     def run(self):
         _log.info('[server] waiting for incoming {}.'.format(self.agent.name))
         s = SimpleXMLRPCServer.SimpleXMLRPCServer(
@@ -61,7 +63,7 @@ class IncomingServer(object):
         return 0
 
     def extend_cutoff_time(self, timeout=30):
-        self.timeout.cutoff = time.time() + timeout
+        self.timeout.cutoff = self._now() + timeout
 
     def prepare_incoming(self, args, config):
         self.agent.qemu.args = args
