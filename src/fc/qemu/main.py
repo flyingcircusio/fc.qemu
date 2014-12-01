@@ -1,9 +1,11 @@
 from .agent import Agent
+from .hazmat.qemu import Qemu
 import argparse
 import ConfigParser
 import logging
 import os.path
 import sys
+
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +17,6 @@ def load_system_config():
     sysconfig.read('/etc/qemu/fc-qemu.conf')
 
     # QEMU
-    from .hazmat.qemu import Qemu
     accelerator = sysconfig.get('qemu', 'accelerator')
     if accelerator:
         Agent.accelerator = '   accel = "{}"'.format(accelerator)
@@ -102,7 +103,7 @@ def init_logging(verbose=True):
         format='%(asctime)s [%(process)d] %(message)s',
         level=logging.INFO)
 
-    console = logging.StreamHandler(sys.stdout)
+    console = logging.StreamHandler(sys.stderr)
     console.setLevel(level)
     logging.getLogger('').addHandler(console)
 
@@ -148,12 +149,13 @@ def main():
 
     p = sub.add_parser('inmigrate', help='Start incoming migration for a VM.')
     p.add_argument('vm', metavar='VM', help='name of the VM')
+    p.add_argument('--statefile', default=Qemu.statefile)
     p.set_defaults(func='inmigrate')
 
     p = sub.add_parser('outmigrate', help='Start outgoing migration for a VM.')
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.add_argument(
-        'target', help='hostname:port of the target expecting inmigration')
+        'target', help='URL of the target expecting inmigration')
     p.set_defaults(func='outmigrate')
 
     args = a.parse_args()

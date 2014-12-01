@@ -1,6 +1,8 @@
 from .exc import MigrationError
 from .timeout import TimeOut
+from .util import rewrite
 import functools
+import json
 import logging
 import SimpleXMLRPCServer
 import time
@@ -38,8 +40,10 @@ class IncomingServer(object):
         _log.info('[server] waiting for incoming {}.'.format(self.agent.name))
         s = SimpleXMLRPCServer.SimpleXMLRPCServer(
             self.bind_address, logRequests=False, allow_none=True)
-        _log.info('[server] listening on http://{}:{}/'.format(
-            *self.bind_address))
+        url = 'http://{}:{}/'.format(*self.bind_address)
+        _log.info('[server] listening on {}'.format(url))
+        with rewrite(self.agent.qemu.statefile) as f:
+            json.dump({'migration-ctl-url': url}, f)
         s.timeout = 1
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()

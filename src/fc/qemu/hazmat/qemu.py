@@ -37,6 +37,7 @@ class Qemu(object):
     pidfile = '/run/qemu.{name}.pid'
     configfile = '/run/qemu.{name}.cfg'
     argfile = '/run/qemu.{name}.args'
+    statefile = '/run/qemu.{name}.state'
 
     def __init__(self, cfg):
         self.cfg = cfg
