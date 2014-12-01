@@ -84,15 +84,16 @@ class Outgoing(object):
 
     def rescue(self):
         """Outgoing rescue: try to rescue the remote side first."""
-        _log.warning('something went wrong, trying to clean up')
+        _log.warning('something went wrong, trying to rescue an instance')
         try:
             self.target.rescue(self.cookie)
         except:
+            # The remote VM was not rescued successfully and we can't trust
+            # that it self-destructed succesfully.
             try:
-                self.target.destroy(self.cookie)
+                self.target.destroy()
             except Exception:
                 pass
-            # XXX ... health check?
             self.agent.ceph.lock()
         else:
             # The remote VM was rescued successfully so we destroy ourselves.

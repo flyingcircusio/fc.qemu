@@ -68,6 +68,18 @@ class IncomingServer(object):
             self.agent.ceph.stop()
             raise
 
+    def rescue(self):
+        # Assume that we're running and try to get the locks if we didn't
+        # have them before.
+        try:
+            self.agent.ceph.lock()
+        except Exception:
+            # We did not manage to get the locks and we're in an unknown state.
+            # Try to self-destruct ASAP.
+            self.destroy()
+            self.keep_listening = True
+            raise
+
     def acquire_locks(self):
         self.agent.ceph.lock()
 
@@ -76,8 +88,16 @@ class IncomingServer(object):
         self.keep_listening = False
 
     def cancel(self):
-        self.keep_listening = False
         self.agent.ceph.unlock()
+        self.keep_listening = False
+
+    def destroy(self):
+        self.agent.qemu.destroy()
+        try:
+            self.agent.ceph.unlock()
+        except Exception:
+            pass
+        self.keep_listening = False
 
 
 class IncomingAPI(object):
