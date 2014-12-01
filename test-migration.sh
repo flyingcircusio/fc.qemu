@@ -11,7 +11,7 @@ kill_vms
 
 bin/fc-qemu start test00
 ssh host2  "cd /vagrant; bin/fc-qemu inmigrate test00"&
-bin/fc-qemu outmigrate test00 host2:9000
+bin/fc-qemu outmigrate test00 http://host2:9000/
 wait
 bin/fc-qemu status test00 || true
 ssh host2  "cd /vagrant; bin/fc-qemu status test00" || true

@@ -54,7 +54,7 @@ class Outgoing(object):
         while timeout.tick():
             try:
                 self.target = xmlrpclib.ServerProxy(
-                    'http://{}/'.format(self.address), allow_none=True)
+                    self.address, allow_none=True)
                 self.target.ping(self.cookie)
                 break
             # XXX the default socket timeout is quite high. we might wanna

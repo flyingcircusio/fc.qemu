@@ -1,15 +1,15 @@
-from __future__ import print_function
 from .hazmat.ceph import Ceph
 from .hazmat.qemu import Qemu, QemuNotRunning
-from .timeout import TimeOut
 from .incoming import IncomingServer
 from .outgoing import Outgoing
+from .timeout import TimeOut
+from fc.qemu.util import rewrite
 from logging import getLogger
-import pkg_resources
 import fcntl
-import socket
 import os
 import os.path
+import pkg_resources
+import socket
 import yaml
 
 
@@ -213,10 +213,13 @@ class Agent(object):
 
     @locked
     @running(False)
-    def inmigrate(self):
+    def inmigrate(self, statefile):
+        self.qemu.statefile = statefile.format(**self.qemu.cfg)
         if self.ceph.is_unlocked():
             # The VM isn't running at all. Just start it directly.
             self.start()
+            with rewrite(statefile) as f:
+                f.write('{}')
             return
         server = IncomingServer(self)
         server.run()
