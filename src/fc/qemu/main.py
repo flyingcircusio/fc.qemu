@@ -42,6 +42,56 @@ def load_system_config():
     ceph.SHRINK_VM = sysconfig.get('ceph', 'shrink-vm')
 
 
+def daemonize():
+    """
+    Copyright/License abberation:
+
+    Copied from
+http://stackoverflow.com/questions/1417631/python-code-to-daemonize-a-process
+    and
+http://www.jejik.com/articles/2007/02/a_simple_unix_linux_daemon_in_python/
+
+    do the UNIX double-fork magic, see Stevens' "Advanced
+    Programming in the UNIX Environment" for details (ISBN 0201563177)
+    http://www.erlenstar.demon.co.uk/unix/faq_2.html#SEC16
+    """
+    try:
+        pid = os.fork()
+        if pid > 0:
+            # exit first parent
+            sys.exit(0)
+    except OSError, e:
+        sys.stderr.write(
+            "fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
+        sys.exit(1)
+
+    # decouple from parent environment
+    os.chdir("/")
+    os.setsid()
+    os.umask(0)
+
+    # do second fork
+    try:
+        pid = os.fork()
+        if pid > 0:
+            # exit from second parent
+            sys.exit(0)
+    except OSError, e:
+        sys.stderr.write(
+            "fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
+        sys.exit(1)
+
+    # redirect standard file descriptors
+    sys.stdout.flush()
+    sys.stderr.flush()
+    si = file('/dev/null', 'r')
+    so = file('/dev/null', 'a+')
+    se = file('/dev/null', 'a+', 0)
+    os.dup2(si.fileno(), sys.stdin.fileno())
+    os.dup2(so.fileno(), sys.stdout.fileno())
+    os.dup2(se.fileno(), sys.stderr.fileno())
+
+
 def init_logging(verbose=True):
     if verbose:
         level = logging.DEBUG
@@ -59,8 +109,10 @@ def init_logging(verbose=True):
 
 def main():
     a = argparse.ArgumentParser(description="Qemu VM agent")
-    sub = a.add_subparsers(title='subcommands')
+    a.add_argument('--daemonize', '-D', action='store_true',
+                   help="Run command in background.")
 
+    sub = a.add_subparsers(title='subcommands')
     p = sub.add_parser('status', help='Get the status of a VM.')
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.set_defaults(func='status')
@@ -107,14 +159,17 @@ def main():
     args = a.parse_args()
     func = args.func
     vm = args.vm
-    args = dict(args._get_kwargs())
-    del args['func']
-    del args['vm']
+    kwargs = dict(args._get_kwargs())
+    del kwargs['func']
+    del kwargs['vm']
+    del kwargs['daemonize']
+
+    if args.daemonize:
+        daemonize()
 
     init_logging()
-
     load_system_config()
 
     agent = Agent(vm)
     with agent:
-        sys.exit(getattr(agent, func)(**args) or 0)
+        sys.exit(getattr(agent, func)(**kwargs) or 0)
