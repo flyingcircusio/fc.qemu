@@ -1,21 +1,23 @@
 syntax: glob
 
+bin
+.cache
+ceph.*
+.coverage
+develop-eggs/
+dist
 *.egg
 *.egg-info
-*.pyc
-.cache
-.coverage
-.installed.cfg
-.Python
-.vagrant
-bin
-develop-eggs/
 htmlcov
 include
+.installed.cfg
 lib
 lib64
 local
 local
+*.pyc
+.Python
 report.xml
-ceph.*
-dist
+.ropeproject
+*.sw[po]
+.vagrant
