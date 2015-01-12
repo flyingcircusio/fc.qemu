@@ -38,6 +38,7 @@ class IncomingServer(object):
 
     _now = time.time
 
+    # pragma: nocover
     def run(self):
         _log.info('[server] waiting for incoming {}.'.format(self.agent.name))
         s = SimpleXMLRPCServer.SimpleXMLRPCServer(
