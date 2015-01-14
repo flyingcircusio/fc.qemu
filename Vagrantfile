@@ -12,17 +12,15 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     vb.customize ["modifyvm", :id, "--memory", "1024"]
   end
 
-  # I'm keeping the "default" machine name to allow fellow developers
-  # to smoothly update. Otherwise you can't even destroy the old default box.
-  config.vm.define "default", primary: true do |host1|
+  config.vm.define "host1", primary: true do |host1|
     host1.vm.network "private_network", ip: "192.168.50.4"
     host1.vm.hostname = "host1"
+    host1.vm.provision "shell", path: "bootstrap-ceph.sh"
   end
 
   config.vm.define "host2" do |host2|
     host2.vm.network "private_network", ip: "192.168.50.5"
     host2.vm.hostname = "host2"
-    host2.vm.provision "shell", path: "bootstrap-ceph.sh"
   end
 
 end

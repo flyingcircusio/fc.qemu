@@ -1,9 +1,7 @@
 #########################
 # General system stuff
 
-exec { 'apt-get update':
-    command => "/usr/bin/apt-get update",
-}
+exec { 'apt-get update': }
 
 Exec {
     path => "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games
@@ -109,31 +107,27 @@ file { "/root/.ssh/authorized_keys":
 # qemu/kvm stuff
 
 
-file { ["/etc/kvm",
-        "/etc/qemu"]:
-    ensure => directory;
-}
+file { ["/etc/kvm", "/etc/qemu"]: ensure => directory }
 
 file { ["/etc/kvm/kvm-ifup",
         "/etc/kvm/kvm-ifdown"]:
     content => "#!/bin/bash\n",
-    mode => 755;
+    mode => 755,
 }
 
-file { "/dev/kvm":
-    ensure => present;
-}
+file { "/dev/kvm": ensure => present }
 
 
 #########################
 # fc.qemu stuff
 
 file { "/usr/local/sbin/create-vm":
-    content => '#!/bin/sh
-test "$1" = -I || exit 1
-rbd create --size 5120 "test/${2}.root"
+    content => '#!/bin/bash
+set -e
+test "$1" = -I
+rbd create --size 5120 --image-format 2 "test/${2}.root"
 ',
-    mode => 755
+    mode => 755,
 }
 
 
@@ -141,16 +135,14 @@ file { "/usr/local/sbin/shrink-vm":
     content => '#!/bin/sh
 echo "fake shrink-vm pool=$1 image=$2 disk=$3"
 ',
-    mode => 755
+    mode => 755,
 }
 
-file { "/etc/qemu/vm":
-    ensure => directory;
-}
+file { "/etc/qemu/vm": ensure => directory }
 
 file { "/etc/qemu/vm/test00.cfg":
     ensure => symlink,
-    target => "/vagrant/test00.cfg"
+    target => "/vagrant/test00.cfg",
 }
 
 exec { "bootstrap-agent-project":
@@ -162,11 +154,11 @@ sudo -u vagrant bin/pip install -r requirements.txt
 ",
     require => [Package["python-virtualenv"],
                 Package["python-dev"]],
-    cwd => "/vagrant";
+    cwd => "/vagrant",
 }
 
 file { "/etc/qemu/fc-qemu.conf":
-    content => "
+    content => "\
 [qemu]
 accelerator =
 vhost = false
@@ -181,5 +173,5 @@ cluster = ceph
 lock_host = ${hostname}
 create-vm = /usr/local/sbin/create-vm -I {name}
 shrink-vm = /usr/local/sbin/shrink-vm {resource_group} {image} {disk}
-"
+",
 }
