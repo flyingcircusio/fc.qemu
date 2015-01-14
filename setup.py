@@ -1,8 +1,10 @@
 from setuptools import setup, find_packages
 
 with open('README.txt') as f:
-    readme = f.read()
+    readme = f.read() + '\n'
 with open('CHANGES.txt') as f:
+    readme += f.read() + '\n'
+with open('HACKING.txt') as f:
     readme += f.read()
 
 setup(

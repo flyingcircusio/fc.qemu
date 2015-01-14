@@ -7,6 +7,7 @@ Release notes
 
 - Implement live migration. Use "inmigrate" and "outmigrate" commands
   to coordinate the process.
+- Improve test coverage.
 
 
 0.5.1 (2014-11-22)
