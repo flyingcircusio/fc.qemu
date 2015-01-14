@@ -1,4 +1,4 @@
-from ..agent import Agent
+from ..agent import Agent, swap_size, tmp_size
 import os
 import pkg_resources
 import pytest
@@ -170,7 +170,6 @@ lock: test00.tmp@host1
 
 
 def test_vm_swapsize():
-    from ..agent import swap_size
     assert swap_size(256) == 1 * 1024**3
     assert swap_size(512) == 1 * 1024**3
     assert swap_size(768) == 1 * 1024**3
@@ -180,7 +179,6 @@ def test_vm_swapsize():
 
 
 def test_vm_tmpsize():
-    from ..agent import tmp_size
     assert tmp_size(5) == 5120 * 1024**2
     assert tmp_size(10) == 5120 * 1024**2
     assert tmp_size(50) == 5120 * 1024**2
