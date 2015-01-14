@@ -1,4 +1,5 @@
-from ..incoming import IncomingServer
+from ..incoming import IncomingServer, IncomingAPI
+from ..exc import MigrationError
 import mock
 import pytest
 
@@ -28,3 +29,19 @@ def test_rescue(mock_agent):
         s.rescue()
     assert mock_agent.qemu.destroy.called is True
     assert mock_agent.ceph.unlock.called is True
+
+
+@mock.patch('fc.qemu.incoming.IncomingServer')
+def test_authentication_match(server):
+    api = IncomingAPI(server)
+    api.cookie = 'cookie1'
+    # should not raise an exception
+    assert api.ping('cookie1') is None
+
+
+@mock.patch('fc.qemu.incoming.IncomingServer')
+def test_authentication_mismatch(server):
+    api = IncomingAPI(server)
+    api.cookie = 'cookie1'
+    with pytest.raises(MigrationError):
+        assert api.ping('cookie-does-not-match') is None
