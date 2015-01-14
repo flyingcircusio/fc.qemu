@@ -55,4 +55,3 @@ Format::
 
 
 .. vim: set ft=rst:
-

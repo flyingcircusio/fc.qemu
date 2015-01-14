@@ -13,4 +13,7 @@ Run the tests::
     vm$ cd /vagrant
     vm$ sudo bin/py.test
 
+Test execution automatically updates a coverage report in the `htmlcov`
+directory.
+
 .. vim: set ft=rst:
