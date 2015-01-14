@@ -1,6 +1,6 @@
 from ..util import rewrite
-import pytest
 import os
+import pytest
 import tempfile
 
 
@@ -35,3 +35,11 @@ def test_rewrite_ignore_deleted(tmp):
     with open(tmp.name) as f:
         assert 'old content\n' == f.read()
     assert old_ino == os.stat(tmp.name).st_ino
+
+
+def test_rewrite_should_create_nonexisting_file(tmp):
+    os.unlink(tmp.name)
+    with rewrite(tmp.name) as f:
+        f.write('new file\n')
+    with open(tmp.name) as f:
+        assert 'new file\n' == f.read()
