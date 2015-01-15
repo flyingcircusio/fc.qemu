@@ -11,7 +11,7 @@ setup(
     name='fc.qemu',
     version='0.6.dev0',
     author='Christian Kauhaus, Christian Theune',
-    author_email='mail@gocept.com',
+    author_email='mail@flyingcircus.io',
     url='http://bitbucket.org/flyingcircus/fc.qemu',
     description='Qemu VM management utilities',
     long_description=readme,
