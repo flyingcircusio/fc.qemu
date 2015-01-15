@@ -21,9 +21,11 @@ def authenticated(f):
 
 
 def parse_address(addr):
-    addr = addr.split(':')
-    addr[1] = int(addr[1])
-    return tuple(addr)
+    if addr.startswith('['):
+        host, port = addr[1:].split(']:')
+    else:
+        host, port = addr.split(':')
+    return host, int(port)
 
 
 class IncomingServer(object):
