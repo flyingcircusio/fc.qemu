@@ -7,7 +7,7 @@ class TimeoutError(RuntimeError):
 
 class TimeOut(object):
 
-    def __init__(self, timeout, interval=0, raise_on_timeout=False):
+    def __init__(self, timeout, interval=1, raise_on_timeout=False):
         self.remaining = timeout
         self.cutoff = time.time() + timeout
         self.interval = interval

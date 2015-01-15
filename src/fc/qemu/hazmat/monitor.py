@@ -106,10 +106,10 @@ class Monitor(object):
         `acceptable_interim` nor `target` is reached, this function
         raises an exception.
         """
-        timeout = TimeOut(timeout, .5)
+        timeout = TimeOut(timeout, 1)
         while timeout.tick():
-            if timeout.interval < 5:
-                timeout.interval *= 1.4
+            if timeout.interval < 10:
+                timeout.interval *= 1.4142
             status = self.info_migrate()
             yield status
             if not status.strip():

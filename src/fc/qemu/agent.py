@@ -20,7 +20,7 @@ def running(expected=True):
     def wrap(f):
         def checked(self, *args, **kw):
             if self.qemu.is_running() != expected:
-                raise RuntimeError('action not allowed - VM is still running')
+                raise RuntimeError('action not allowed - VM is running')
             return f(self, *args, **kw)
         return checked
     return wrap
@@ -57,6 +57,7 @@ class Agent(object):
     # Those values can be overriden using the /etc/qemu/fc-agent.conf
     # config file. The defaults are intended for testing purposes.
     this_host = ''
+    migration_ctl_address = None
     accelerator = ''
     vhost = ''
     ceph_id = 'admin'
@@ -84,6 +85,7 @@ class Agent(object):
         self.cfg['name'] = self.enc['name']
         self.cfg['swap_size'] = swap_size(self.cfg['memory'])
         self.cfg['tmp_size'] = tmp_size(self.cfg['disk'])
+        self.cfg['ceph_id'] = self.ceph_id
         self.qemu = Qemu(self.cfg)
         self.ceph = Ceph(self.cfg)
         self.contexts = [self.qemu, self.ceph]
@@ -167,7 +169,7 @@ class Agent(object):
 
     @locked
     def stop(self):
-        timeout = TimeOut(self.timeout_graceful, interval=1)
+        timeout = TimeOut(self.timeout_graceful, interval=3)
         log.info('Trying graceful shutdown of VM %s...', self.name)
         try:
             self.qemu.graceful_shutdown()
@@ -299,5 +301,5 @@ class Agent(object):
         with open(self.vm_config_template) as f:
             tpl = f.read()
         self.qemu.config = tpl.format(
-            accelerator=self.accelerator, ceph_id=self.ceph_id,
+            accelerator=self.accelerator,
             network=''.join(netconfig), **self.cfg)
