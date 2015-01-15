@@ -10,6 +10,7 @@ class Outgoing(object):
 
     migration_exitcode = None
     target = None
+    cookie = None
 
     def __init__(self, agent, address):
         self.agent = agent
