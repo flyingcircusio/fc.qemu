@@ -6,7 +6,8 @@ Release notes
 ----------------
 
 - Implement live migration. Use "inmigrate" and "outmigrate" commands
-  to coordinate the process.
+  to coordinate the process (#13229).
+- Note that the qemu.cfg.in template has changed!
 - Improve test coverage.
 
 
