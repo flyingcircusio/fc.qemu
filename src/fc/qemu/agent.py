@@ -220,10 +220,11 @@ class Agent(object):
         log.info('Preparing to migrate-in VM %s', self.name)
         self.qemu.statefile = statefile.format(**self.qemu.cfg)
         if self.ceph.is_unlocked():
-            # The VM isn't running at all. Just start it directly.
-            self.start()
+            log.notice("VM %s isn't running at all. Starting it directly.",
+                       self.name)
             with rewrite(statefile) as f:
-                f.write('{}')
+                f.write('{}\n')
+            self.start()
             return
         server = IncomingServer(self)
         server.run()
