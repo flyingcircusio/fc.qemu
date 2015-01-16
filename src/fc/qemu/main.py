@@ -61,7 +61,7 @@ http://www.jejik.com/articles/2007/02/a_simple_unix_linux_daemon_in_python/
         if pid > 0:
             # exit first parent
             sys.exit(0)
-    except OSError, e:
+    except OSError as e:
         sys.stderr.write(
             "fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
         sys.exit(1)
@@ -77,7 +77,7 @@ http://www.jejik.com/articles/2007/02/a_simple_unix_linux_daemon_in_python/
         if pid > 0:
             # exit from second parent
             sys.exit(0)
-    except OSError, e:
+    except OSError as e:
         sys.stderr.write(
             "fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
         sys.exit(1)
@@ -85,9 +85,9 @@ http://www.jejik.com/articles/2007/02/a_simple_unix_linux_daemon_in_python/
     # redirect standard file descriptors
     sys.stdout.flush()
     sys.stderr.flush()
-    si = file('/dev/null', 'r')
-    so = file('/dev/null', 'a+')
-    se = file('/dev/null', 'a+', 0)
+    si = open('/dev/null', 'r')
+    so = open('/dev/null', 'a+', 0)
+    se = open('/dev/null', 'a+', 0)
     os.dup2(si.fileno(), sys.stdin.fileno())
     os.dup2(so.fileno(), sys.stdout.fileno())
     os.dup2(se.fileno(), sys.stderr.fileno())
@@ -110,6 +110,8 @@ def init_logging(verbose=True):
 
 def main():
     a = argparse.ArgumentParser(description="Qemu VM agent")
+    a.add_argument('--verbose', '-v', action='store_true',
+                   help='Increase logging level.')
     a.add_argument('--daemonize', '-D', action='store_true',
                    help="Run command in background.")
 
@@ -165,11 +167,12 @@ def main():
     del kwargs['func']
     del kwargs['vm']
     del kwargs['daemonize']
+    del kwargs['verbose']
 
     if args.daemonize:
         daemonize()
 
-    init_logging()
+    init_logging(args.verbose)
     load_system_config()
 
     agent = Agent(vm)
