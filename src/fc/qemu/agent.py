@@ -20,7 +20,9 @@ def running(expected=True):
     def wrap(f):
         def checked(self, *args, **kw):
             if self.qemu.is_running() != expected:
-                raise RuntimeError('action not allowed - VM is running')
+                raise RuntimeError(
+                    'action not allowed - VM must {}be running here'.format(
+                        '' if expected else 'not '))
             return f(self, *args, **kw)
         return checked
     return wrap
@@ -96,6 +98,7 @@ class Agent(object):
                 self.vm_config_template = cand
                 break
 
+    @locked
     def save(self):
         with open(self.configfile, 'w') as f:
             yaml.dump(self.enc, f)
@@ -201,10 +204,8 @@ class Agent(object):
         while timeout.tick():
             if not self.qemu.is_running():
                 break
-
         self.qemu.clean_run_files()
         self.ceph.stop()
-        log.info('Killing VM %s succeeded', self.name)
 
     @locked
     @running(False)
@@ -216,6 +217,7 @@ class Agent(object):
     @locked
     @running(False)
     def inmigrate(self, statefile):
+        log.info('Preparing to migrate-in VM %s', self.name)
         self.qemu.statefile = statefile.format(**self.qemu.cfg)
         if self.ceph.is_unlocked():
             # The VM isn't running at all. Just start it directly.
@@ -225,12 +227,17 @@ class Agent(object):
             return
         server = IncomingServer(self)
         server.run()
+        log.info('In-migration of VM %s finished', self.name)
 
     @locked
     @running(True)
     def outmigrate(self, target):
+        log.info('Migrating VM %s out', self.name)
         client = Outgoing(self, target)
-        return client()
+        exitcode = client()
+        log.info('Out-migration of VM %s finished with exitcode %s',
+                 self.name, exitcode)
+        return exitcode
 
     @locked
     def lock(self):
