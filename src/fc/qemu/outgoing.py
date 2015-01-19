@@ -14,6 +14,7 @@ class Outgoing(object):
 
     def __init__(self, agent, address):
         self.agent = agent
+        self.name = agent.name
         self.address = address
 
     def __call__(self):
@@ -70,8 +71,10 @@ class Outgoing(object):
     def migrate(self):
         """Actually move VM between hosts."""
         args, config = self.agent.qemu.get_running_config()
+        _log.info('%s: preparing remote environment', self.name)
         migration_address = self.target.prepare_incoming(
             self.cookie, args, config)
+        _log.info('%s: starting transfer', self.name)
         self.agent.qemu.migrate(migration_address)
         for _ in self.agent.qemu.monitor.poll_migration_status(
                 'Migration status: completed', ['Migration status: active']):
@@ -79,25 +82,33 @@ class Outgoing(object):
 
         self.agent.qemu.monitor.assert_status(
             'VM status: paused (postmigrate)')
+        _log.info('%s: finishing and cleaning up', self.name)
         self.target.finish_incoming(self.cookie)
         self.agent.qemu.destroy()
         self.agent.qemu.clean_run_files()
 
     def rescue(self):
         """Outgoing rescue: try to rescue the remote side first."""
-        _log.warning('something went wrong, trying to rescue an instance')
+        _log.warning('%s: something went wrong, trying to rescue',
+                     self.name)
         try:
+            _log.info('trying remote rescue')
             self.target.rescue(self.cookie)
-        except:
+        except Exception:
             # The remote VM was not rescued successfully and we can't trust
             # that it self-destructed succesfully.
             try:
-                self.target.destroy()
+                _log.info('%s: remote rescue not succesful, asking to destroy',
+                          self.name)
+                self.target.destroy(self.cookie)
+                self.agent.ceph.lock()
             except Exception:
-                pass
-            self.agent.ceph.lock()
+                _log.warning('%s: failed to destroy remote VM - bailing out',
+                             self.name)
+                self.destroy()
         else:
-            # The remote VM was rescued successfully so we destroy ourselves.
+            _log.info('%s: remote rescue successful, destroying our instance',
+                      self.name)
             self.destroy()
 
     def destroy(self):

@@ -35,78 +35,86 @@ class IncomingServer(object):
 
     def __init__(self, agent):
         self.agent = agent
+        self.name = agent.name
+        self.qemu = agent.qemu
+        self.ceph = agent.ceph
         self.bind_address = parse_address(self.agent.migration_ctl_address)
         self.timeout = TimeOut(90)
 
     _now = time.time
 
     def run(self):
-        _log.info('[server] waiting for incoming VM %s.', self.agent.name)
         s = SimpleXMLRPCServer.SimpleXMLRPCServer(
             self.bind_address, logRequests=False, allow_none=True)
         url = 'http://{}:{}/'.format(*self.bind_address)
-        _log.info('[server] listening on {}'.format(url))
-        with rewrite(self.agent.qemu.statefile) as f:
+        _log.info('%s: listening on %s', self.name, url)
+        with rewrite(self.qemu.statefile) as f:
             json.dump({'migration-ctl-url': url}, f)
-        _log.info('[server] created state file %s', self.agent.qemu.statefile)
+            f.write('\n')
+        _log.info('%s: created migration state file %s', self.name,
+                  self.qemu.statefile)
         s.timeout = 1
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()
         while self.timeout.tick():
-            _log.debug('[server] idle ({:d}s remaining)'.format(
-                int(self.timeout.remaining)))
+            _log.debug('%s: idle (%ds remaining)', self.name,
+                       int(self.timeout.remaining))
             s.handle_request()
             if not self.keep_listening:
                 break
         else:
-            _log.info('[server] timed out.')
+            _log.info('%s: server timed out', self.name)
             return 1
 
-        _log.info('[server] migration completed')
+        _log.info('%s: incoming migration completed', self.name)
         return 0
 
     def extend_cutoff_time(self, timeout=30):
         self.timeout.cutoff = self._now() + timeout
 
     def prepare_incoming(self, args, config):
-        self.agent.qemu.args = args
-        self.agent.qemu.config = config
+        self.qemu.args = args
+        self.qemu.config = config
         try:
-            return self.agent.qemu.inmigrate()
+            return self.qemu.inmigrate()
         except Exception:
-            self.agent.ceph.stop()
+            self.ceph.stop()
             raise
 
     def rescue(self):
-        # Assume that we're running and try to get the locks if we didn't
-        # have them before.
-        try:
-            self.agent.ceph.lock()
-        except Exception:
-            # We did not manage to get the locks and we're in an unknown state.
-            # Try to self-destruct ASAP.
+        if not self.qemu.is_running():
+            _log.warning('%s: trying to rescue, but VM is not online',
+                         self.name)
             self.destroy()
-            self.keep_listening = True
+            raise RuntimeError('rescue not possible - destroyed VM', self.name)
+        try:
+            _log.info('%s: rescue - assuming locks', self.name)
+            self.ceph.lock()
+        except Exception:
+            _log.warning('%s: not able to get all locks - self-destructing',
+                         self.name)
+            self.destroy()
             raise
+        _log.info('%s: rescue succeeded, VM is running', self.name)
 
     def acquire_locks(self):
-        self.agent.ceph.lock()
+        self.ceph.lock()
 
     def finish_incoming(self):
-        assert self.agent.qemu.is_running()
+        assert self.qemu.is_running()
         self.keep_listening = False
 
     def cancel(self):
-        self.agent.ceph.unlock()
+        self.ceph.unlock()
         self.keep_listening = False
 
     def destroy(self):
-        self.agent.qemu.destroy()
+        self.keep_listening = False
+        self.qemu.destroy()
         try:
-            self.agent.ceph.unlock()
+            self.ceph.unlock()
         except Exception:
             pass
-        self.keep_listening = False
 
 
 class IncomingAPI(object):
@@ -118,12 +126,12 @@ class IncomingAPI(object):
     @authenticated
     def ping(self):
         """Check connectivity and extend timeout."""
-        _log.info('[server] ping()')
+        _log.debug('[server] ping()')
         self.server.extend_cutoff_time()
 
     @authenticated
     def acquire_locks(self):
-        _log.info('[server] acquire_locks()')
+        _log.debug('[server] acquire_locks()')
         return self.server.acquire_locks()
 
     @authenticated
@@ -133,27 +141,27 @@ class IncomingAPI(object):
         `addr` is a host name of IP address which specifies where KVM
         should open its port.
         """
-        _log.info('[server] prepare_incoming()')
+        _log.debug('[server] prepare_incoming()')
         return self.server.prepare_incoming(args, config)
 
     @authenticated
     def finish_incoming(self):
-        _log.info('[server] finish_incoming()')
+        _log.debug('[server] finish_incoming()')
         self.server.finish_incoming()
 
     @authenticated
     def rescue(self):
         """Incoming rescue."""
-        _log.info('[server] rescue()')
+        _log.debug('[server] rescue()')
         return self.server.rescue()
 
     @authenticated
     def destroy(self):
         """Incoming destroy."""
-        _log.info('[server] destroy()')
+        _log.debug('[server] destroy()')
         return self.server.destroy()
 
     @authenticated
     def cancel(self):
-        _log.info('[server] cancel()')
+        _log.debug('[server] cancel()')
         self.server.cancel()

@@ -97,13 +97,13 @@ def init_logging(verbose=True):
     if verbose:
         level = logging.DEBUG
     else:
-        level = logging.WARNING
+        level = logging.INFO
     logging.basicConfig(
         filename='/var/log/fc-qemu.log',
-        format='%(asctime)s [%(process)d] %(message)s',
+        format='%(asctime)s [%(process)d] %(levelname)s %(message)s',
         level=logging.INFO)
 
-    console = logging.StreamHandler(sys.stderr)
+    console = logging.StreamHandler(sys.stdout)
     console.setLevel(level)
     logging.getLogger('').addHandler(console)
 
