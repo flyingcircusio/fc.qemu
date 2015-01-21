@@ -27,10 +27,9 @@ setup(
     license='BSD',
     namespace_packages=['fc'],
     install_requires=[
-        'setuptools',
-        'mock',
-        'PyYaml',
-        'psutil',
+        'setuptools>=11',
+        'PyYaml>=3.11',
+        'psutil>=2.2',
     ],
     entry_points={
         'console_scripts': [

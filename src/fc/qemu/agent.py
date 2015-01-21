@@ -116,15 +116,18 @@ class Agent(object):
 
     @locked
     def ensure(self):
-        if not self.cfg['online']:
+        if not self.cfg['online'] or self.cfg['kvm_host'] != self.this_host:
             self.ensure_offline()
-            return
-        if self.cfg['kvm_host'] != self.this_host:
-            # Initiate outmigrate.
-            self.ensure_offline()
-            return
-        self.ensure_online()
-        self.ensure_online_disk_size()
+        else:
+            self.ensure_online()
+            self.ensure_online_disk_size()
+        if not self.state_is_consistent():
+            log.warning('%s: state not consistent (monitor, pidfile, ceph), '
+                        'destroying VM', self.name)
+            if self.qemu.is_running():
+                self.qemu.destroy()
+            self.qemu.clean_run_files()
+            self.ceph.stop()
 
     def ensure_offline(self):
         if self.qemu.is_running():
@@ -258,6 +261,15 @@ class Agent(object):
         self.ceph.force_unlock()
 
     # Helper methods
+
+    def state_is_consistent(self):
+        """Returns True if all relevant components agree about VM state.
+
+        If False, results from Qemu monitor, pidfile or Ceph differ.
+        """
+        substates = [self.qemu.is_running(), bool(self.qemu.proc()),
+                     self.ceph.is_locked()]
+        return any(substates) == all(substates)
 
     # CAREFUL: changing anything in this config files will cause maintenance w/
     # reboot of all VMs in the infrastructure.
