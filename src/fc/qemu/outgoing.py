@@ -92,7 +92,6 @@ class Outgoing(object):
         _log.warning('%s: something went wrong, trying to rescue',
                      self.name)
         try:
-            _log.info('trying remote rescue')
             self.target.rescue(self.cookie)
         except Exception:
             # The remote VM was not rescued successfully and we can't trust

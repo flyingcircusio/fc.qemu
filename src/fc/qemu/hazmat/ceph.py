@@ -79,7 +79,7 @@ class Volume(object):
             'Someone seems to be racing me.')
 
     def lock_status(self):
-        """Return None if not locked and the lock_id if it is."""
+        """Return None if not locked and (client_id, lock_id) if it is."""
         try:
             lockers = self.image.list_lockers()
         except rbd.ImageNotFound:
@@ -202,13 +202,17 @@ class Ceph(object):
                 continue
             yield vol.name, status[1]
 
-    def is_locked(self):
-        """Returns True if all volumes are locked."""
-        return all(vol.lock_status() for vol in self.volumes)
-
     def is_unlocked(self):
         """Returns True if no volume is locked."""
         return all(not vol.lock_status() for vol in self.volumes)
+
+    def locked_by_me(self):
+        """Returns True if CEPH_LOCK_HOST holds locks for all volumes."""
+        try:
+            return all(v.lock_status()[1] == CEPH_LOCK_HOST
+                       for v in self.volumes)
+        except TypeError:  # status[1] not accessible
+            return False
 
     def lock(self):
         for vol in self.volumes:

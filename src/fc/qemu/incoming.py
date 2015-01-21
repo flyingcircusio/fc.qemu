@@ -1,4 +1,4 @@
-from .exc import MigrationError
+from .exc import MigrationError, QemuNotRunning
 from .timeout import TimeOut
 from .util import rewrite
 import functools
@@ -31,7 +31,7 @@ def parse_address(addr):
 class IncomingServer(object):
     """Run an XML-RPC server to orchestrate a single migration."""
 
-    keep_listening = True
+    finished = False
 
     def __init__(self, agent):
         self.agent = agent
@@ -60,14 +60,15 @@ class IncomingServer(object):
             _log.debug('%s: idle (%ds remaining)', self.name,
                        int(self.timeout.remaining))
             s.handle_request()
-            if not self.keep_listening:
+            if self.finished:
                 break
         else:
             _log.info('%s: server timed out', self.name)
             return 1
 
-        _log.info('%s: incoming migration completed', self.name)
-        return 0
+        _log.info('%s: incoming migration completed: ', self.name,
+                  self.finished)
+        return 0 if self.finished == 'success' else 1
 
     def extend_cutoff_time(self, timeout=30):
         self.timeout.cutoff = self._now() + timeout
@@ -85,14 +86,14 @@ class IncomingServer(object):
         if not self.qemu.is_running():
             _log.warning('%s: trying to rescue, but VM is not online',
                          self.name)
-            self.destroy()
+            self.qemu.clean_run_files()
+            self.ceph.stop()
             raise RuntimeError('rescue not possible - destroyed VM', self.name)
         try:
             _log.info('%s: rescue - assuming locks', self.name)
             self.ceph.lock()
         except Exception:
-            _log.warning('%s: not able to get all locks - self-destructing',
-                         self.name)
+            _log.warning('%s: failed to acquire all locks', self.name)
             self.destroy()
             raise
         _log.info('%s: rescue succeeded, VM is running', self.name)
@@ -102,15 +103,21 @@ class IncomingServer(object):
 
     def finish_incoming(self):
         assert self.qemu.is_running()
-        self.keep_listening = False
+        self.finish = 'success'
 
     def cancel(self):
         self.ceph.unlock()
-        self.keep_listening = False
+        self.finish = 'canceled'
 
     def destroy(self):
-        self.keep_listening = False
-        self.qemu.destroy()
+        """Gets reliably rid of the VM."""
+        _log.info('%s: self-destructing', self.name)
+        self.finished = 'destroyed'
+        try:
+            self.qemu.destroy()
+        except QemuNotRunning:
+            pass
+        self.qemu.clean_run_files()
         try:
             self.ceph.unlock()
         except Exception:

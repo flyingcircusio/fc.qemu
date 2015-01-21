@@ -123,7 +123,7 @@ class Agent(object):
             self.ensure_online_disk_size()
         if not self.state_is_consistent():
             log.warning('%s: state not consistent (monitor, pidfile, ceph), '
-                        'destroying VM', self.name)
+                        'destroying VM and cleaning up', self.name)
             if self.qemu.is_running():
                 self.qemu.destroy()
             self.qemu.clean_run_files()
@@ -223,8 +223,8 @@ class Agent(object):
         log.info('Preparing to migrate-in VM %s', self.name)
         self.qemu.statefile = statefile.format(**self.qemu.cfg)
         if self.ceph.is_unlocked():
-            log.notice("VM %s isn't running at all. Starting it directly.",
-                       self.name)
+            log.info("VM %s isn't running at all. Starting it directly.",
+                     self.name)
             with rewrite(statefile) as f:
                 f.write('{}\n')
             self.start()
@@ -268,7 +268,7 @@ class Agent(object):
         If False, results from Qemu monitor, pidfile or Ceph differ.
         """
         substates = [self.qemu.is_running(), bool(self.qemu.proc()),
-                     self.ceph.is_locked()]
+                     self.ceph.locked_by_me()]
         return any(substates) == all(substates)
 
     # CAREFUL: changing anything in this config files will cause maintenance w/
