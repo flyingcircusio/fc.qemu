@@ -1,6 +1,8 @@
 from ..agent import Agent
+import mock
 import os
 import pkg_resources
+import psutil
 import pytest
 import shutil
 
@@ -28,3 +30,43 @@ def test_userdefined_config_template(simplevm_cfg):
         assert 'user defined config template' in a.qemu.config
     finally:
         os.unlink('/etc/qemu/qemu.vm.cfg.in')
+
+
+def test_consistency_vm_running(simplevm_cfg):
+    a = Agent(simplevm_cfg)
+    a.qemu.is_running = mock.Mock(return_value=True)
+    a.qemu.proc = mock.Mock(return_value=psutil.Process(1))
+    a.ceph.is_locked = mock.Mock(return_value=True)
+    assert a.state_is_consistent() is True
+
+
+def test_consistency_vm_not_running(simplevm_cfg):
+    a = Agent(simplevm_cfg)
+    a.qemu.is_running = mock.Mock(return_value=False)
+    a.qemu.proc = mock.Mock(return_value=None)
+    a.ceph.is_locked = mock.Mock(return_value=False)
+    assert a.state_is_consistent() is True
+
+
+def test_consistency_process_dead(simplevm_cfg):
+    a = Agent(simplevm_cfg)
+    a.qemu.is_running = mock.Mock(return_value=True)
+    a.qemu.proc = mock.Mock(return_value=None)
+    a.ceph.is_locked = mock.Mock(return_value=True)
+    assert a.state_is_consistent() is False
+
+
+def test_consistency_pidfile_missing(simplevm_cfg):
+    a = Agent(simplevm_cfg)
+    a.qemu.is_running = mock.Mock(return_value=True)
+    a.qemu.proc = mock.Mock(return_value=None)
+    a.ceph.is_locked = mock.Mock(return_value=True)
+    assert a.state_is_consistent() is False
+
+
+def test_consistency_ceph_lock_missing(simplevm_cfg):
+    a = Agent(simplevm_cfg)
+    a.qemu.is_running = mock.Mock(return_value=True)
+    a.qemu.proc = mock.Mock(return_value=psutil.Process(1))
+    a.ceph.is_locked = mock.Mock(return_value=False)
+    assert a.state_is_consistent() is False

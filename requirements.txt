@@ -1,5 +1,5 @@
 -e .
-setuptools
-pytest
+pytest>=2.6
 pytest-cov
 pytest-capturelog
+mock>=1.0

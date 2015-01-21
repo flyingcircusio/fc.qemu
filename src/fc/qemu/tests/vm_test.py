@@ -63,9 +63,6 @@ lock: test00.tmp@host1
     vm.stop()
     assert status() == 'offline\n'
 
-    vm.delete()
-    assert status() == 'offline\n'
-
 
 def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys, caplog):
     def status():
@@ -90,9 +87,6 @@ lock: test00.tmp@host1
     vm.cfg['online'] = False
     vm.save()
     vm.ensure()
-    assert status() == 'offline\n'
-
-    vm.delete()
     assert status() == 'offline\n'
 
 
@@ -121,9 +115,6 @@ lock: test00.tmp@host1
     vm.ensure()
     assert status() == 'offline\n'
 
-    vm.delete()
-    assert status() == 'offline\n'
-
 
 def test_crashed_vm_clean_restart(vm, capsys, caplog):
     def status():
@@ -148,7 +139,7 @@ lock: test00.tmp@host1
 """
 
     vm.qemu.proc().kill()
-    vm.qemu.proc().wait(3)
+    vm.qemu.proc().wait(2)
     assert status() == """\
 offline
 lock: test00.root@host1
@@ -165,8 +156,18 @@ lock: test00.tmp@host1
 """
 
     vm.stop()
-    vm.delete()
     assert status() == 'offline\n'
+
+
+def test_clean_up_crashed_vm(vm):
+    vm.ensure()
+    assert vm.qemu.is_running() is True
+    vm.qemu.proc().kill()
+    vm.qemu.proc().wait(2)
+    vm.cfg['online'] = False
+    assert vm.ceph.is_locked() is True
+    vm.ensure()
+    assert vm.ceph.is_unlocked() is True
 
 
 def test_vm_swapsize():

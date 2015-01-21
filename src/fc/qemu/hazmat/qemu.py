@@ -51,9 +51,17 @@ class Qemu(object):
         self.monitor = None
 
     def proc(self):
-        pid = int(open(self.pidfile).read().strip())
-        proc = psutil.Process(pid)
-        assert proc.is_running()
+        """Qemu processes as psutil.Process object.
+
+        Returns None if the PID file does not exist or the process is
+        not running.
+        """
+        try:
+            with open(self.pidfile) as p:
+                pid = int(p.read())
+            proc = psutil.Process(pid)
+        except (IOError, OSError, psutil.NoSuchProcess):
+            return
         return proc
 
     def _start(self, additional_args=()):
@@ -95,18 +103,6 @@ class Qemu(object):
         except Exception:
             return False
         return True
-        # XXX we used to validate the process name but this bit us on
-        # long machine name.
-        # proc = self.proc()
-        # try:
-        #     assert proc.name() == 'kvm.{name}'.format(**self.cfg)
-        # except Exception:
-        #     print "process name does not match"
-        #     log.error('Process name does not match. '
-        #               'Expected kvm.{} got {}'.format(
-        #                   self.cfg['name'], proc.name()))
-        #     return False
-        # return True
 
     def status(self):
         return self.monitor.status()

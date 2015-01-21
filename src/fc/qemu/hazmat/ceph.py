@@ -202,11 +202,13 @@ class Ceph(object):
                 continue
             yield vol.name, status[1]
 
+    def is_locked(self):
+        """Returns True if all volumes are locked."""
+        return all(vol.lock_status() for vol in self.volumes)
+
     def is_unlocked(self):
-        for vol in self.volumes:
-            if vol.lock_status():
-                return False
-        return True
+        """Returns True if no volume is locked."""
+        return all(not vol.lock_status() for vol in self.volumes)
 
     def lock(self):
         for vol in self.volumes:
