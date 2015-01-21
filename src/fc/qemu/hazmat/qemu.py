@@ -1,3 +1,4 @@
+from ..exc import QemuNotRunning
 from ..timeout import TimeOut
 from .monitor import Monitor
 import glob
@@ -9,10 +10,6 @@ import yaml
 
 
 log = logging.getLogger(__name__)
-
-
-class QemuNotRunning(Exception):
-    """Something happened and we're sure Qemu isn't running."""
 
 
 class Qemu(object):

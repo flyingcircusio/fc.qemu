@@ -164,10 +164,10 @@ def test_clean_up_crashed_vm(vm):
     assert vm.qemu.is_running() is True
     vm.qemu.proc().kill()
     vm.qemu.proc().wait(2)
+    assert vm.ceph.locked_by_me() is True
     vm.cfg['online'] = False
-    assert vm.ceph.is_locked() is True
     vm.ensure()
-    assert vm.ceph.is_unlocked() is True
+    assert vm.ceph.locked_by_me() is False
 
 
 def test_vm_swapsize():
