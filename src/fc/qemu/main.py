@@ -101,7 +101,7 @@ def init_logging(verbose=True):
     logging.basicConfig(
         filename='/var/log/fc-qemu.log',
         format='%(asctime)s [%(process)d] %(levelname)s %(message)s',
-        level=logging.INFO)
+        level=level)
 
     console = logging.StreamHandler(sys.stdout)
     console.setLevel(level)

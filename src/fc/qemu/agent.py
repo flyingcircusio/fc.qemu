@@ -230,8 +230,10 @@ class Agent(object):
             self.start()
             return
         server = IncomingServer(self)
-        server.run()
-        log.info('In-migration of VM %s finished', self.name)
+        exitcode = server.run()
+        log.info('In-migration of VM %s finished with exitcode %s', self.name,
+                 exitcode)
+        return exitcode
 
     @locked
     @running(True)

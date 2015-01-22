@@ -38,9 +38,9 @@ class Outgoing(object):
         else:
             self.migration_exitcode = 1
             try:
-                _log.exception('A problem occured trying to migrate the VM. '
-                               'Trying to rescue it.',
-                               exc_info=(_exc_type, _exc_value, _traceback))
+                _log.debug('A problem occured trying to migrate the VM. '
+                           'Trying to rescue it.',
+                           exc_info=(_exc_type, _exc_value, _traceback))
                 self.rescue()
             except:
                 # Purposeful bare except: try really hard to kill
@@ -49,7 +49,7 @@ class Outgoing(object):
                                'after a migration failure. Destroying it.')
                 self.destroy()
 
-    def connect(self, timeout=900):
+    def connect(self, timeout=600):
         _log.debug('connecting to {}'.format(self.address))
 
         timeout = TimeOut(timeout, interval=3, raise_on_timeout=True)
@@ -76,16 +76,16 @@ class Outgoing(object):
             self.cookie, args, config)
         _log.info('%s: starting transfer', self.name)
         self.agent.qemu.migrate(migration_address)
-        for _ in self.agent.qemu.monitor.poll_migration_status(
+        for stat in self.agent.qemu.monitor.poll_migration_status(
                 'Migration status: completed', ['Migration status: active']):
+            _log.debug('%s: migration status: %s', self.name, stat)
             self.target.ping(self.cookie)
 
         self.agent.qemu.monitor.assert_status(
             'VM status: paused (postmigrate)')
         _log.info('%s: finishing and cleaning up', self.name)
         self.target.finish_incoming(self.cookie)
-        self.agent.qemu.destroy()
-        self.agent.qemu.clean_run_files()
+        self.destroy()
 
     def rescue(self):
         """Outgoing rescue: try to rescue the remote side first."""
@@ -93,22 +93,28 @@ class Outgoing(object):
                      self.name)
         try:
             self.target.rescue(self.cookie)
-        except Exception:
-            # The remote VM was not rescued successfully and we can't trust
-            # that it self-destructed succesfully.
-            try:
-                _log.info('%s: remote rescue not succesful, asking to destroy',
-                          self.name)
-                self.target.destroy(self.cookie)
-                self.agent.ceph.lock()
-            except Exception:
-                _log.warning('%s: failed to destroy remote VM - bailing out',
-                             self.name)
-                self.destroy()
-        else:
             _log.info('%s: remote rescue successful, destroying our instance',
                       self.name)
+            self.destroy()
+            return
+        except Exception as e:
+            _log.debug(e)
+            try:
+                _log.info('%s: remote rescue failed, trying remote destroy',
+                          self.name)
+                self.target.destroy(self.cookie)
+            except Exception as e:
+                _log.debug(e)
+                _log.info('%s: failed to destroy remote VM', self.name)
+        try:
+            self.agent.ceph.lock()
+            _log.info('%s: re-acquired Ceph locks successfully, continuing '
+                      'VM locally', self.name)
+        except Exception:
+            _log.warning('%s: failed to (re-)aquire Ceph locks, bailing out',
+                         self.name)
             self.destroy()
 
     def destroy(self):
         self.agent.qemu.destroy()
+        self.agent.qemu.clean_run_files()
