@@ -5,7 +5,8 @@ Release notes
 0.6.2 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Relax PyYaml and psutil version requirements to accommodate to the Flying
+  Circus managed platform.
 
 
 0.6.1 (2015-01-22)
