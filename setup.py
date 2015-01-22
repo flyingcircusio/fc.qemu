@@ -27,9 +27,9 @@ setup(
     license='BSD',
     namespace_packages=['fc'],
     install_requires=[
-        'setuptools>=11',
-        'PyYaml>=3.11',
-        'psutil>=2.2',
+        'setuptools',
+        'PyYaml>=3.10',
+        'psutil>=2.1',
     ],
     entry_points={
         'console_scripts': [
