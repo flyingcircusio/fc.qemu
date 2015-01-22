@@ -136,7 +136,9 @@ class Qemu(object):
         # sometimes the init script will complain even if we achieve what
         # we want: that the VM isn't running any longer. We check this
         # by contacting the monitor instead.
-        self.proc().terminate()
+        p = self.proc()
+        if p:
+            p.terminate()
         timeout = TimeOut(5, interval=1, raise_on_timeout=True)
         while timeout.tick():
             status = self.monitor.status()

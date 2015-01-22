@@ -19,7 +19,7 @@ setup(
     package_dir={'': 'src'},
     include_package_data=True,
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Environment :: Console',
         'Programming Language :: Python :: 2.7',
     ],

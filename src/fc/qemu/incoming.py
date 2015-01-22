@@ -39,7 +39,7 @@ class IncomingServer(object):
         self.qemu = agent.qemu
         self.ceph = agent.ceph
         self.bind_address = parse_address(self.agent.migration_ctl_address)
-        self.timeout = TimeOut(90)
+        self.timeout = TimeOut(600)
 
     _now = time.time
 
@@ -57,16 +57,16 @@ class IncomingServer(object):
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()
         while self.timeout.tick():
-            _log.debug('%s: idle (%ds remaining)', self.name,
+            _log.debug('[server] %s: waiting (%ds remaining)', self.name,
                        int(self.timeout.remaining))
             s.handle_request()
             if self.finished:
                 break
         else:
-            _log.info('%s: server timed out', self.name)
+            _log.info('[server] time out while migrating %s', self.name)
             return 1
 
-        _log.info('%s: incoming migration completed: ', self.name,
+        _log.info('%s: incoming migration completed: %s', self.name,
                   self.finished)
         return 0 if self.finished == 'success' else 1
 
@@ -103,11 +103,11 @@ class IncomingServer(object):
 
     def finish_incoming(self):
         assert self.qemu.is_running()
-        self.finish = 'success'
+        self.finished = 'success'
 
     def cancel(self):
         self.ceph.unlock()
-        self.finish = 'canceled'
+        self.finished = 'canceled'
 
     def destroy(self):
         """Gets reliably rid of the VM."""

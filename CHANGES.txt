@@ -6,6 +6,7 @@ Release notes
 ------------------
 
 - Improve logging and error messages (#13867).
+- Fix unwanted behaviour during error conditions (#13867).
 
 
 0.6 (2015-01-15)

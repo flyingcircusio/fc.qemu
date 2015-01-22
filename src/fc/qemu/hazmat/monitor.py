@@ -93,7 +93,7 @@ class Monitor(object):
         except Exception:
             return ''
 
-    def poll_migration_status(self, target, acceptable_interim, timeout=1200):
+    def poll_migration_status(self, target, acceptable_interim, timeout=30):
         """Monitor ongoing migration.
 
         Every few seconds, the migration status is queried from the KVM
@@ -106,13 +106,14 @@ class Monitor(object):
         `acceptable_interim` nor `target` is reached, this function
         raises an exception.
         """
-        timeout = TimeOut(timeout, 1)
+        timeout = TimeOut(timeout, 1, raise_on_timeout=True)
+        startup_phase = True
         while timeout.tick():
             if timeout.interval < 10:
                 timeout.interval *= 1.4142
             status = self.info_migrate()
             yield status
-            if not status.strip():
+            if startup_phase and not status.strip():
                 # The monitor didn't really respond with anything.
                 # This tends to happen sometimes at the beginning of the
                 # migration. I let this slip.
@@ -121,10 +122,8 @@ class Monitor(object):
                 break
             if not any(i in status for i in acceptable_interim):
                 raise MigrationError('invalid migration status', status)
-        else:
-            raise MigrationError(
-                'failed to reach target status in {}s'.format(timeout),
-                target, status)
+            startup_phase = False
+            timeout.cutoff += 30
 
     def quit(self):
         """Terminate KVM process."""
