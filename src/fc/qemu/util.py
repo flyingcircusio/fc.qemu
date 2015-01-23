@@ -17,7 +17,5 @@ def rewrite(filename):
             # Allow our clients to remove the file in case it doesn't want it
             # to be put in place actually but also doesn't want to error out.
             return
-        tf.flush()
-        os.fdatasync(tf)
         filename_tmp = tf.name
     os.rename(filename_tmp, filename)
