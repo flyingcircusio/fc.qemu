@@ -31,6 +31,17 @@ def test_proc_not_running(qemu_with_pidfile):
     assert qemu_with_pidfile.proc() is None
 
 
-def test_proc_no_pidilfe(qemu_with_pidfile):
+def test_proc_no_pidfile(qemu_with_pidfile):
     os.unlink(qemu_with_pidfile.pidfile)
     assert qemu_with_pidfile.proc() is None
+
+
+def test_proc_empty_pidfile(qemu_with_pidfile):
+    open(qemu_with_pidfile.pidfile, 'w').close()
+    assert qemu_with_pidfile.proc() is None
+
+
+def test_proc_pidfile_with_garbage(qemu_with_pidfile):
+    with open(qemu_with_pidfile.pidfile, 'a') as f:
+        f.write('trailing line\n')
+    assert isinstance(qemu_with_pidfile.proc(), psutil.Process)

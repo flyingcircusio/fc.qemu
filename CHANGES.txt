@@ -5,7 +5,8 @@ Release notes
 0.6.3 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Improve pid file parser to deal correctly with trailing lines and empty pid
+  files.
 
 
 0.6.2 (2015-01-22)
