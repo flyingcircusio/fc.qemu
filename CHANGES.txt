@@ -7,6 +7,8 @@ Release notes
 
 - Improve pid file parser to deal correctly with trailing lines and empty pid
   files.
+- Ensure that exceptions are properly logged if they occur directly after
+  daemonizing (e.g., in Agent.__init__()) (#13867).
 
 
 0.6.2 (2015-01-22)
