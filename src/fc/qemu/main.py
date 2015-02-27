@@ -172,9 +172,12 @@ def main():
     if args.daemonize:
         daemonize()
 
-    init_logging(args.verbose)
-    load_system_config()
-
-    agent = Agent(vm)
-    with agent:
-        sys.exit(getattr(agent, func)(**kwargs) or 0)
+    try:
+        init_logging(args.verbose)
+        load_system_config()
+        agent = Agent(vm)
+        with agent:
+            sys.exit(getattr(agent, func)(**kwargs) or 0)
+    except Exception as e:
+        logger.exception(e)
+        sys.exit(69)  # EX_UNAVAILABLE

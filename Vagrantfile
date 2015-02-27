@@ -15,12 +15,12 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.define "host1", primary: true do |host1|
     host1.vm.network "private_network", ip: "192.168.50.4"
     host1.vm.hostname = "host1"
-    host1.vm.provision "shell", path: "bootstrap-ceph.sh"
   end
 
   config.vm.define "host2" do |host2|
     host2.vm.network "private_network", ip: "192.168.50.5"
     host2.vm.hostname = "host2"
+    host2.vm.provision "shell", path: "bootstrap-ceph.sh"
   end
 
 end
