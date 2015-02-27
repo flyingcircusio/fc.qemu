@@ -55,11 +55,11 @@ class Qemu(object):
         """
         try:
             with open(self.pidfile) as p:
-                pid = int(p.read())
-            proc = psutil.Process(pid)
-        except (IOError, OSError, psutil.NoSuchProcess):
-            return
-        return proc
+                # pid file may contain trailing lines with garbage
+                for line in p:
+                    return psutil.Process(int(line))
+        except (IOError, OSError, ValueError, psutil.NoSuchProcess):
+            pass
 
     def _start(self, additional_args=()):
         if self.require_kvm and not os.path.exists('/dev/kvm'):
@@ -175,9 +175,11 @@ class Qemu(object):
             f.write(self.config)
         with open(self.configfile, 'w') as f:
             f.write(self.local_config)
-
         with open(self.argfile+'.in', 'w') as f:
             yaml.dump(self.args, f)
+
+        # Qemu tends to overwrite the pid file incompletely -> truncate
+        open(self.pidfile, 'w').close()
 
     def get_running_config(self):
         """Return the host-independent version of the current running
