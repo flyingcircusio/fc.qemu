@@ -5,7 +5,8 @@ Release notes
 0.6.3 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Tolerate "setup" as an intermediate migration status as encountered in the
+  wild.
 
 
 0.6.2 (2015-01-22)

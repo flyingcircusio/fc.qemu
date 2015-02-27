@@ -76,8 +76,14 @@ class Outgoing(object):
             self.cookie, args, config)
         _log.info('%s: starting transfer', self.name)
         self.agent.qemu.migrate(migration_address)
+        # XXX The status polling is a bit fuzzy: we noticed an additional
+        # intermediate status "setup" while running this in production.
+        # Over the long term this should get more reliable towards unknown
+        # states and tolerate them (until running in a timeout)
         for stat in self.agent.qemu.monitor.poll_migration_status(
-                'Migration status: completed', ['Migration status: active']):
+                'Migration status: completed',
+                ['Migration status: active',
+                 'Migration status: setup']):
             _log.debug('%s: migration status: %s', self.name, stat)
             self.target.ping(self.cookie)
 
