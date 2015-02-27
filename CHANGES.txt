@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.6.4 (unreleased)
+0.6.4 (2015-02-27)
 ------------------
 
 - Tolerate "setup" as an intermediate migration status as encountered in the
