@@ -2,6 +2,7 @@ from .timeout import TimeOut
 import logging
 import socket
 import xmlrpclib
+import consulate
 
 _log = logging.getLogger(__name__)
 
@@ -12,10 +13,21 @@ class Outgoing(object):
     target = None
     cookie = None
 
-    def __init__(self, agent, address):
+    def __init__(self, agent):
         self.agent = agent
         self.name = agent.name
-        self.address = address
+        consul = consulate.Consulate()
+
+        timeout = TimeOut(60, interval=1, raise_on_timeout=True)
+        while timeout.tick():
+            service_name = 'vm-inmigrate-{}'.format(self.name)
+            target = consul.catalog.service(service_name)
+            if target is not None:
+                assert len(target) == 1
+                target = target[0]
+                break
+        _log.info(target)
+        self.address = 'http://{}:{}'.format(target['Address'], target['ServicePort'])
 
     def __call__(self):
         self.cookie = self.agent.ceph.auth_cookie()

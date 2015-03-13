@@ -1,0 +1,9 @@
+{
+  "watches": [
+    {
+        "type": "keyprefix",
+    "prefix": "/vm",
+        "handler": "/vagrant/bin/fc-qemu handle-consul-event"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 from .exc import MigrationError, QemuNotRunning
 from .timeout import TimeOut
 from .util import rewrite
+import consulate
 import functools
 import json
 import logging
@@ -56,16 +57,24 @@ class IncomingServer(object):
         s.timeout = 1
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()
-        while self.timeout.tick():
-            _log.debug('[server] %s: waiting (%ds remaining)', self.name,
-                       int(self.timeout.remaining))
-            s.handle_request()
-            if self.finished:
-                break
-        else:
-            _log.info('[server] time out while migrating %s', self.name)
-            return 1
-
+        consul = consulate.Consulate()
+        consul.agent.service.register(
+            'vm-inmigrate-{}'.format(self.name),
+            address=self.bind_address[0],
+            port=self.bind_address[1])
+        try:
+            while self.timeout.tick():
+                _log.debug('[server] %s: waiting (%ds remaining)', self.name,
+                           int(self.timeout.remaining))
+                s.handle_request()
+                if self.finished:
+                    break
+            else:
+                _log.info('[server] time out while migrating %s', self.name)
+                return 1
+        finally:
+            consul.agent.service.deregister(
+                'vm-inmigrate-{}'.format(self.name))
         _log.info('%s: incoming migration completed: %s', self.name,
                   self.finished)
         return 0 if self.finished == 'success' else 1

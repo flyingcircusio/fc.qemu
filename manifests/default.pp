@@ -175,3 +175,11 @@ create-vm = /usr/local/sbin/create-vm -I {name}
 shrink-vm = /usr/local/sbin/shrink-vm {resource_group} {image} {disk}
 ",
 }
+
+
+##### Consul
+
+
+file { "/root/consul.zip":
+    source => "https://dl.bintray.com/mitchellh/consul/0.5.0_linux_amd64.zip"
+}
