@@ -85,6 +85,9 @@ class Qemu(object):
     def start(self):
         self._start()
         assert self.is_running()
+        import consulate
+        consul = consulate.Consulate()
+        consul.agent.service.register('qemu-{}'.format(self.cfg['name']))
 
     def inmigrate(self):
         self._start(['-incoming {}'.format(self.migration_address)])

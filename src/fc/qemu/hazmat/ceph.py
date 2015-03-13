@@ -144,11 +144,14 @@ class Ceph(object):
             conffile=self.ceph_conf,
             name='client.' + CEPH_CLIENT)
         self.rados.connect()
-        self.ioctx = self.rados.open_ioctx(self.cfg['resource_group'])
 
-        self.root = Volume(self.ioctx, self.cfg['name'] + '.root')
-        self.swap = Volume(self.ioctx, self.cfg['name'] + '.swap')
-        self.tmp = Volume(self.ioctx, self.cfg['name'] + '.tmp')
+        pool = self.cfg['resource_group'].encode('ascii')
+        self.ioctx = self.rados.open_ioctx(pool)
+
+        volume_prefix = self.cfg['name'].encode('ascii')
+        self.root = Volume(self.ioctx, volume_prefix + '.root')
+        self.swap = Volume(self.ioctx, volume_prefix + '.swap')
+        self.tmp = Volume(self.ioctx, volume_prefix + '.tmp')
 
         self.volumes = [self.root, self.swap, self.tmp]
 

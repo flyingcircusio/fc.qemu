@@ -21,3 +21,5 @@ report.xml
 .ropeproject
 *.sw[po]
 .vagrant
+.DS_Store
+*.sublime-*

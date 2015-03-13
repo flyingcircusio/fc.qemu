@@ -5,11 +5,14 @@ from .outgoing import Outgoing
 from .timeout import TimeOut
 from fc.qemu.util import rewrite
 from logging import getLogger
+import consulate
 import fcntl
+import json
 import os
 import os.path
 import pkg_resources
 import socket
+import sys
 import yaml
 
 
@@ -71,16 +74,16 @@ class Agent(object):
 
     _configfile_fd = None
 
-    def __init__(self, name):
+    def __init__(self, name, enc=None):
         if '.' in name:
             self.configfile = name
         else:
             self.configfile = '/etc/qemu/vm/{}.cfg'.format(name)
-        try:
-            with open(self.configfile) as f:
-                self.enc = yaml.load(f)
-        except IOError:
-            raise RuntimeError("Could not load {}".format(self.configfile))
+        if enc is not None:
+            # XXX Update the persisted config or should we just get rid of it?
+            self.enc = enc
+        else:
+            self.enc = self._load_enc()
 
         self.cfg = self.enc['parameters']
         self.name = self.enc['name']
@@ -98,7 +101,30 @@ class Agent(object):
                 self.vm_config_template = cand
                 break
 
-    @locked
+    def _load_enc(self):
+        # XXX Load from consul?
+        try:
+            with open(self.configfile) as f:
+                return yaml.load(f)
+        except IOError:
+            raise RuntimeError("Could not load {}".format(self.configfile))
+
+    @classmethod
+    def handle_consul_event(cls):
+        events = json.load(sys.stdin)
+        if not events:
+            return
+        for event in events:
+            try:
+                config = json.loads(event['Value'].decode('base64'))
+                vm = config['name']
+                agent = Agent(vm, config)
+                with agent:
+                    agent.save()
+                    agent.ensure()
+            except Exception:
+                log.exception("Error handling consul event.")
+
     def save(self):
         with open(self.configfile, 'w') as f:
             yaml.dump(self.enc, f)
@@ -116,8 +142,10 @@ class Agent(object):
 
     @locked
     def ensure(self):
-        if not self.cfg['online'] or self.cfg['kvm_host'] != self.this_host:
+        if not self.cfg['online']:
             self.ensure_offline()
+        elif self.cfg['kvm_host'] != self.this_host and self.qemu.is_running():
+            self.outmigrate()
         else:
             self.ensure_online()
             self.ensure_online_disk_size()
@@ -133,10 +161,21 @@ class Agent(object):
         if self.qemu.is_running():
             log.info('VM %s should not be running here', self.name)
             self.stop()
+        log.info("unregistering service for {}".format(self.name))
+        consul = consulate.Consulate()
+        consul.agent.service.deregister('qemu-{}'.format(self.name))
 
     def ensure_online(self):
-        if not self.qemu.is_running():
-            log.info('VM %s should be running here', self.name)
+        if self.qemu.is_running():
+            return
+        log.info('VM %s should be running here', self.name)
+        consul = consulate.Consulate()
+        existing = consul.catalog.service('qemu-{}'.format(self.name))
+        if existing:
+            log.info('Found VM to be running on {} already. '
+                     'Trying an inmigration.'.format(existing))
+            self.inmigrate()
+        else:
             self.start()
 
     def ensure_online_disk_size(self):
@@ -219,7 +258,7 @@ class Agent(object):
 
     @locked
     @running(False)
-    def inmigrate(self, statefile):
+    def inmigrate(self, statefile=Qemu.statefile):
         log.info('Preparing to migrate-in VM %s', self.name)
         self.qemu.statefile = statefile.format(**self.qemu.cfg)
         if self.ceph.is_unlocked():
@@ -237,9 +276,9 @@ class Agent(object):
 
     @locked
     @running(True)
-    def outmigrate(self, target):
+    def outmigrate(self):
         log.info('Migrating VM %s out', self.name)
-        client = Outgoing(self, target)
+        client = Outgoing(self)
         exitcode = client()
         log.info('Out-migration of VM %s finished with exitcode %s',
                  self.name, exitcode)
