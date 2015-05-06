@@ -49,5 +49,5 @@ vm = {
   'location': 'whq'}}
 
 
-session = consulate.Consulate()
-session.kv['/vm/test/{}'.format(vm['name'])] = vm
+session = consulate.Consul()
+session.kv['vm/test/{}'.format(vm['name'])] = vm

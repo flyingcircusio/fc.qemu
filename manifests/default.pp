@@ -179,7 +179,7 @@ shrink-vm = /usr/local/sbin/shrink-vm {resource_group} {image} {disk}
 
 ##### Consul
 
-
-file { "/root/consul.zip":
-    source => "https://dl.bintray.com/mitchellh/consul/0.5.0_linux_amd64.zip"
+exec { 'download consul.zip':
+    creates => '/root/consul.zip',
+    command => 'wget -ck -O /root/consul.zip https://dl.bintray.com/mitchellh/consul/0.5.0_linux_amd64.zip'
 }
