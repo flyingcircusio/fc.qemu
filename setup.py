@@ -30,6 +30,7 @@ setup(
         'setuptools',
         'PyYaml>=3.10',
         'psutil>=2.1',
+        'consulate>=0.4',
     ],
     entry_points={
         'console_scripts': [

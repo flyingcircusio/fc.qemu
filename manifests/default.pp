@@ -1,16 +1,16 @@
 #########################
 # General system stuff
 
-exec { 'apt-get update': }
-
 Exec {
-    path => "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games
-"
+    path => "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games",
+    refreshonly => true,
 }
 
 Package {
     require => Exec["apt-get update"]
 }
+
+exec { 'apt-get update': refreshonly => false }
 
 file { "/etc/environment":
     content => "\
@@ -22,7 +22,9 @@ LC_ALL=\"en_US.utf8\"
 package {
     ["qemu",
      "python-virtualenv",
-     "python-dev"]:
+     "python-dev",
+     "unzip",
+    ]:
     ensure => installed;
 }
 
@@ -48,10 +50,6 @@ StrictHostKeyChecking no
 ",
     owner => "root",
     group => "root";
-}
-
-exec { 'apt-get autoremove':
-    command => "/usr/bin/apt-get -y autoremove"
 }
 
 host { "host1":
@@ -179,7 +177,46 @@ shrink-vm = /usr/local/sbin/shrink-vm {resource_group} {image} {disk}
 
 ##### Consul
 
-exec { 'download consul.zip':
-    creates => '/root/consul.zip',
-    command => 'wget -ck -O /root/consul.zip https://dl.bintray.com/mitchellh/consul/0.5.0_linux_amd64.zip'
+exec { 'install consul':
+    creates => '/usr/local/bin/consul',
+    refreshonly => false,
+    command => "\
+wget -ck -O /root/consul.zip https://dl.bintray.com/mitchellh/consul/0.5.0_linux_amd64.zip
+cd /usr/local/bin
+unzip /root/consul.zip
+    ",
+}
+
+file { '/etc/consul.d': ensure => directory }
+
+file { '/var/lib/consul': ensure => directory }
+
+$join_host = $hostname ? {
+    'host1' => 'host2',
+    default => 'host1',
+}
+
+$bootstrap = $hostname ? {
+    'host1' => '-bootstrap-expect=1',
+    default => '',
+}
+
+file { '/etc/init/consul.conf':
+    content => "\
+description \"Consul\"
+start on runlevel [2345]
+stop on runlevel [!2345]
+respawn
+script
+exec /usr/local/bin/consul agent -server -data-dir=/var/lib/consul -config-dir=/etc/consul.d ${bootstrap} -retry-join=${join_host} -bind=\$(getent ahostsv4 ${hostname} | head -1 | cut -d' ' -f1)
+end script
+",
+}
+
+exec { 'start consul':
+    subscribe => [Exec['install consul'],
+                  File['/etc/consul.d'],
+                  File['/var/lib/consul'],
+                  File['/etc/init/consul.conf']],
+    command => 'stop consul; start consul',
 }
