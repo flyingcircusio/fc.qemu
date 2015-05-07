@@ -156,8 +156,6 @@ def main():
 
     p = sub.add_parser('outmigrate', help='Start outgoing migration for a VM.')
     p.add_argument('vm', metavar='VM', help='name of the VM')
-    p.add_argument(
-        'target', help='URL of the target expecting inmigration')
     p.set_defaults(func='outmigrate')
 
     p = sub.add_parser(

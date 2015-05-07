@@ -100,6 +100,7 @@ class Agent(object):
             if os.path.exists(cand):
                 self.vm_config_template = cand
                 break
+        self.consul = consulate.Consul()
 
     def _load_enc(self):
         # XXX Load from consul?
@@ -162,16 +163,14 @@ class Agent(object):
             log.info('VM %s should not be running here', self.name)
             self.stop()
         log.info("unregistering service for {}".format(self.name))
-        consul = consulate.Consulate()
-        consul.agent.service.deregister('qemu-{}'.format(self.name))
+        self.consul.agent.service.deregister('qemu-{}'.format(self.name))
 
     def ensure_online(self):
         if self.qemu.is_running():
             return
         log.info('VM %s should be running here', self.name)
-        consul = consulate.Consulate()
-        existing = consul.catalog.service('qemu-{}'.format(self.name))
-        if existing:
+        existing = self.consul.catalog.service('qemu-{}'.format(self.name))
+        if existing and existing[0]['Node'] != self.this_host:
             log.info('Found VM to be running on {} already. '
                      'Trying an inmigration.'.format(existing))
             self.inmigrate()
