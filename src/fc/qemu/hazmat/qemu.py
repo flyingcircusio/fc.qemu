@@ -1,6 +1,7 @@
 from ..exc import QemuNotRunning
 from ..timeout import TimeOut
 from .monitor import Monitor
+import consulate
 import glob
 import logging
 import os.path
@@ -40,6 +41,7 @@ class Qemu(object):
         self.cfg = cfg
         for f in ['pidfile', 'configfile', 'argfile', 'migration_address']:
             setattr(self, f, getattr(self, f).format(**cfg))
+        self.consul = consulate.Consul()
 
     def __enter__(self):
         self.monitor = Monitor(self.cfg['id'] + self.MONITOR_OFFSET)
@@ -85,6 +87,7 @@ class Qemu(object):
     def start(self):
         self._start()
         assert self.is_running()
+        self.consul.agent.service.register('qemu-{}'.format(self.cfg['name']))
 
     def inmigrate(self):
         self._start(['-incoming {}'.format(self.migration_address)])

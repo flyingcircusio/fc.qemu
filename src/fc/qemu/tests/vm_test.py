@@ -4,6 +4,8 @@ import pkg_resources
 import pytest
 import shutil
 import subprocess
+import traceback
+import sys
 
 
 @pytest.yield_fixture
@@ -26,7 +28,10 @@ def vm(clean_environment):
     vm.timeout_graceful = 1
     vm.__enter__()
     yield vm
-    vm.__exit__(None, None, None)
+    exc_info = sys.exc_info()
+    vm.__exit__(*exc_info)
+    if len(exc_info):
+        print(traceback.print_tb(exc_info[2]))
     os.unlink('/etc/qemu/vm/simplevm.cfg')
 
 
@@ -90,47 +95,16 @@ lock: test00.tmp@host1
     assert status() == 'offline\n'
 
 
-def test_simple_vm_lifecycle_ensure_moving_away(vm, capsys, caplog):
+def test_crashed_vm_clean_restart(vm, capsys):
     def status():
         capsys.readouterr()
         vm.status()
-        out, err = capsys.readouterr()
+        out, _err = capsys.readouterr()
         return out
 
     assert status() == 'offline\n'
 
     vm.ensure()
-
-    out, err = capsys.readouterr()
-    assert 'VM test00 should be running here' in caplog.text()
-    assert status() == """\
-online
-lock: test00.root@host1
-lock: test00.swap@host1
-lock: test00.tmp@host1
-"""
-
-    vm.cfg['kvm_host'] = 'somewhereelse'
-    vm.save()
-    vm.ensure()
-    assert status() == 'offline\n'
-
-
-def test_crashed_vm_clean_restart(vm, capsys, caplog):
-    def status():
-        capsys.readouterr()
-        vm.status()
-        out, err = capsys.readouterr()
-        return out
-
-    assert status() == """\
-offline
-"""
-
-    vm.ensure()
-
-    out, err = capsys.readouterr()
-    assert 'VM test00 should be running here' in caplog.text()
     assert status() == """\
 online
 lock: test00.root@host1
