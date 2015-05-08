@@ -95,6 +95,20 @@ lock: test00.tmp@host1
     assert status() == 'offline\n'
 
 
+def test_vm_not_running_here(vm, capsys):
+    def status():
+        capsys.readouterr()
+        vm.status()
+        out, err = capsys.readouterr()
+        return out
+
+    assert status() == 'offline\n'
+
+    vm.cfg['kvm_host'] = 'otherhost'
+    vm.ensure()
+    assert status() == 'offline\n'
+
+
 def test_crashed_vm_clean_restart(vm, capsys):
     def status():
         capsys.readouterr()
