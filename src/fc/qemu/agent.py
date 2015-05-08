@@ -145,8 +145,11 @@ class Agent(object):
     def ensure(self):
         if not self.cfg['online']:
             self.ensure_offline()
-        elif self.cfg['kvm_host'] != self.this_host and self.qemu.is_running():
-            self.outmigrate()
+        elif self.cfg['kvm_host'] != self.this_host:
+            if self.qemu.is_running():
+                self.outmigrate()
+            else:
+                self.ensure_offline()
         else:
             self.ensure_online()
             self.ensure_online_disk_size()
@@ -162,7 +165,7 @@ class Agent(object):
         if self.qemu.is_running():
             log.info('VM %s should not be running here', self.name)
             self.stop()
-        log.info("unregistering service for {}".format(self.name))
+        log.debug('unregistering service for {}'.format(self.name))
         self.consul.agent.service.deregister('qemu-{}'.format(self.name))
 
     def ensure_online(self):
