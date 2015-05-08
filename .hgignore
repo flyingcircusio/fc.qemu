@@ -6,6 +6,7 @@ ceph.*
 .coverage
 develop-eggs/
 dist
+.DS_Store
 *.egg
 *.egg-info
 htmlcov
@@ -19,5 +20,7 @@ local
 .Python
 report.xml
 .ropeproject
+*.sublime-*
 *.sw[po]
+tags
 .vagrant

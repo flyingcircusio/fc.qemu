@@ -1,4 +1,5 @@
 from .timeout import TimeOut
+import consulate
 import logging
 import socket
 import xmlrpclib
@@ -12,10 +13,10 @@ class Outgoing(object):
     target = None
     cookie = None
 
-    def __init__(self, agent, address):
+    def __init__(self, agent):
         self.agent = agent
         self.name = agent.name
-        self.address = address
+        self.consul = consulate.Consul()
 
     def __call__(self):
         self.cookie = self.agent.ceph.auth_cookie()
@@ -49,14 +50,29 @@ class Outgoing(object):
                                'after a migration failure. Destroying it.')
                 self.destroy()
 
+    def locate_inmigrate_service(self, timeout=60):
+        service_name = 'vm-inmigrate-{}'.format(self.name)
+        timeout = TimeOut(timeout, interval=1, raise_on_timeout=True)
+        while timeout.tick():
+            target = self.consul.catalog.service(service_name)
+            if target:
+                _log.debug(target)
+                if len(target) > 1:
+                    raise RuntimeError(
+                        'multiple Consul services defined for', service_name)
+                target = target[0]
+                return 'http://{}:{}'.format(
+                    target['Address'], target['ServicePort'])
+        raise RuntimeError('failed to locate inmigrate service', service_name)
+
     def connect(self, timeout=600):
-        _log.debug('connecting to {}'.format(self.address))
+        address = self.locate_inmigrate_service()
+        _log.debug('connecting to {}'.format(address))
 
         timeout = TimeOut(timeout, interval=3, raise_on_timeout=True)
         while timeout.tick():
             try:
-                self.target = xmlrpclib.ServerProxy(
-                    self.address, allow_none=True)
+                self.target = xmlrpclib.ServerProxy(address, allow_none=True)
                 self.target.ping(self.cookie)
                 break
             # XXX the default socket timeout is quite high. we might wanna

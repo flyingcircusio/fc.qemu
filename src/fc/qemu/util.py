@@ -19,3 +19,13 @@ def rewrite(filename):
             return
         filename_tmp = tf.name
     os.rename(filename_tmp, filename)
+
+
+def parse_address(addr):
+    if addr.startswith('['):
+        host, port = addr[1:].split(']:')
+    else:
+        host, port = addr.split(':')
+    return host, int(port)
+
+

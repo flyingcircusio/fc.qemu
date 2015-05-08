@@ -97,7 +97,7 @@ def init_logging(verbose=True):
     if verbose:
         level = logging.DEBUG
     else:
-        level = logging.INFO
+        level = logging.DEBUG
     logging.basicConfig(
         filename='/var/log/fc-qemu.log',
         format='%(asctime)s [%(process)d] %(levelname)s %(message)s',
@@ -156,16 +156,20 @@ def main():
 
     p = sub.add_parser('outmigrate', help='Start outgoing migration for a VM.')
     p.add_argument('vm', metavar='VM', help='name of the VM')
-    p.add_argument(
-        'target', help='URL of the target expecting inmigration')
     p.set_defaults(func='outmigrate')
+
+    p = sub.add_parser(
+        'handle-consul-event',
+        help='Handle a change in VM config distributed via consul.')
+    p.set_defaults(func='handle_consul_event')
 
     args = a.parse_args()
     func = args.func
-    vm = args.vm
+    vm = getattr(args, 'vm', None)
     kwargs = dict(args._get_kwargs())
     del kwargs['func']
-    del kwargs['vm']
+    if 'vm' in kwargs:
+        del kwargs['vm']
     del kwargs['daemonize']
     del kwargs['verbose']
 
@@ -175,9 +179,14 @@ def main():
     try:
         init_logging(args.verbose)
         load_system_config()
-        agent = Agent(vm)
-        with agent:
+        if vm is None:
+            # Expecting a class/static method
+            agent = Agent
             sys.exit(getattr(agent, func)(**kwargs) or 0)
+        else:
+            agent = Agent(vm)
+            with agent:
+                sys.exit(getattr(agent, func)(**kwargs) or 0)
     except Exception as e:
         logger.exception(e)
         sys.exit(69)  # EX_UNAVAILABLE

@@ -1,6 +1,7 @@
 from .exc import MigrationError, QemuNotRunning
 from .timeout import TimeOut
-from .util import rewrite
+from .util import rewrite, parse_address
+import consulate
 import functools
 import json
 import logging
@@ -20,14 +21,6 @@ def authenticated(f):
     return wrapper
 
 
-def parse_address(addr):
-    if addr.startswith('['):
-        host, port = addr[1:].split(']:')
-    else:
-        host, port = addr.split(':')
-    return host, int(port)
-
-
 class IncomingServer(object):
     """Run an XML-RPC server to orchestrate a single migration."""
 
@@ -40,6 +33,7 @@ class IncomingServer(object):
         self.ceph = agent.ceph
         self.bind_address = parse_address(self.agent.migration_ctl_address)
         self.timeout = TimeOut(600)
+        self.consul = consulate.Consul()
 
     _now = time.time
 
@@ -56,16 +50,23 @@ class IncomingServer(object):
         s.timeout = 1
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()
-        while self.timeout.tick():
-            _log.debug('[server] %s: waiting (%ds remaining)', self.name,
-                       int(self.timeout.remaining))
-            s.handle_request()
-            if self.finished:
-                break
-        else:
-            _log.info('[server] time out while migrating %s', self.name)
-            return 1
-
+        self.consul.agent.service.register(
+            'vm-inmigrate-{}'.format(self.name),
+            address=self.bind_address[0],
+            port=self.bind_address[1])
+        try:
+            while self.timeout.tick():
+                _log.debug('[server] %s: waiting (%ds remaining)', self.name,
+                           int(self.timeout.remaining))
+                s.handle_request()
+                if self.finished:
+                    break
+            else:
+                _log.info('[server] time out while migrating %s', self.name)
+                return 1
+        finally:
+            self.consul.agent.service.deregister(
+                'vm-inmigrate-{}'.format(self.name))
         _log.info('%s: incoming migration completed: %s', self.name,
                   self.finished)
         return 0 if self.finished == 'success' else 1

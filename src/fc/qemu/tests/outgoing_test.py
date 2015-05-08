@@ -5,7 +5,7 @@ import mock
 
 @pytest.fixture
 def outgoing():
-    o = Outgoing(mock.MagicMock(), None)
+    o = Outgoing(mock.MagicMock())
     o.target = mock.MagicMock()
     return o
 
