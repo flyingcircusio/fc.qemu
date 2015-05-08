@@ -172,7 +172,7 @@ class Agent(object):
         existing = self.consul.catalog.service('qemu-{}'.format(self.name))
         if existing and existing[0]['Node'] != self.this_host:
             log.info('Found VM to be running on {} already. '
-                     'Trying an inmigration.'.format(existing))
+                     'Trying an inmigration.'.format(existing[0]['Node']))
             self.inmigrate()
         else:
             self.start()
