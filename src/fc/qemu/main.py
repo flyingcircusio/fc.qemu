@@ -97,11 +97,14 @@ def init_logging(verbose=True):
     if verbose:
         level = logging.DEBUG
     else:
-        level = logging.DEBUG
+        level = logging.INFO
     logging.basicConfig(
         filename='/var/log/fc-qemu.log',
         format='%(asctime)s [%(process)d] %(levelname)s %(message)s',
         level=level)
+
+    # silence requests package -- we assume that it's just doing its job
+    logging.getLogger('requests').setLevel(logging.CRITICAL)
 
     console = logging.StreamHandler(sys.stdout)
     console.setLevel(level)
@@ -110,7 +113,7 @@ def init_logging(verbose=True):
 
 def main():
     a = argparse.ArgumentParser(description="Qemu VM agent")
-    a.add_argument('--verbose', '-v', action='store_true',
+    a.add_argument('--verbose', '-v', action='store_true', default=False,
                    help='Increase logging level.')
     a.add_argument('--daemonize', '-D', action='store_true',
                    help="Run command in background.")
