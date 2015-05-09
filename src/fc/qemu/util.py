@@ -1,4 +1,5 @@
 import contextlib
+import filecmp
 import os
 import tempfile
 
@@ -18,7 +19,10 @@ def rewrite(filename):
             # to be put in place actually but also doesn't want to error out.
             return
         filename_tmp = tf.name
-    os.rename(filename_tmp, filename)
+    if os.path.exists(filename) and filecmp.cmp(filename, filename_tmp):
+        os.unlink(filename_tmp)
+    else:
+        os.rename(filename_tmp, filename)
 
 
 def parse_address(addr):
@@ -29,3 +33,18 @@ def parse_address(addr):
     return host, int(port)
 
 
+def locate_live_service(consul, service_id):
+    """Locate Consul service with at least one passing health check.
+
+    It is an error if multiple services with passing checks are
+    found.
+    """
+    passing = lambda checks: any(
+        check['Status'] == 'passing' for check in checks
+        if check['CheckID'] == 'service:' + service_id)
+    live = [svc for svc in consul.health.service(service_id)
+            if passing(svc['Checks'])]
+    if len(live) > 1:
+        raise RuntimeError('multiple services with passing checks found',
+                            service_id)
+    return live[0]['Service'] if len(live) else None

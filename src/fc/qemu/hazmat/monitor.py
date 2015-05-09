@@ -37,7 +37,7 @@ class Monitor(object):
         """
         if not self.conn:
             self._connect()
-        _log.debug('[mon] (qemu) {}'.format(command))
+        _log.debug('[mon] (qemu:{}) {}'.format(self.port, command))
         self.conn.write(command + '\n')
         res = self.conn.read_until('(qemu)', self.timeout)
         if res == '':  # Connection went away
@@ -47,8 +47,7 @@ class Monitor(object):
         r_strip_echo = re.compile(r'^.*' + re.escape(command) + '\S*\r\n')
         output = r_strip_echo.sub('', res).replace('\r\n', '\n')
         output = output.replace('(qemu)', '')
-        show_res = output.replace('\n', '\n[mon] ')
-        _log.debug('[mon] {}'.format(show_res))
+        _log.debug('[mon] {}'.format(output.strip()))
         return output
 
     def status(self):
