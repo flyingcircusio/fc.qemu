@@ -26,13 +26,13 @@ class IncomingServer(object):
 
     finished = False
 
-    def __init__(self, agent):
+    def __init__(self, agent, timeout=60):
         self.agent = agent
         self.name = agent.name
         self.qemu = agent.qemu
         self.ceph = agent.ceph
         self.bind_address = parse_address(self.agent.migration_ctl_address)
-        self.timeout = TimeOut(600)
+        self.timeout = TimeOut(timeout)
         self.consul = consulate.Consul()
 
     _now = time.time
