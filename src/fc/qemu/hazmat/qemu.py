@@ -5,7 +5,9 @@ import glob
 import logging
 import os.path
 import psutil
+import socket
 import subprocess
+import time
 import yaml
 
 
@@ -16,7 +18,7 @@ class Qemu(object):
 
     executable = 'qemu-system-x86_64'
 
-    # This cfg is the cfg from the agent.
+    # These variables get overridden in agent init or load_system_config()
     cfg = None
     require_kvm = True
     migration_address = None
@@ -34,12 +36,18 @@ class Qemu(object):
     pidfile = '/run/qemu.{name}.pid'
     configfile = '/run/qemu.{name}.cfg'
     argfile = '/run/qemu.{name}.args'
-    statefile = '/run/qemu.{name}.state'
 
     def __init__(self, cfg):
         self.cfg = cfg
+        # expand template keywords in configuration variables
         for f in ['pidfile', 'configfile', 'argfile', 'migration_address']:
             setattr(self, f, getattr(self, f).format(**cfg))
+        # We are running qemu with chroot at the moment which causes us to
+        # not be able to resolve names. :( See #13837.
+        a = self.migration_address.split(':')
+        if a[0] == 'tcp':
+            a[1] = socket.gethostbyname(a[1])
+        self.migration_address = ':'.join(a)
 
     def __enter__(self):
         self.monitor = Monitor(self.cfg['id'] + self.MONITOR_OFFSET)
@@ -88,6 +96,7 @@ class Qemu(object):
 
     def inmigrate(self):
         self._start(['-incoming {}'.format(self.migration_address)])
+        time.sleep(1)
         self.monitor.assert_status('VM status: paused (inmigrate)')
         return self.migration_address
 
@@ -176,7 +185,7 @@ class Qemu(object):
         with open(self.configfile, 'w') as f:
             f.write(self.local_config)
         with open(self.argfile+'.in', 'w') as f:
-            yaml.dump(self.args, f)
+            yaml.safe_dump(self.args, f)
 
         # Qemu tends to overwrite the pid file incompletely -> truncate
         open(self.pidfile, 'w').close()
@@ -184,6 +193,8 @@ class Qemu(object):
     def get_running_config(self):
         """Return the host-independent version of the current running
         config."""
-        args = yaml.load(open(self.argfile+'.in', 'r').read())
-        config = open(self.configfile+'.in', 'r').read()
+        with open(self.argfile + '.in') as a:
+            args = yaml.safe_load(a.read())
+        with open(self.configfile + '.in') as c:
+            config = c.read()
         return args, config

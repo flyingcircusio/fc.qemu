@@ -154,7 +154,6 @@ def main():
 
     p = sub.add_parser('inmigrate', help='Start incoming migration for a VM.')
     p.add_argument('vm', metavar='VM', help='name of the VM')
-    p.add_argument('--statefile', default=Qemu.statefile)
     p.set_defaults(func='inmigrate')
 
     p = sub.add_parser('outmigrate', help='Start outgoing migration for a VM.')
