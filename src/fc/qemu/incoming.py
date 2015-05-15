@@ -1,6 +1,6 @@
 from .exc import MigrationError, QemuNotRunning
 from .timeout import TimeOut
-from .util import rewrite, parse_address
+from .util import parse_address
 import consulate
 import functools
 import json
@@ -32,21 +32,18 @@ class IncomingServer(object):
         self.qemu = agent.qemu
         self.ceph = agent.ceph
         self.bind_address = parse_address(self.agent.migration_ctl_address)
-        self.timeout = TimeOut(timeout)
+        self.timeout = TimeOut(timeout, raise_on_timeout=True)
         self.consul = consulate.Consul()
 
     _now = time.time
+
+# XXX consul mig-service as wrapper
 
     def run(self):
         s = SimpleXMLRPCServer.SimpleXMLRPCServer(
             self.bind_address, logRequests=False, allow_none=True)
         url = 'http://{}:{}/'.format(*self.bind_address)
         _log.info('%s: listening on %s', self.name, url)
-        with rewrite(self.qemu.statefile) as f:
-            json.dump({'migration-ctl-url': url}, f)
-            f.write('\n')
-        _log.info('%s: created migration state file %s', self.name,
-                  self.qemu.statefile)
         s.timeout = 1
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()
@@ -61,15 +58,16 @@ class IncomingServer(object):
                 s.handle_request()
                 if self.finished:
                     break
-            else:
-                _log.info('[server] time out while migrating %s', self.name)
-                return 1
         finally:
             self.consul.agent.service.deregister(
                 'vm-inmigrate-{}'.format(self.name))
-        _log.info('%s: incoming migration completed: %s', self.name,
+        _log.info('%s: incoming migration returns %s', self.name,
                   self.finished)
-        return 0 if self.finished == 'success' else 1
+        if self.finished == 'success':
+            return 0
+        else:
+            self.qemu.destroy()
+            return 1
 
     def extend_cutoff_time(self, timeout=30):
         self.timeout.cutoff = self._now() + timeout
@@ -80,6 +78,8 @@ class IncomingServer(object):
         try:
             return self.qemu.inmigrate()
         except Exception:
+            _log.error('%s: incoming migration failed, releasing locks',
+                       self.name)
             self.ceph.stop()
             raise
 
@@ -146,8 +146,8 @@ class IncomingAPI(object):
     def prepare_incoming(self, args, config):
         """Spawn KVM process ready to receive the VM.
 
-        `addr` is a host name of IP address which specifies where KVM
-        should open its port.
+        `args` and `config` should be the output of
+        qemu.get_running_config() on the sending side.
         """
         _log.debug('[server] prepare_incoming()')
         return self.server.prepare_incoming(args, config)

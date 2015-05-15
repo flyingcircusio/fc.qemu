@@ -91,7 +91,7 @@ class Outgoing(object):
         _log.info('%s: preparing remote environment', self.name)
         migration_address = self.target.prepare_incoming(
             self.cookie, args, config)
-        _log.info('%s: starting transfer', self.name)
+        _log.info('%s: starting transfer to %s', self.name, migration_address)
         self.agent.qemu.migrate(migration_address)
         # XXX The status polling is a bit fuzzy: we noticed an additional
         # intermediate status "setup" while running this in production.
@@ -113,7 +113,7 @@ class Outgoing(object):
     def rescue(self):
         """Outgoing rescue: try to rescue the remote side first."""
         _log.warning('%s: something went wrong, trying to rescue', self.name)
-        if self.target:
+        if self.target is not None:
             try:
                 self.target.rescue(self.cookie)
                 _log.info('%s: remote rescue successful, destroying our '

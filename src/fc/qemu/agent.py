@@ -190,6 +190,15 @@ class Agent(object):
                  self.cfg['disk'])
         self.qemu.resize_root(target_size)
 
+    def consul_register(self):
+        """Register running VM with Consul."""
+        self.consul.agent.service.register(
+            'qemu-{}'.format(self.name),
+            address=self.this_host,
+            interval='5s',
+            check='test -e /proc/$(< /run/qemu.{}.pid )/mem || exit 2'.\
+                format(self.name))
+
     @locked
     @running(False)
     def start(self):
@@ -199,12 +208,7 @@ class Agent(object):
         try:
             log.info('Starting VM %s', self.name)
             self.qemu.start()
-            self.consul.agent.service.register(
-                'qemu-{}'.format(self.name),
-                address=self.this_host,
-                interval='5s',
-                check='test -e /proc/$(< /run/qemu.{}.pid )/mem || exit 2'.\
-                    format(self.name))
+            self.consul_register()
         except QemuNotRunning:
             self.ceph.stop
 
@@ -259,26 +263,16 @@ class Agent(object):
 
     @locked
     @running(False)
-    def delete(self):
-        # XXX require a safety belt: make an online check that this
-        # VM really should be deleted.
-        pass
-
-    @locked
-    @running(False)
-    def inmigrate(self, statefile=Qemu.statefile):
+    def inmigrate(self):
         log.info('Preparing to migrate-in VM %s', self.name)
-        self.qemu.statefile = statefile.format(**self.qemu.cfg)
         if self.ceph.is_unlocked():
-            log.info("VM %s isn't running at all. Starting it directly.",
+            log.info("%s: VM isn't running at all, starting it directly",
                      self.name)
-            with rewrite(statefile) as f:
-                f.write('{}\n')
             self.start()
             return
         server = IncomingServer(self)
         exitcode = server.run()
-        log.info('In-migration of VM %s finished with exitcode %s', self.name,
+        log.info('%s: inmigration finished with exitcode %s', self.name,
                  exitcode)
         return exitcode
 
@@ -286,6 +280,8 @@ class Agent(object):
     @running(True)
     def outmigrate(self):
         log.info('Migrating VM %s out', self.name)
+        # re-register in case services got lost during Consul restart
+        self.consul_register()
         client = Outgoing(self)
         exitcode = client()
         log.info('Out-migration of VM %s finished with exitcode %s',
