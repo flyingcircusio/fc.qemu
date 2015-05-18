@@ -2,8 +2,8 @@ Release notes
 =============
 
 
-0.7.0 (unreleased)
-------------------
+0.7 (2015-05-18)
+----------------
 
 - Consul service registration (#15313).
 - Coordinate migration via Consul (#15313).
