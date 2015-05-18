@@ -36,12 +36,12 @@ def parse_address(addr):
 def locate_live_service(consul, service_id):
     """Locate Consul service with at least one passing health check.
 
-    It is an error if multiple services with passing checks are
-    found.
+    It is an error if multiple live services with the same service name
+    are found.
     """
-    passing = lambda checks: any(
-        check['Status'] == 'passing' for check in checks
-        if check['CheckID'] == 'service:' + service_id)
+    passing = lambda checks: (
+        any(check['Status'] == 'passing' for check in checks) and
+        not any(check['Status'] == 'critical' for check in checks))
     live = [svc for svc in consul.health.service(service_id)
             if passing(svc['Checks'])]
     if len(live) > 1:
