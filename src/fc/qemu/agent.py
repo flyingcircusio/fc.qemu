@@ -284,6 +284,7 @@ class Agent(object):
         self.consul_register()
         client = Outgoing(self)
         exitcode = client()
+        self.consul.agent.service.deregister('qemu-{}'.format(self.name))
         log.info('Out-migration of VM %s finished with exitcode %s',
                  self.name, exitcode)
         return exitcode

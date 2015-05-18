@@ -2,6 +2,7 @@ from .exc import MigrationError, QemuNotRunning
 from .timeout import TimeOut
 from .util import parse_address
 import consulate
+import contextlib
 import functools
 import json
 import logging
@@ -37,7 +38,21 @@ class IncomingServer(object):
 
     _now = time.time
 
-# XXX consul mig-service as wrapper
+    @contextlib.contextmanager
+    def inmigrate_service_registered(self):
+        """Context manager for in-migration.
+
+        Registers an inmigration service which keeps active as long as the
+        with-block is executing.
+        """
+        svcname = 'vm-inmigrate-' + self.name,
+        self.consul.agent.service.register(
+            svcname, address=self.bind_address[0], port=self.bind_address[1],
+            ttl=self.timeout.remaining)
+        try:
+            yield
+        finally:
+            self.consul.agent.service.deregister(svcname)
 
     def run(self):
         s = SimpleXMLRPCServer.SimpleXMLRPCServer(
@@ -47,20 +62,13 @@ class IncomingServer(object):
         s.timeout = 1
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()
-        self.consul.agent.service.register(
-            'vm-inmigrate-{}'.format(self.name),
-            address=self.bind_address[0],
-            port=self.bind_address[1])
-        try:
+        with self.inmigrate_service_registered():
             while self.timeout.tick():
                 _log.debug('[server] %s: waiting (%ds remaining)', self.name,
                            int(self.timeout.remaining))
                 s.handle_request()
                 if self.finished:
                     break
-        finally:
-            self.consul.agent.service.deregister(
-                'vm-inmigrate-{}'.format(self.name))
         _log.info('%s: incoming migration returns %s', self.name,
                   self.finished)
         if self.finished == 'success':
