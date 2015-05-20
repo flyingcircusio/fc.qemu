@@ -51,34 +51,35 @@ class Outgoing(object):
                 self.destroy()
 
     def locate_inmigrate_service(self, timeout=60):
-        service_name = 'vm-inmigrate-{}'.format(self.name)
-        timeout = TimeOut(timeout, interval=1, raise_on_timeout=True)
+        service_name = 'vm-inmigrate-' + self.name
+        timeout = TimeOut(timeout, interval=2)
         while timeout.tick():
-            target = self.consul.catalog.service(service_name)
-            if target:
-                _log.debug(target)
-                if len(target) > 1:
-                    raise RuntimeError(
-                        'multiple Consul services defined for', service_name)
-                target = target[0]
+            inmig = self.consul.catalog.service(service_name)
+            if inmig:
+                if len(inmig) > 1:
+                    raise RuntimeError('found more than one inmig services '
+                                       'for {}'.format(self.name), inmig)
+                inmig = inmig[0]
+                _log.debug('found incoming service %r', inmig)
                 return 'http://{}:{}'.format(
-                    target['Address'], target['ServicePort'])
+                    inmig['ServiceAddress'], inmig['ServicePort'])
         raise RuntimeError('failed to locate inmigrate service', service_name)
 
-    def connect(self, timeout=600):
-        address = self.locate_inmigrate_service()
-        _log.debug('connecting to {}'.format(address))
-
+    def connect(self, timeout=60):
         timeout = TimeOut(timeout, interval=3, raise_on_timeout=True)
         while timeout.tick():
             try:
+                address = self.locate_inmigrate_service()
+                _log.debug('connecting to {}'.format(address))
                 self.target = xmlrpclib.ServerProxy(address, allow_none=True)
                 self.target.ping(self.cookie)
                 break
             # XXX the default socket timeout is quite high. we might wanna
             # lower it on this side via socket.settimeout()
             except socket.error:
-                _log.debug('failed connecting, retrying later')
+                _log.debug(
+                    'cannot establish XML-RPC connection, retrying for %ds',
+                    timeout.remaining)
 
     def transfer_locks(self):
         self.agent.ceph.unlock()
@@ -90,7 +91,7 @@ class Outgoing(object):
         _log.info('%s: preparing remote environment', self.name)
         migration_address = self.target.prepare_incoming(
             self.cookie, args, config)
-        _log.info('%s: starting transfer', self.name)
+        _log.info('%s: starting transfer to %s', self.name, migration_address)
         self.agent.qemu.migrate(migration_address)
         # XXX The status polling is a bit fuzzy: we noticed an additional
         # intermediate status "setup" while running this in production.
@@ -111,23 +112,23 @@ class Outgoing(object):
 
     def rescue(self):
         """Outgoing rescue: try to rescue the remote side first."""
-        _log.warning('%s: something went wrong, trying to rescue',
-                     self.name)
-        try:
-            self.target.rescue(self.cookie)
-            _log.info('%s: remote rescue successful, destroying our instance',
-                      self.name)
-            self.destroy()
-            return
-        except Exception as e:
-            _log.debug(e)
+        _log.warning('%s: something went wrong, trying to rescue', self.name)
+        if self.target is not None:
             try:
-                _log.info('%s: remote rescue failed, trying remote destroy',
-                          self.name)
-                self.target.destroy(self.cookie)
+                self.target.rescue(self.cookie)
+                _log.info('%s: remote rescue successful, destroying our '
+                          'instance', self.name)
+                self.destroy()
+                return
             except Exception as e:
                 _log.debug(e)
-                _log.info('%s: failed to destroy remote VM', self.name)
+                try:
+                    _log.info('%s: remote rescue failed, trying remote '
+                              'destroy', self.name)
+                    self.target.destroy(self.cookie)
+                except Exception as e:
+                    _log.debug(e)
+                    _log.info('%s: failed to destroy remote VM', self.name)
         try:
             self.agent.ceph.lock()
             _log.info('%s: re-acquired Ceph locks successfully, continuing '

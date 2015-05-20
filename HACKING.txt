@@ -1,7 +1,10 @@
 fc.qemu development
 ===================
 
-Prepare working copy in a personal box::
+Workstation development
+-----------------------
+
+Prepare Vagrant environment::
 
     host$ hg clone https://bitbucket.org/flyingcirucs/fc.qemu
     host$ cd fc.qemu
@@ -15,5 +18,21 @@ Run the tests::
 
 Test execution automatically updates a coverage report in the `htmlcov`
 directory.
+
+Run end-to-end migration test::
+
+    vm$ cd /vagrant
+    vm$ sudo ./test-migration.sh
+
+
+Real-world testing on FCIO DEV network
+--------------------------------------
+
+* Check out the source on a VM host
+* Create virtualenv: `virtualenv --system-site-packages .`
+* Set Puppet stopper
+* Make symlink /usr/src/fc.qemu point to the local checkout
+* Install fc-qemu package in development mode:
+  `ACCEPT_KEYWORDS="**" emerge -1 fc-qemu`
 
 .. vim: set ft=rst:

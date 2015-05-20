@@ -2,8 +2,15 @@ Release notes
 =============
 
 
-0.7.0 (unreleased)
+0.7.1 (unreleased)
 ------------------
+
+- Fix bug with inmigration Consul service registration (#15313).
+- Change KV name name space for nodes from "vm/" to "node/" (#14920).
+
+
+0.7 (2015-05-18)
+----------------
 
 - Consul service registration (#15313).
 - Coordinate migration via Consul (#15313).
