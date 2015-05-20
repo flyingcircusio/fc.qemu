@@ -90,7 +90,7 @@ lock: test00.tmp@host1
 """
 
     vm.cfg['online'] = False
-    vm.save()
+    vm.save_enc()
     vm.ensure()
     assert status() == 'offline\n'
 
