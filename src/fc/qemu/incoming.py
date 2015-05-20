@@ -45,7 +45,7 @@ class IncomingServer(object):
         Registers an inmigration service which keeps active as long as the
         with-block is executing.
         """
-        svcname = 'vm-inmigrate-' + self.name,
+        svcname = 'vm-inmigrate-' + self.name
         self.consul.agent.service.register(
             svcname, address=self.bind_address[0], port=self.bind_address[1],
             ttl=self.timeout.remaining)

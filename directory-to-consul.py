@@ -13,7 +13,7 @@ def enc_load():
     res = {}
     for vm in directory.list_virtual_machines(location):
         rg = vm['parameters']['resource_group']
-        key = 'vm/{}/{}'.format(rg, vm['name'])
+        key = 'node/{}/{}'.format(rg, vm['name'])
         res[key] = vm
     return res
 
@@ -21,7 +21,7 @@ def enc_load():
 def main():
     vms = enc_load()
     c = consulate.Consul()
-    kv_present = c.kv.find('vm/')
+    kv_present = c.kv.find('node/')
     for deleted in set(kv_present.keys()) - set(vms.keys()):
         print('deleting VM %s' % deleted)
         del c.kv[deleted]
