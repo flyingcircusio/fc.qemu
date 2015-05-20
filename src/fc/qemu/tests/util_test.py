@@ -20,10 +20,18 @@ def test_rewrite(tmp):
     old_ino = os.fstat(tmp.fileno()).st_ino
     with rewrite(tmp.name) as f:
         f.write('new content\n')
-        f.flush()
     with open(tmp.name) as f:
         assert 'new content\n' == f.read()
     assert old_ino != os.stat(tmp.name).st_ino
+
+
+def test_rewrite_should_ignore_idempotent_rewrite(tmp):
+    tmp.write('old content\n')
+    tmp.flush()
+    old_ino = os.fstat(tmp.fileno()).st_ino
+    with rewrite(tmp.name) as f:
+        f.write('old content\n')
+    assert old_ino == os.stat(tmp.name).st_ino
 
 
 def test_rewrite_ignore_deleted(tmp):

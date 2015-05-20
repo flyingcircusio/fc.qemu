@@ -6,8 +6,12 @@ import tempfile
 
 @contextlib.contextmanager
 def rewrite(filename):
-    """Rewrite an existing file atomically to avoid programs running in
-    parallel to have race conditions while reading."""
+    """Rewrite an existing file atomically.
+
+    Clients are allowed to delete the tmpfile to signal that they don't
+    want to have it updated.
+    """
+
     with tempfile.NamedTemporaryFile(
             dir=os.path.dirname(filename), prefix=os.path.basename(filename),
             delete=False) as tf:
@@ -15,13 +19,14 @@ def rewrite(filename):
             os.chmod(tf.name, os.stat(filename).st_mode & 0o7777)
         yield tf
         if not os.path.exists(tf.name):
-            # Allow our clients to remove the file in case it doesn't want it
-            # to be put in place actually but also doesn't want to error out.
             return
         filename_tmp = tf.name
-    if os.path.exists(filename) and filecmp.cmp(filename, filename_tmp):
+    if (os.path.exists(filename) and
+            filecmp.cmp(filename, filename_tmp, shallow=False)):
+        print('unlink ' + filename_tmp)
         os.unlink(filename_tmp)
     else:
+        print('rename ' + filename_tmp + ' to ' + filename)
         os.rename(filename_tmp, filename)
 
 
@@ -46,5 +51,5 @@ def locate_live_service(consul, service_id):
             if passing(svc['Checks'])]
     if len(live) > 1:
         raise RuntimeError('multiple services with passing checks found',
-                            service_id)
+                           service_id)
     return live[0]['Service'] if len(live) else None
