@@ -11,6 +11,11 @@ Prepare Vagrant environment::
     host$ vagrant up
     host$ vagrant ssh
 
+Prepare virtualenv::
+
+    virtualenv --system-site-packages .
+    bin/pip install -r requirements.txt
+
 Run the tests::
 
     vm$ cd /vagrant

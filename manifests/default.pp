@@ -21,8 +21,9 @@ LC_ALL=\"en_US.utf8\"
 
 package {
     ["qemu",
-     "python-virtualenv",
+     "ceph-common",
      "python-dev",
+     "python-virtualenv",
      "unzip",
     ]:
     ensure => installed;
