@@ -338,7 +338,7 @@ class Agent(object):
             '-serial file:/var/log/vm/{name}.log',
             '-display vnc={{vnc}}',
             '-pidfile {{pidfile}}',
-            '-vga cirrus',
+            '-vga std',
             '-m {memory}',
             '-watchdog i6300esb',
             '-watchdog-action reset',

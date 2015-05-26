@@ -19,7 +19,7 @@ def load_system_config():
     # QEMU
     accelerator = sysconfig.get('qemu', 'accelerator')
     if accelerator:
-        Agent.accelerator = '   accel = "{}"'.format(accelerator)
+        Agent.accelerator = '  accel = "{}"'.format(accelerator)
     else:
         Qemu.require_kvm = False
     if sysconfig.getboolean('qemu', 'vhost'):
