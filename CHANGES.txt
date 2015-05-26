@@ -5,7 +5,7 @@ Release notes
 0.7.2 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Adapt to QEMU 2.2.1: uses now stdvga by default (#15748).
 
 
 0.7.1 (2015-05-20)
