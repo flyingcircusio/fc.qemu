@@ -196,8 +196,8 @@ class Agent(object):
             'qemu-{}'.format(self.name),
             address=self.this_host,
             interval='5s',
-            check='test -e /proc/$(< /run/qemu.{}.pid )/mem || exit 2'.\
-                format(self.name))
+            check=('test -e /proc/$(< /run/qemu.{}.pid )/mem || exit 2'.
+                   format(self.name)))
 
     @locked
     @running(False)
