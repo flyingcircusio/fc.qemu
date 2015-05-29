@@ -149,7 +149,7 @@ exec { "bootstrap-agent-project":
     command => "\
 sudo -u vagrant rm -rf bin/ include/ lib/ local/
 sudo -u vagrant virtualenv -p python2.7 --system-site-packages .
-sudo -u vagrant bin/pip install -r requirements.txt
+sudo -u vagrant bin/pip install --upgrade -r requirements.txt
 ",
     require => [Package["python-virtualenv"],
                 Package["python-dev"]],
@@ -165,6 +165,9 @@ vnc = ${hostname}:{id}
 timeout-graceful = 120
 migration-address = tcp:${hostname}:{id}
 migration-ctl-address = ${hostname}:9000
+
+[consul]
+access-token = 
 
 [ceph]
 client-id = admin
@@ -186,6 +189,7 @@ wget -ck -O /root/consul.zip https://dl.bintray.com/mitchellh/consul/0.5.0_linux
 cd /usr/local/bin
 unzip /root/consul.zip
     ",
+    require => Package['unzip']
 }
 
 file { '/etc/consul.d': ensure => directory }

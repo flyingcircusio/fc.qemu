@@ -28,6 +28,7 @@ def load_system_config():
     Agent.this_host = sysconfig.get('ceph', 'lock_host')
     Agent.migration_ctl_address = sysconfig.get(
         'qemu', 'migration-ctl-address')
+    Agent.consul_token = sysconfig.get('consul', 'access-token')
     Qemu.migration_address = sysconfig.get('qemu', 'migration-address')
     Qemu.vnc = sysconfig.get('qemu', 'vnc')
 
