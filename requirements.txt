@@ -1,5 +1,4 @@
 -e .
-consulate
 pytest>=2.6
 pytest-cov
 pytest-capturelog

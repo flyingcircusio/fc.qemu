@@ -71,6 +71,7 @@ class Agent(object):
         '/etc/qemu/qemu.vm.cfg.in',
         pkg_resources.resource_filename(__name__, 'qemu.vm.cfg.in')
     ]
+    consul_token = None
 
     _configfile_fd = None
 
@@ -99,7 +100,7 @@ class Agent(object):
             if os.path.exists(cand):
                 self.vm_config_template = cand
                 break
-        self.consul = consulate.Consul()
+        self.consul = consulate.Consul(token=self.consul_token)
 
     def _load_enc(self):
         try:

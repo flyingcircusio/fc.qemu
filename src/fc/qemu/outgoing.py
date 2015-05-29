@@ -1,5 +1,4 @@
 from .timeout import TimeOut
-import consulate
 import logging
 import socket
 import xmlrpclib
@@ -16,7 +15,7 @@ class Outgoing(object):
     def __init__(self, agent):
         self.agent = agent
         self.name = agent.name
-        self.consul = consulate.Consul()
+        self.consul = agent.consul
 
     def __call__(self):
         self.cookie = self.agent.ceph.auth_cookie()

@@ -1,7 +1,6 @@
 from .exc import MigrationError, QemuNotRunning
 from .timeout import TimeOut
 from .util import parse_address
-import consulate
 import contextlib
 import functools
 import json
@@ -34,7 +33,7 @@ class IncomingServer(object):
         self.ceph = agent.ceph
         self.bind_address = parse_address(self.agent.migration_ctl_address)
         self.timeout = TimeOut(timeout, raise_on_timeout=True)
-        self.consul = consulate.Consul()
+        self.consul = agent.consul
 
     _now = time.time
 
