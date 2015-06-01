@@ -9,7 +9,6 @@ import consulate
 import copy
 import fcntl
 import json
-import multiprocessing
 import os
 import pkg_resources
 import socket
@@ -129,10 +128,11 @@ class Agent(object):
         if not events:
             return
         log.info('[Consul] processing %d event(s)', len(events))
-        p = multiprocessing.Pool(50)
-        p.map(_handle_consul_event, events)
-        p.close()
-        p.join()
+        for event in events:
+            newpid = os.fork()
+            if newpid == 0:
+                _handle_consul_event()
+                break
 
     def save_enc(self):
         with rewrite(self.configfile) as f:
