@@ -54,6 +54,7 @@ class Outgoing(object):
         timeout = TimeOut(timeout, interval=2)
         while timeout.tick():
             inmig = self.consul.catalog.service(service_name)
+            _log.info(inmig)
             if inmig:
                 if len(inmig) > 1:
                     raise RuntimeError('found more than one inmig services '
