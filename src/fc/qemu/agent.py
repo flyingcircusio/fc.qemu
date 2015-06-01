@@ -176,6 +176,8 @@ class Agent(object):
 
     def ensure_online(self):
         if self.qemu.is_running():
+            # re-register in case services got lost during Consul restart
+            self.consul_register()
             return
         log.info('VM %s should be running here', self.name)
         existing = locate_live_service(self.consul, 'qemu-' + self.name)
@@ -241,7 +243,8 @@ class Agent(object):
             if not self.qemu.is_running():
                 self.ceph.stop()
                 self.qemu.clean_run_files()
-                self.consul.agent.service.deregister('qemu-{}'.format(self.name))
+                self.consul.agent.service.deregister(
+                    'qemu-{}'.format(self.name))
                 log.info('Graceful shutdown of %s succeeded', self.name)
                 break
         else:

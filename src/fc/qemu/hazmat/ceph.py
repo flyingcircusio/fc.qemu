@@ -58,11 +58,13 @@ class Volume(object):
         self.image.resize(size)
 
     def lock(self):
+        logger.info('Trying to assume lock for {}'.self.fullname)
         retry = 3
         while retry:
             try:
                 self.image.lock_exclusive(CEPH_LOCK_HOST)
             except (rbd.ImageBusy, rbd.ImageExists):
+                logger.exception('Failed assuming lock.')
                 status = self.lock_status()
                 if status is None:
                     # Someone had the lock but released it in between.
