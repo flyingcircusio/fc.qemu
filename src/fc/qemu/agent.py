@@ -9,6 +9,7 @@ import consulate
 import copy
 import fcntl
 import json
+import multiprocessing
 import os
 import pkg_resources
 import socket
@@ -110,25 +111,27 @@ class Agent(object):
             raise RuntimeError("Could not load {}".format(self.configfile))
 
     @classmethod
+    def _handle_consul_event(cls, event):
+        try:
+            config = json.loads(event['Value'].decode('base64'))
+            config['consul-generation'] = event['ModifyIndex']
+            vm = config['name']
+            log.debug('[Consul] checking VM %s', vm)
+            agent = Agent(vm, config)
+            with agent:
+                agent.save_enc()
+                agent.ensure()
+        except Exception as e:
+            log.exception('error handling consul event', e)
+
+    @classmethod
     def handle_consul_event(cls):
         events = json.load(sys.stdin)
         if not events:
             return
         log.info('[Consul] processing %d event(s)', len(events))
-        for event in events:
-            try:
-                config = json.loads(event['Value'].decode('base64'))
-                vm = config['name']
-                log.debug('[Consul] checking VM %s', vm)
-                agent = Agent(vm, config)
-                with agent:
-                    # XXX gotcha: enc data is currently saved via
-                    # localconfig *and* fc.qemu. This should be removed from
-                    # localconfig once consul is fully operational.
-                    agent.save_enc()
-                    agent.ensure()
-            except Exception as e:
-                log.exception('error handling consul event', e)
+        p = multiprocessing.Pool(100)
+        p.map(cls._handle_consul_event, events)
 
     def save_enc(self):
         with rewrite(self.configfile) as f:
