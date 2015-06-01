@@ -131,7 +131,7 @@ class Agent(object):
         for event in events:
             newpid = os.fork()
             if newpid == 0:
-                _handle_consul_event()
+                _handle_consul_event(event)
                 break
 
     def save_enc(self):
