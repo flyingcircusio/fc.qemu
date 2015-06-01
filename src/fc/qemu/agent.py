@@ -16,8 +16,21 @@ import socket
 import sys
 import yaml
 
-
 log = getLogger(__name__)
+
+
+def _handle_consul_event(event):
+    try:
+        config = json.loads(event['Value'].decode('base64'))
+        config['consul-generation'] = event['ModifyIndex']
+        vm = config['name']
+        log.debug('[Consul] checking VM %s', vm)
+        agent = Agent(vm, config)
+        with agent:
+            agent.save_enc()
+            agent.ensure()
+    except Exception as e:
+        log.exception('error handling consul event', e)
 
 
 def running(expected=True):
@@ -111,27 +124,15 @@ class Agent(object):
             raise RuntimeError("Could not load {}".format(self.configfile))
 
     @classmethod
-    def _handle_consul_event(cls, event):
-        try:
-            config = json.loads(event['Value'].decode('base64'))
-            config['consul-generation'] = event['ModifyIndex']
-            vm = config['name']
-            log.debug('[Consul] checking VM %s', vm)
-            agent = Agent(vm, config)
-            with agent:
-                agent.save_enc()
-                agent.ensure()
-        except Exception as e:
-            log.exception('error handling consul event', e)
-
-    @classmethod
     def handle_consul_event(cls):
         events = json.load(sys.stdin)
         if not events:
             return
         log.info('[Consul] processing %d event(s)', len(events))
-        p = multiprocessing.Pool(100)
-        p.map(cls._handle_consul_event, events)
+        p = multiprocessing.Pool(50)
+        p.map(_handle_consul_event, events)
+        p.close()
+        p.join()
 
     def save_enc(self):
         with rewrite(self.configfile) as f:
