@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.7.4 (unreleased)
+0.7.4 (2015-06-02)
 ------------------
 
 - Rectify brown-bag release.
