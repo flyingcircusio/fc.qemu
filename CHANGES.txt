@@ -5,7 +5,8 @@ Release notes
 0.7.4 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Rectify brown-bag release.
+- Fix some unnoticed, arbitrary test failures.
 
 
 0.7.3 (2015-06-02)

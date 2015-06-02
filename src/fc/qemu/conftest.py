@@ -1,3 +1,5 @@
+import pytest
+import logging
 
 
 def pytest_collectstart(collector):
