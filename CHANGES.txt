@@ -5,7 +5,10 @@ Release notes
 0.7.3 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Make event processing from consul fork for each VM and return the
+  master process early to avoid blocking the consul agent.
+
+- More logging related to migrations.
 
 
 0.7.2 (2015-05-26)
