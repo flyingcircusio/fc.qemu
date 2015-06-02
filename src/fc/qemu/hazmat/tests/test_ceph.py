@@ -131,6 +131,7 @@ def test_call_shrink_vm(ceph_inst, capfd):
         stdout, stderr = capfd.readouterr()
         assert 'shrink-vm pool=test image=test00.root disk=10' in stdout
     finally:
+        ceph_inst.root.unlock()
         rbd.RBD().remove(ceph_inst.ioctx, ceph_inst.root.name)
 
 

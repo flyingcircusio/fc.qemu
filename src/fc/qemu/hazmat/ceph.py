@@ -58,13 +58,18 @@ class Volume(object):
         self.image.resize(size)
 
     def lock(self):
-        logger.info('Trying to assume lock for {}', self.fullname)
+        logger.info('Trying to assume lock for {}'.format(self.fullname))
         retry = 3
         while retry:
             try:
                 self.image.lock_exclusive(CEPH_LOCK_HOST)
-            except (rbd.ImageBusy, rbd.ImageExists):
-                logger.exception('Failed assuming lock.')
+            except rbd.ImageExists:
+                # This client and cookie already locked this. This is
+                # definitely fine.
+                return
+            except rbd.ImageBusy:
+                # Maybe the same client but different cookie. We're fine with
+                # different cookies - ignore this. Must be same client, though.
                 status = self.lock_status()
                 if status is None:
                     # Someone had the lock but released it in between.
@@ -75,6 +80,9 @@ class Volume(object):
                     # That's locked for us already. We just re-use
                     # the existing lock.
                     return
+                # Its locked for some other client.
+                logger.error(
+                    'Failed assuming lock. Giving up. Competing lock: {}'.format(status))
                 raise
         raise rbd.ImageBusy(
             'Could not acquire lock - tried multiple times. '
