@@ -66,7 +66,7 @@ class Outgoing(object):
                     inmig['ServiceAddress'], inmig['ServicePort'])
         raise RuntimeError('failed to locate inmigrate service', service_name)
 
-    def connect(self, timeout=60):
+    def connect(self, timeout=120):
         timeout = TimeOut(timeout, interval=3, raise_on_timeout=True)
         while timeout.tick():
             try:
