@@ -26,7 +26,7 @@ class IncomingServer(object):
 
     finished = False
 
-    def __init__(self, agent, timeout=60):
+    def __init__(self, agent, timeout=120):
         self.agent = agent
         self.name = agent.name
         self.qemu = agent.qemu
@@ -76,7 +76,7 @@ class IncomingServer(object):
             self.qemu.destroy()
             return 1
 
-    def extend_cutoff_time(self, timeout=30):
+    def extend_cutoff_time(self, timeout=60):
         self.timeout.cutoff = self._now() + timeout
 
     def prepare_incoming(self, args, config):
