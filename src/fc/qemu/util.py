@@ -23,10 +23,8 @@ def rewrite(filename):
         filename_tmp = tf.name
     if (os.path.exists(filename) and
             filecmp.cmp(filename, filename_tmp, shallow=False)):
-        print('unlink ' + filename_tmp)
         os.unlink(filename_tmp)
     else:
-        print('rename ' + filename_tmp + ' to ' + filename)
         os.rename(filename_tmp, filename)
 
 

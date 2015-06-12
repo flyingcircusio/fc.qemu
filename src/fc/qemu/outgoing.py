@@ -42,6 +42,7 @@ class Outgoing(object):
                            'Trying to rescue it.',
                            exc_info=(_exc_type, _exc_value, _traceback))
                 self.rescue()
+                return True  # swallow exception
             except:
                 # Purposeful bare except: try really hard to kill
                 # our VM.
