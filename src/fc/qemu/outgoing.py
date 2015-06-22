@@ -50,12 +50,13 @@ class Outgoing(object):
                                'after a migration failure. Destroying it.')
                 self.destroy()
 
-    def locate_inmigrate_service(self, timeout=60):
+    def locate_inmigrate_service(self, timeout=330):
         service_name = 'vm-inmigrate-' + self.name
-        timeout = TimeOut(timeout, interval=2)
+        timeout = TimeOut(timeout, interval=3, raise_on_timeout=True)
         while timeout.tick():
+            _log.debug('%s: waiting (%ds remaining)', self.name,
+                       int(timeout.remaining))
             inmig = self.consul.catalog.service(service_name)
-            _log.info(inmig)
             if inmig:
                 if len(inmig) > 1:
                     raise RuntimeError('found more than one inmig services '
@@ -66,7 +67,7 @@ class Outgoing(object):
                     inmig['ServiceAddress'], inmig['ServicePort'])
         raise RuntimeError('failed to locate inmigrate service', service_name)
 
-    def connect(self, timeout=120):
+    def connect(self, timeout=990):
         timeout = TimeOut(timeout, interval=3, raise_on_timeout=True)
         while timeout.tick():
             try:
@@ -102,7 +103,6 @@ class Outgoing(object):
                 'Migration status: completed',
                 ['Migration status: active',
                  'Migration status: setup']):
-            _log.debug('%s: migration status: %s', self.name, stat)
             self.target.ping(self.cookie)
 
         self.agent.qemu.monitor.assert_status(

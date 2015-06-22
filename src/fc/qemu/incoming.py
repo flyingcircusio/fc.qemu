@@ -3,7 +3,6 @@ from .timeout import TimeOut
 from .util import parse_address
 import contextlib
 import functools
-import json
 import logging
 import SimpleXMLRPCServer
 import time
@@ -26,7 +25,7 @@ class IncomingServer(object):
 
     finished = False
 
-    def __init__(self, agent, timeout=120):
+    def __init__(self, agent, timeout=330):
         self.agent = agent
         self.name = agent.name
         self.qemu = agent.qemu
