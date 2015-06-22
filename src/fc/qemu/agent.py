@@ -19,6 +19,7 @@ log = getLogger(__name__)
 
 
 def _handle_consul_event(event):
+    """Actual handling of a single Consul event in a separate process."""
     try:
         config = json.loads(event['Value'].decode('base64'))
         config['consul-generation'] = event['ModifyIndex']
@@ -29,7 +30,7 @@ def _handle_consul_event(event):
             agent.save_enc()
             agent.ensure()
     except Exception as e:
-        log.exception('error handling consul event', e)
+        log.error('error handling consul event', e)
 
 
 def running(expected=True):
@@ -128,11 +129,16 @@ class Agent(object):
         if not events:
             return
         log.info('[Consul] processing %d event(s)', len(events))
+        children = 0
         for event in events:
             newpid = os.fork()
             if newpid == 0:
                 _handle_consul_event(event)
                 break
+            elif newpid > 0:
+                children += 1
+        for i in range(children):
+            os.wait()
 
     def save_enc(self):
         with rewrite(self.configfile) as f:
