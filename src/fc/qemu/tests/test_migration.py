@@ -66,4 +66,4 @@ def test_incoming_server():
 
     server._now = mock.Mock(return_value=30)
     server.extend_cutoff_time()
-    assert server.timeout.cutoff == 60
+    assert server.timeout.cutoff == 90
