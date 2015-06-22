@@ -13,8 +13,9 @@ Prepare Vagrant environment::
 
 Prepare virtualenv::
 
-    virtualenv --system-site-packages .
-    bin/pip install -r requirements.txt
+    vm$ cd /vagrant
+    vm$ virtualenv --system-site-packages .
+    vm$ bin/pip install -r requirements.txt
 
 Run the tests::
 
