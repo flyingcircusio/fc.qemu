@@ -10,6 +10,7 @@ import copy
 import fcntl
 import json
 import os
+import os.path as p
 import pkg_resources
 import socket
 import sys
@@ -24,13 +25,15 @@ def _handle_consul_event(event):
         config = json.loads(event['Value'].decode('base64'))
         config['consul-generation'] = event['ModifyIndex']
         vm = config['name']
+        if config['parameters']['machine'] != 'virtual':
+            return
         log.debug('[Consul] checking VM %s', vm)
         agent = Agent(vm, config)
         with agent:
             agent.save_enc()
             agent.ensure()
     except Exception as e:
-        log.error('error handling consul event', e)
+        log.exception('error handling consul event: %s', e)
 
 
 def running(expected=True):
@@ -111,7 +114,7 @@ class Agent(object):
         for attr in ['migration_ctl_address']:
             setattr(self, attr, getattr(self, attr).format(**self.cfg))
         for cand in self.vm_config_template_path:
-            if os.path.exists(cand):
+            if p.exists(cand):
                 self.vm_config_template = cand
                 break
         self.consul = consulate.Consul(token=self.consul_token)
@@ -129,18 +132,21 @@ class Agent(object):
         if not events:
             return
         log.info('[Consul] processing %d event(s)', len(events))
-        children = 0
         for event in events:
             newpid = os.fork()
             if newpid == 0:
                 _handle_consul_event(event)
                 break
-            elif newpid > 0:
-                children += 1
-        for i in range(children):
-            os.wait()
+        # wait until all child processes die to keep log file descriptors open
+        while True:
+            try:
+                os.wait()
+            except OSError:
+                break
 
     def save_enc(self):
+        if not p.isdir(p.dirname(self.configfile)):
+            os.makedirs(p.dirname(self.configfile))
         with rewrite(self.configfile) as f:
             yaml.safe_dump(self.enc, f)
 
