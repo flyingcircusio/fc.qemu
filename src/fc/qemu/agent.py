@@ -9,11 +9,13 @@ import consulate
 import copy
 import fcntl
 import json
+import multiprocessing
 import os
 import os.path as p
 import pkg_resources
 import socket
 import sys
+import time
 import yaml
 
 log = getLogger(__name__)
@@ -83,7 +85,7 @@ class Agent(object):
     accelerator = ''
     vhost = ''
     ceph_id = 'admin'
-    timeout_graceful = 30
+    timeout_graceful = 80
     vm_config_template_path = [
         '/etc/qemu/qemu.vm.cfg.in',
         pkg_resources.resource_filename(__name__, 'qemu.vm.cfg.in')
@@ -132,17 +134,12 @@ class Agent(object):
         if not events:
             return
         log.info('[Consul] processing %d event(s)', len(events))
-        for event in events:
-            newpid = os.fork()
-            if newpid == 0:
-                _handle_consul_event(event)
-                break
-        # wait until all child processes die to keep log file descriptors open
-        while True:
-            try:
-                os.wait()
-            except OSError:
-                break
+        for e in events:
+            p = multiprocessing.Process(target=_handle_consul_event, args=(e,))
+            p.start()
+            time.sleep(0.1)
+        for proc in multiprocessing.active_children():
+            proc.join()
 
     def save_enc(self):
         if not p.isdir(p.dirname(self.configfile)):

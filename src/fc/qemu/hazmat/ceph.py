@@ -4,6 +4,7 @@ import logging
 import rados
 import rbd
 import subprocess
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -132,14 +133,15 @@ class Volume(object):
     def map(self):
         if self.mapped:
             return
-        cmd('rbd --id "{}" map {}'.format(CEPH_CLIENT, self.fullname))
+        cmd('rbd --id "{}" map "{}"'.format(CEPH_CLIENT, self.fullname))
+        time.sleep(0.1)
         self.mapped = True
 
     def unmap(self):
         if not self.mapped:
             return
-        cmd('rbd --id "{}" unmap /dev/rbd/{}'.format(CEPH_CLIENT,
-                                                     self.fullname))
+        cmd('rbd --id "{}" unmap "/dev/rbd/{}"'.format(CEPH_CLIENT,
+                                                       self.fullname))
         self.mapped = False
 
 
