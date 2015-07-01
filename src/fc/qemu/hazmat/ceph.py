@@ -24,8 +24,10 @@ SHRINK_VM = None
 
 
 def cmd(cmdline):
+    """Execute cmdline with stdin closed to avoid questions on terminal"""
     print(cmdline)
-    subprocess.check_call(cmdline, shell=True)
+    with open('/dev/null') as null:
+        subprocess.check_call(cmdline, shell=True, stdin=null)
 
 
 class Volume(object):
@@ -130,7 +132,7 @@ class Volume(object):
     def mkfs(self):
         self.map()
         try:
-            cmd('mkfs -q -m 1 -t ext4 "/dev/rbd/{}"'.format(self.fullname))
+            cmd('mkfs -F -q -m 1 -t ext4 "/dev/rbd/{}"'.format(self.fullname))
             cmd('tune2fs -e remount-ro "/dev/rbd/{}"'.format(self.fullname))
         finally:
             self.unmap()
