@@ -191,8 +191,8 @@ class Agent(object):
         log.info('VM %s should be running here', self.name)
         existing = locate_live_service(self.consul, 'qemu-' + self.name)
         if existing and existing['Address'] != self.this_host:
-            log.info('Found VM to be running on {} already. '
-                     'Trying an inmigration.'.format(existing['Address']))
+            log.info('Found VM %s to be running on %s already. '
+                     'Trying an inmigration.', self.name, existing['Address'])
             self.inmigrate()
         else:
             self.start()
