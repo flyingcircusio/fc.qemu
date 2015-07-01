@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.7.5 (unreleased)
+0.7.5 (2015-07-01)
 ------------------
 
 - Spawn individual VM actions usings multiprocessing. Wait until all migrations
