@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.7.6 (unreleased)
+0.7.6 (2015-07-01)
 ------------------
 
 - Quickfix: newer mkfs.ext4 versions need a '-F' flag to overwrite
