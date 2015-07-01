@@ -50,18 +50,18 @@ def test_simple_vm_lifecycle_start_stop(vm, capfd):
     out, err = capfd.readouterr()
     assert """\
 /usr/local/sbin/create-vm -I test00
-rbd --id "admin" map test/test00.tmp
+rbd --id "admin" map "test/test00.tmp"
 mkfs -q -m 1 -t ext4 "/dev/rbd/test/test00.tmp"
 tune2fs -e remount-ro "/dev/rbd/test/test00.tmp"
 tune2fs 1.42.9 (4-Feb-2014)
 Setting error behavior to 2
-rbd --id "admin" unmap /dev/rbd/test/test00.tmp
-rbd --id "admin" map test/test00.swap
+rbd --id "admin" unmap "/dev/rbd/test/test00.tmp"
+rbd --id "admin" map "test/test00.swap"
 mkswap -f "/dev/rbd/test/test00.swap"
 """ in out
 
     assert """\
-rbd --id "admin" unmap /dev/rbd/test/test00.swap
+rbd --id "admin" unmap "/dev/rbd/test/test00.swap"
 """ in out
 
     assert status() == """\
