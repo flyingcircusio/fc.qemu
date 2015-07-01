@@ -5,7 +5,8 @@ Release notes
 0.7.6 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Quickfix: newer mkfs.ext4 versions need a '-F' flag to overwrite
+  filesystems (#14920).
 
 
 0.7.5 (2015-07-01)
