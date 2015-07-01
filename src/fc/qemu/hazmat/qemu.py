@@ -1,3 +1,5 @@
+"""Low-level interface to Qemu commands."""
+
 from ..exc import QemuNotRunning
 from ..timeout import TimeOut
 from .monitor import Monitor
@@ -42,15 +44,17 @@ class Qemu(object):
         # expand template keywords in configuration variables
         for f in ['pidfile', 'configfile', 'argfile', 'migration_address']:
             setattr(self, f, getattr(self, f).format(**cfg))
-        # We are running qemu with chroot at the moment which causes us to
-        # not be able to resolve names. :( See #13837.
+        # We are running qemu with chroot which causes us to not be able to
+        # resolve names. :( See #13837.
         a = self.migration_address.split(':')
         if a[0] == 'tcp':
             a[1] = socket.gethostbyname(a[1])
         self.migration_address = ':'.join(a)
+        self.name = self.cfg['name']
+        self.monitor_port = self.cfg['id'] + self.MONITOR_OFFSET
 
     def __enter__(self):
-        self.monitor = Monitor(self.cfg['id'] + self.MONITOR_OFFSET)
+        self.monitor = Monitor(self.monitor_port)
 
     def __exit__(self, exc_value, exc_type, exc_tb):
         self.monitor = None
@@ -82,11 +86,11 @@ class Qemu(object):
                 ' '.join(additional_args))
             # We explicitly close all fds for the child to avoid
             # inheriting locks infinitely.
-            log.info('[qemu] {}'.format(cmd))
+            log.info('[qemu] %s: %s', self.name, cmd)
             subprocess.check_call(cmd, shell=True, close_fds=True)
         except subprocess.CalledProcessError:
             # Did not start. Not running.
-            log.error('Failed to start qemu.')
+            log.error('[qemu] %s: Failed to start', self.name)
             raise QemuNotRunning()
         self.monitor.reset()
 
@@ -101,6 +105,8 @@ class Qemu(object):
         return self.migration_address
 
     def migrate(self, address):
+        """Initiate actual (out-)migration"""
+        log.debug('[qemu] %s: migrate (mon:%s)', self.name, self.monitor_port)
         self.monitor.migrate(address)
 
     def is_running(self):

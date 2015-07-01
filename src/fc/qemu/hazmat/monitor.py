@@ -1,8 +1,9 @@
+"""Low-level Qemu Monitor abstraction."""
+
 from ..exc import MigrationError
 from fc.qemu.timeout import TimeOut
 import logging
 import re
-import socket
 import telnetlib
 
 
@@ -37,17 +38,17 @@ class Monitor(object):
         """
         if not self.conn:
             self._connect()
-        _log.debug('[mon] (qemu:{}) {}'.format(self.port, command))
+        _log.debug('[mon:%s] %s', self.port, command)
         self.conn.write(command + '\n')
         res = self.conn.read_until('(qemu)', self.timeout)
         if res == '':  # Connection went away
-            _log.debug('[mon] \\EOF')
+            _log.debug('[mon:%s] \\EOF', self.port)
             self.conn = None
             return ''
-        r_strip_echo = re.compile(r'^.*' + re.escape(command) + '\S*\r\n')
+        r_strip_echo = re.compile(r'^.*' + re.escape(command) + '\\S*\r\n')
         output = r_strip_echo.sub('', res).replace('\r\n', '\n')
         output = output.replace('(qemu)', '')
-        _log.debug('[mon] {}'.format(output.strip()))
+        _log.debug('[mon:%s] %s', self.port, output.strip())
         return output
 
     def status(self):
@@ -75,6 +76,7 @@ class Monitor(object):
         """Initiate migration (asynchronously)."""
         self._cmd('migrate_set_capability xbzrle on')
         self._cmd('migrate_set_capability auto-converge on')
+        self._cmd('migrate_set_downtime 0.5')
         res = self._cmd('migrate -d {}'.format(address)).strip()
         if res:
             raise MigrationError('error while initiating migration', res)
