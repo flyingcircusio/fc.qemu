@@ -5,7 +5,13 @@ Release notes
 0.7.5 (unreleased)
 ------------------
 
+- Spawn individual VM actions usings multiprocessing. Wait until all migrations
+  are done (#14920).
+- Increase allowed migration downtime to keep migration time for busy VMs in
+  bounds (#14920).
 - Fix exception handling errors during Consul event processing (#14920).
+- Give udev mapping a bit to settle.
+- Improve log readability.
 
 
 0.7.4 (2015-06-02)

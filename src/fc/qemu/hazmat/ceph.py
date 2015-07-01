@@ -1,3 +1,8 @@
+"""Low-level Ceph interface.
+
+We expect Ceph Python bindings to be present in the system site packages.
+"""
+
 from __future__ import print_function
 import hashlib
 import logging
@@ -59,7 +64,7 @@ class Volume(object):
         self.image.resize(size)
 
     def lock(self):
-        logger.info('Trying to assume lock for {}'.format(self.fullname))
+        logger.debug('Trying to assume lock for %s', self.fullname)
         retry = 3
         while retry:
             try:
