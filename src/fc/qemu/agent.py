@@ -215,6 +215,10 @@ class Agent(object):
             check=('test -e /proc/$(< /run/qemu.{}.pid )/mem || exit 2'.
                    format(self.name)))
 
+    def consul_deregister(self):
+        """De-register non-running VM with Consul."""
+        self.consul.agent.service.deregister('qemu-{}'.format(self.name))
+
     @locked
     @running(False)
     def start(self):
@@ -252,8 +256,7 @@ class Agent(object):
             if not self.qemu.is_running():
                 self.ceph.stop()
                 self.qemu.clean_run_files()
-                self.consul.agent.service.deregister(
-                    'qemu-{}'.format(self.name))
+                self.consul_deregister()
                 log.info('Graceful shutdown of %s succeeded', self.name)
                 break
         else:
@@ -276,7 +279,7 @@ class Agent(object):
                 break
         self.ceph.stop()
         self.qemu.clean_run_files()
-        self.consul.agent.service.deregister('qemu-{}'.format(self.name))
+        self.consul_deregister()
 
     @locked
     @running(False)
@@ -289,6 +292,8 @@ class Agent(object):
             return
         server = IncomingServer(self)
         exitcode = server.run()
+        if not exitcode:
+            self.consul_register(self)
         log.info('%s: inmigration finished with exitcode %s', self.name,
                  exitcode)
         return exitcode
@@ -301,7 +306,8 @@ class Agent(object):
         self.consul_register()
         client = Outgoing(self)
         exitcode = client()
-        self.consul.agent.service.deregister('qemu-{}'.format(self.name))
+        if not exitcode:
+            self.consul_deregister()
         log.info('Out-migration of VM %s finished with exitcode %s',
                  self.name, exitcode)
         return exitcode
