@@ -5,7 +5,7 @@ Release notes
 0.7.7 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Fix migration issue: we ended up de-registering the wrong
 
 
 0.7.6 (2015-07-01)
