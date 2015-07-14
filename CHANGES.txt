@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.7.7 (unreleased)
+0.7.7 (2015-07-14)
 ------------------
 
 - Fix migration issue: we ended up de-registering the wrong
