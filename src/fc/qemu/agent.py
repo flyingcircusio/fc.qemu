@@ -146,6 +146,7 @@ class Agent(object):
             os.makedirs(p.dirname(self.configfile))
         with rewrite(self.configfile) as f:
             yaml.safe_dump(self.enc, f)
+        os.chmod(self.configfile, 0o644)
 
     def __enter__(self):
         for c in self.contexts:
