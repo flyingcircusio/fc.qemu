@@ -1,5 +1,5 @@
 from .hazmat.ceph import Ceph
-from .hazmat.qemu import Qemu, QemuNotRunning
+from .hazmat.qemu import Qemu
 from .incoming import IncomingServer
 from .outgoing import Outgoing
 from .timeout import TimeOut
@@ -174,8 +174,6 @@ class Agent(object):
             log.warning('%s: state not consistent (monitor, pidfile, ceph), '
                         'destroying VM and cleaning up', self.name)
             self.qemu.destroy()
-            self.qemu.clean_run_files()
-            self.ceph.stop()
 
     def ensure_offline(self):
         if not self.qemu.is_running():
@@ -225,12 +223,13 @@ class Agent(object):
         self.generate_config()
         log.info('Using Qemu config template %s', self.vm_config_template)
         self.ceph.start()
-        try:
-            log.info('Starting VM %s', self.name)
-            self.qemu.start()
-            self.consul_register()
-        except QemuNotRunning:
-            self.ceph.stop
+        log.info('Starting VM %s', self.name)
+        self.qemu.start()
+        self.consul_register()
+        # We exit here without releasing the ceph lock in error cases
+        # because the start may have failed because of an already running
+        # process. Removing the lock in that case is dangerous. OTOH leaving
+        # the lock is never dangerous. Lets go with that.
 
     def status(self):
         """Determine status of the VM."""
@@ -276,10 +275,14 @@ class Agent(object):
         self.qemu.destroy()
         while timeout.tick():
             if not self.qemu.is_running():
+                log.info('VM killed, cleaning up.')
+                self.ceph.stop()
+                self.qemu.clean_run_files()
+                self.consul_deregister()
                 break
-        self.ceph.stop()
-        self.qemu.clean_run_files()
-        self.consul_deregister()
+        else:
+            log.warning('Did not see the VM disappear. '
+                        'Please check lock consistency.')
 
     @locked
     @running(False)
@@ -293,7 +296,7 @@ class Agent(object):
         server = IncomingServer(self)
         exitcode = server.run()
         if not exitcode:
-            self.consul_register(self)
+            self.consul_register()
         log.info('%s: inmigration finished with exitcode %s', self.name,
                  exitcode)
         return exitcode
@@ -335,8 +338,12 @@ class Agent(object):
 
         If False, results from Qemu monitor, pidfile or Ceph differ.
         """
-        substates = [self.qemu.is_running(), bool(self.qemu.proc()),
-                     self.ceph.locked_by_me()]
+        substates = [
+            self.qemu.is_running(),
+            bool(self.qemu.proc()),
+            self.ceph.locked_by_me()]
+        log.info('Current state: qemu=={}, proc=={}, locked=={}'.
+                 format(*substates))
         return any(substates) == all(substates)
 
     # CAREFUL: changing anything in this config files will cause maintenance w/

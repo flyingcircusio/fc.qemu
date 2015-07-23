@@ -90,9 +90,8 @@ class Qemu(object):
             subprocess.check_call(cmd, shell=True, close_fds=True)
         except subprocess.CalledProcessError:
             # Did not start. Not running.
-            log.error('[qemu] %s: Failed to start', self.name)
+            log.exception('[qemu] %s: Failed to start', self.name)
             raise QemuNotRunning()
-        self.monitor.reset()
 
     def start(self):
         self._start()
@@ -110,11 +109,50 @@ class Qemu(object):
         self.monitor.migrate(address)
 
     def is_running(self):
-        try:
-            self.monitor.assert_status('VM status: running')
-        except Exception:
+        # This method must be very reliable. It is perfectly OK to error
+        # out in the case of inconsistencies. But a "true" must mean:
+        # we have a working Qemu instance here. And a "false" must mean:
+        # there is no reason to think that any remainder of a Qemu process is
+        # still running
+
+        # a) is there a process?
+        expected_process_exists = self.proc()
+
+        # b) is the monitor port around?
+        monitor_exists = self.monitor.peek()
+
+        # c) is the monitor available and talks to us?
+        monitor_says_running = False
+        status = ''
+        if monitor_exists:
+            timeout = TimeOut(10, 1, raise_on_timeout=False)
+            while timeout.tick():
+                try:
+                    status = self.monitor.status()
+                    monitor_says_running = status == 'VM status: running'
+                except:
+                    log.exception('waiting for monitor status')
+                    pass
+                else:
+                    break
+
+        if (expected_process_exists and
+                monitor_exists and monitor_says_running):
+            return True
+
+        if (not expected_process_exists and not monitor_exists):
+            # This is still a bit icky: there were cases where we did
+            # not see the process, the monitor port was open,
             return False
-        return True
+
+        # Any other combination is sufficiently weird so as to give up right
+        # now.
+        raise RuntimeError(
+            'Can not determine whether Qemu is running. '
+            'Process: {} Monitor Port: {} '
+            'Monitor output: {} Status: {}'.format(
+                expected_process_exists, monitor_exists, monitor_says_running,
+                status))
 
     def status(self):
         return self.monitor.status()
@@ -140,7 +178,6 @@ class Qemu(object):
                 self.acquire_lock(image)
             except Exception:
                 pass
-
         self.assert_locks()
 
     def graceful_shutdown(self):
@@ -151,13 +188,12 @@ class Qemu(object):
         # sometimes the init script will complain even if we achieve what
         # we want: that the VM isn't running any longer. We check this
         # by contacting the monitor instead.
-        p = self.proc()
-        if p:
-            p.terminate()
-        timeout = TimeOut(5, interval=1, raise_on_timeout=True)
+        timeout = TimeOut(100, interval=1, raise_on_timeout=True)
         while timeout.tick():
-            status = self.monitor.status()
-            if status == '':
+            p = self.proc()
+            if p:
+                p.terminate()
+            if not self.monitor.peek():
                 break
 
     def resize_root(self, size):
@@ -165,6 +201,7 @@ class Qemu(object):
         self.monitor._cmd('block_resize virtio0 {}'.format(size))
 
     def clean_run_files(self):
+        log.info('Removing run files.')
         for runfile in glob.glob('/run/qemu.{}.*'.format(self.cfg['name'])):
             os.unlink(runfile)
 
