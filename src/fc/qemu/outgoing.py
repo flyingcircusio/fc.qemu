@@ -109,11 +109,11 @@ class Outgoing(object):
             'VM status: paused (postmigrate)')
         _log.info('%s: finishing and cleaning up', self.name)
         self.target.finish_incoming(self.cookie)
-        self.destroy()
+        self.agent.qemu.destroy()
 
     def rescue(self):
         """Outgoing rescue: try to rescue the remote side first."""
-        _log.warning('%s: something went wrong, trying to rescue', self.name)
+        _log.exception('{}: something went wrong, trying to rescue'.format(self.name))
         if self.target is not None:
             try:
                 self.target.rescue(self.cookie)
