@@ -76,7 +76,7 @@ class Monitor(object):
         """Initiate migration (asynchronously)."""
         self._cmd('migrate_set_capability xbzrle on')
         self._cmd('migrate_set_capability auto-converge on')
-        self._cmd('migrate_set_downtime 0.5')
+        self._cmd('migrate_set_downtime 0.75')
         res = self._cmd('migrate -d {}'.format(address)).strip()
         if res:
             raise MigrationError('error while initiating migration', res)
