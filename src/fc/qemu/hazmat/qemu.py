@@ -116,7 +116,11 @@ class Qemu(object):
         # still running
 
         # a) is there a process?
-        expected_process_exists = self.proc()
+        proc = self.proc()
+        if proc is None:
+            expected_process_exists = False
+        else:
+            expected_process_exists = proc.is_running()
 
         # b) is the monitor port around?
         monitor_exists = self.monitor.peek()
