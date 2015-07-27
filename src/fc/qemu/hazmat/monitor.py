@@ -30,9 +30,17 @@ class Monitor(object):
 
     def peek(self):
         # Check whether the monitor port is TCP reachable.
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        result = sock.connect_ex(('localhost', self.port))
-        return not bool(result)
+        addr = socket.getaddrinfo(
+            'localhost', self.port, socket.AF_UNSPEC, socket.SOCK_STREAM, 0)
+        for (af, socktype, proto, cname, sockaddr) in addr:
+            try:
+                s = socket.socket(af, socktype, proto)
+                s.settimeout(1)
+                s.connect(sockaddr)
+                return True
+            except socket.error:
+                continue
+        return False
 
     def _cmd(self, command):
         """Issue a monitor command and return QEMU's response.
