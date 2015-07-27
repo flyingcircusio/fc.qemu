@@ -23,6 +23,7 @@ package {
     ["qemu",
      "ceph-common",
      "python-dev",
+     "ntp",
      "python-virtualenv",
      "unzip",
     ]:
@@ -167,7 +168,7 @@ migration-address = tcp:${hostname}:{id}
 migration-ctl-address = ${hostname}:9000
 
 [consul]
-access-token = 
+access-token =
 
 [ceph]
 client-id = admin

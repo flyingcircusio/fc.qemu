@@ -14,15 +14,19 @@ class FakeTelnet(object):
     def write(self, data):
         pass
 
+    def close(self):
+        pass
+
 
 class MigrationStatusSequence(FakeTelnet):
 
-    def __init__(self, host, port, timeout=0):
-        self.attempt = 0
+    # This is a class-mutable by intention: we need several connections
+    # and keep track over those.
+    attempts = []
 
     def read_until(self, search, timeout=0):
-        if self.attempt < 2:
-            self.attempt += 1
+        if len(self.attempts) < 2:
+            self.attempts.append(search)
             return 'Migration status: active\r\n(qemu)\r\n'
         return 'Migration status: completed\r\n(qemu)\r\n'
 
@@ -58,10 +62,11 @@ class TestMonitor(object):
         with pytest.raises(RuntimeError):
             m._cmd('info status')
 
-    def test_status_should_catch_connection_errors(self, monkeypatch):
+    def test_status_should_not_catch_connection_errors(self, monkeypatch):
         monkeypatch.setattr(telnetlib, 'Telnet', ConnectionRefusedTelnet)
         m = Monitor(12345)
-        assert m.status() == ''
+        with pytest.raises(socket.error):
+            m._cmd('info status')
 
     def test_migstatus_should_catch_connection_errors(self, monkeypatch):
         monkeypatch.setattr(telnetlib, 'Telnet', ConnectionRefusedTelnet)
@@ -69,6 +74,7 @@ class TestMonitor(object):
         assert m.info_migrate() == ''
 
     def test_poll_status_should_terminate_on_reached_state(self, monkeypatch):
+        MigrationStatusSequence.attempts = []
         monkeypatch.setattr(telnetlib, 'Telnet', MigrationStatusSequence)
         monkeypatch.setattr(time, 'sleep', lambda t: None)
         m = Monitor(12345)
@@ -77,6 +83,7 @@ class TestMonitor(object):
         assert 'Migration status: completed' in res[-1]
 
     def test_poll_status_should_raise_on_unexpected_status(self, monkeypatch):
+        MigrationStatusSequence.attempts = []
         monkeypatch.setattr(telnetlib, 'Telnet', MigrationStatusSequence)
         monkeypatch.setattr(time, 'sleep', lambda t: None)
         m = Monitor(12345)

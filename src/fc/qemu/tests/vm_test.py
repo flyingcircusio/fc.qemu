@@ -153,7 +153,7 @@ lock: test00.tmp@host1
     assert status() == 'offline\n'
 
 
-def test_clean_up_crashed_vm(vm):
+def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
     vm.ensure()
     assert vm.qemu.is_running() is True
     vm.qemu.proc().kill()
@@ -161,7 +161,8 @@ def test_clean_up_crashed_vm(vm):
     assert vm.ceph.locked_by_me() is True
     vm.cfg['online'] = False
     vm.ensure()
-    assert vm.ceph.locked_by_me() is False
+    # We don't really know what's going on here, so, yeah, don't touch it.
+    assert vm.ceph.locked_by_me() is True
 
 
 def test_vm_swapsize():
