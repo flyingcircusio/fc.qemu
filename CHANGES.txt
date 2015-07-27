@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.7.8 (unreleased)
+0.7.8 (2015-07-27)
 ------------------
 
 - Improve detection of running instances.
