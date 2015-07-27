@@ -1,5 +1,5 @@
 #!/bin/bash
-set -ex
+set -x
 
 kill_vms() {
     pkill -f qemu || true
@@ -12,6 +12,7 @@ kill_vms
 bin/fc-qemu start test00
 ssh host2  "cd /vagrant; bin/fc-qemu inmigrate test00" &
 bin/fc-qemu outmigrate test00
+
 wait
 bin/fc-qemu status test00 || true
 ssh host2  "cd /vagrant; bin/fc-qemu status test00" || true

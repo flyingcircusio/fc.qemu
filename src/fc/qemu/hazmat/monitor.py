@@ -4,6 +4,7 @@ from ..exc import MigrationError
 from fc.qemu.timeout import TimeOut
 import logging
 import re
+import socket
 import telnetlib
 
 
@@ -19,16 +20,19 @@ class Monitor(object):
     def __init__(self, port, timeout=10):
         self.port = port
         self.timeout = timeout
-        self.conn = None
 
     def _connect(self):
-        self.conn = telnetlib.Telnet('localhost', self.port, self.timeout)
-        res = self.conn.read_until('(qemu)', self.timeout)
+        conn = telnetlib.Telnet('localhost', self.port, self.timeout)
+        res = conn.read_until('(qemu)', self.timeout)
         if '(qemu)' not in res:
             raise RuntimeError('failed to establish monitor connection', res)
+        return conn
 
-    def reset(self):
-        self._connect()
+    def peek(self):
+        # Check whether the monitor port is TCP reachable.
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex(('localhost', self.port))
+        return not bool(result)
 
     def _cmd(self, command):
         """Issue a monitor command and return QEMU's response.
@@ -36,31 +40,31 @@ class Monitor(object):
         The monitor connection will be established on the first
         invocation.
         """
-        if not self.conn:
-            self._connect()
-        _log.debug('[mon:%s] %s', self.port, command)
-        self.conn.write(command + '\n')
-        res = self.conn.read_until('(qemu)', self.timeout)
-        if res == '':  # Connection went away
-            _log.debug('[mon:%s] \\EOF', self.port)
-            self.conn = None
-            return ''
-        r_strip_echo = re.compile(r'^.*' + re.escape(command) + '\\S*\r\n')
-        output = r_strip_echo.sub('', res).replace('\r\n', '\n')
-        output = output.replace('(qemu)', '')
-        _log.debug('[mon:%s] %s', self.port, output.strip())
-        return output
+        conn = self._connect()
+        try:
+            _log.debug('[mon:%s] %s', self.port, command)
+            conn.write(command + '\n')
+            res = conn.read_until('(qemu)', self.timeout)
+            r_strip_echo = re.compile(r'^.*' + re.escape(command) + '\\S*\r\n')
+            output = r_strip_echo.sub('', res).replace('\r\n', '\n')
+            output = output.replace('(qemu)', '')
+            _log.debug('[mon:%s] %s', self.port, output.strip())
+            return output
+        finally:
+            conn.close()
 
     def status(self):
         """VM status summary.
 
         Returns one-line status string or an empty string if we cannot
         connect to the monitor.
+
         """
-        try:
-            return self._cmd('info status').strip()
-        except Exception:
-            return ''
+        status = self._cmd('info status').strip()
+        if 'VM status:' not in status:
+            raise AssertionError(
+                'Got unexpected status output: {}'.format(status))
+        return status
 
     def assert_status(self, expected):
         status = self.status()
@@ -125,7 +129,6 @@ class Monitor(object):
         try:
             self._cmd('quit')
         except (EOFError, MigrationError):
-            self.conn.close()
-            self.conn = None
+            pass
         else:
             raise RuntimeError('Machine did not quit?')
