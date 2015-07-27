@@ -5,13 +5,16 @@ Release notes
 0.7.8 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Improve detection of running instances.
+
+- Broaden check for monitor connection to handle dual stack
+  environments.
 
 
 0.7.7 (2015-07-14)
 ------------------
 
-- Fix migration issue: we ended up de-registering the wrong
+- Fix migration issue: we ended up de-registering at the wrong time.
 
 
 0.7.6 (2015-07-01)
