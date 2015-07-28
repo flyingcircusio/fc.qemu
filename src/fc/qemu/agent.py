@@ -67,12 +67,12 @@ def swap_size(memory):
         swap = memory / 2
     else:
         swap = 1024
-    return swap * 1024**2
+    return swap * 1024 ** 2
 
 
 def tmp_size(disk):
     # disk in GiB, return Bytes
-    return max(5*1024, disk*1024/10) * 1024**2
+    return max(5 * 1024, disk * 1024 / 10) * 1024 ** 2
 
 
 class Agent(object):
@@ -198,7 +198,7 @@ class Agent(object):
 
     def ensure_online_disk_size(self):
         """Trigger block resize action for the root disk via Qemu monitor."""
-        target_size = self.cfg['disk'] * (1024**3)
+        target_size = self.cfg['disk'] * (1024 ** 3)
         if self.ceph.root.image.size() >= target_size:
             return
         log.info('Online disk resize for VM %s to %s GiB', self.name,
@@ -231,6 +231,16 @@ class Agent(object):
         # because the start may have failed because of an already running
         # process. Removing the lock in that case is dangerous. OTOH leaving
         # the lock is never dangerous. Lets go with that.
+
+    @locked
+    def snapshot(self, snapshot):
+        if self.is_running():
+            self.qemu.freeze()
+        try:
+            self.ceph.root.snapshot(snapshot)
+        finally:
+            if self.is_running():
+                self.qemu.thaw()
 
     def status(self):
         """Determine status of the VM."""

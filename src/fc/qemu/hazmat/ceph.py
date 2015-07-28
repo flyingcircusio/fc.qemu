@@ -5,6 +5,7 @@ We expect Ceph Python bindings to be present in the system site packages.
 
 from __future__ import print_function
 import hashlib
+import json
 import logging
 import rados
 import rbd
@@ -27,7 +28,8 @@ def cmd(cmdline):
     """Execute cmdline with stdin closed to avoid questions on terminal"""
     print(cmdline)
     with open('/dev/null') as null:
-        subprocess.check_call(cmdline, shell=True, stdin=null)
+        output = subprocess.check_output(cmdline, shell=True, stdin=null)
+    return output
 
 
 class Volume(object):
@@ -38,6 +40,7 @@ class Volume(object):
         self.ioctx = ioctx
         self.name = name
         self.rbd = rbd.RBD()
+        self.snapshots = Snapshots(self)
 
     @property
     def fullname(self):
@@ -90,7 +93,8 @@ class Volume(object):
                     return
                 # Its locked for some other client.
                 logger.error(
-                    'Failed assuming lock. Giving up. Competing lock: {}'.format(status))
+                    'Failed assuming lock. Giving up. '
+                    'Competing lock: {}'.format(status))
                 raise
         raise rbd.ImageBusy(
             'Could not acquire lock - tried multiple times. '
@@ -152,6 +156,26 @@ class Volume(object):
         self.mapped = False
 
 
+class Snapshots(object):
+
+    def __init__(self, volume):
+        self.volume = volume
+
+    def create(self, name):
+        cmd('rbd --id "{}" snap create "{}@{}"'.format(
+            CEPH_CLIENT, self.volume.fullname, name))
+
+    def list(self):
+        output = cmd(
+            'rbd --id "{}" --format=json snap ls "{}"'.format(
+                CEPH_CLIENT, self.volume.fullname))
+        return json.loads(output)
+
+    def remove(self, name):
+        cmd('rbd --id "{}" snap rm "{}@{}"'.format(
+            CEPH_CLIENT, self.volume.fullname, name))
+
+
 class Ceph(object):
 
     def __init__(self, cfg):
@@ -189,7 +213,7 @@ class Ceph(object):
     def shrink_root(self):
         # Note: we trust the called script to lock and unlock
         # the root image.
-        target_size = self.cfg['disk'] * 1024**3
+        target_size = self.cfg['disk'] * 1024 ** 3
         if self.root.size <= target_size:
             return
         try:
