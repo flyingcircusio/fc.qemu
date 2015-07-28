@@ -148,6 +148,15 @@ def main():
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.set_defaults(func='unlock')
 
+    p = sub.add_parser('snapshot',
+                       help='Take a clean snapshot of this VM\'s root volume.')
+    p.add_argument('vm', metavar='VM', help='name of the VM')
+    p.add_argument('snapshot', help='name of the snapshot')
+    p.set_defaults(func='snapshot')
+
+    p.add_argument('vm', metavar='VM', help='name of the VM')
+    p.set_defaults(func='lock')
+
     p = sub.add_parser('force-unlock', help="Release all locks of a VM even "
                        "if we don't own them.")
     p.add_argument('vm', metavar='VM', help='name of the VM')

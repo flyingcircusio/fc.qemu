@@ -3,6 +3,7 @@
 from ..exc import QemuNotRunning
 from ..timeout import TimeOut
 from .monitor import Monitor
+from .guestagent import GuestAgent, ClientError
 import glob
 import logging
 import os.path
@@ -52,6 +53,7 @@ class Qemu(object):
         self.migration_address = ':'.join(a)
         self.name = self.cfg['name']
         self.monitor_port = self.cfg['id'] + self.MONITOR_OFFSET
+        self.guestagent = GuestAgent(self.name)
 
     def __enter__(self):
         self.monitor = Monitor(self.monitor_port)
@@ -96,6 +98,22 @@ class Qemu(object):
     def start(self):
         self._start()
         assert self.is_running()
+
+    def freeze(self):
+        with self.guestagent as guest:
+            try:
+                guest.cmd('guest-fsfreeze-freeze')
+            except ClientError:
+                pass
+            assert guest.cmd('guest-fsfreeze-status') == 'frozen'
+
+    def thaw(self):
+        with self.guestagent as guest:
+            try:
+                guest.cmd('guest-fsfreeze-thaw')
+            except ClientError:
+                pass
+            assert guest.cmd('guest-fsfreeze-status') == 'thawed'
 
     def inmigrate(self):
         self._start(['-incoming {}'.format(self.migration_address)])
@@ -201,7 +219,7 @@ class Qemu(object):
                 break
 
     def resize_root(self, size):
-        size = size / 1024**2  # MiB
+        size = size / 1024 ** 2  # MiB
         self.monitor._cmd('block_resize virtio0 {}'.format(size))
 
     def clean_run_files(self):
