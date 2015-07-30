@@ -29,6 +29,8 @@ def cmd(cmdline):
     print(cmdline)
     with open('/dev/null') as null:
         output = subprocess.check_output(cmdline, shell=True, stdin=null)
+    # Keep this here for compatibility with tests
+    print(output, end='')
     return output
 
 
