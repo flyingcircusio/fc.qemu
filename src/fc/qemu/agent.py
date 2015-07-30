@@ -182,7 +182,7 @@ class Agent(object):
                 log.exception('Error while leaving agent contexts.')
 
     def belongs_to_this_host(self):
-        return self.cfg['kvm_host'] != self.this_host
+        return self.cfg['kvm_host'] == self.this_host
 
     @locked
     def ensure(self):
