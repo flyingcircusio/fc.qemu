@@ -171,7 +171,11 @@ class Agent(object):
         else:
             self.ensure_online()
             self.ensure_online_disk_size()
-        if not self.state_is_consistent():
+
+        if self.state_is_consistent():
+            if not self.qemu.is_running():
+                self.qemu.clean_run_files()
+        else:
             log.warning('%s: state not consistent (monitor, pidfile, ceph), '
                         'destroying VM and cleaning up', self.name)
             self.qemu.destroy()
@@ -353,7 +357,7 @@ class Agent(object):
             self.qemu.is_running(),
             bool(self.qemu.proc()),
             self.ceph.locked_by_me()]
-        log.info('Current state: qemu=={}, proc=={}, locked=={}'.
+        log.info('Current state: qemu={}, proc={}, locked={}'.
                  format(*substates))
         return any(substates) == all(substates)
 
