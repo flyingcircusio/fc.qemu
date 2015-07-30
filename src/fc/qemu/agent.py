@@ -22,8 +22,22 @@ log = getLogger(__name__)
 
 
 def _handle_consul_event(event):
-    """Actual handling of a single Consul event in a separate process."""
-    try:
+    handler = ConsulEventHandler()
+    handler.handle(event)
+
+
+class ConsulEventHandler(object):
+
+    def handle(self, event):
+        """Actual handling of a single Consul event in a
+        separate process."""
+        try:
+            prefix = event['Key'].split('/')[0]
+            getattr(self, prefix)(event)
+        except Exception as e:
+            log.exception('error handling consul event: %s', e)
+
+    def node(self, event):
         config = json.loads(event['Value'].decode('base64'))
         config['consul-generation'] = event['ModifyIndex']
         vm = config['name']
@@ -34,8 +48,16 @@ def _handle_consul_event(event):
         with agent:
             agent.save_enc()
             agent.ensure()
-    except Exception as e:
-        log.exception('error handling consul event: %s', e)
+
+    def snapshot(self, event):
+        value = json.loads(event['Value'].decode('base64'))
+        vm = value['vm']
+        snapshot = value['snapshot']
+        agent = Agent(vm)
+        with agent:
+            if not agent.belongs_to_this_host():
+                return
+            agent.snapshot(snapshot)
 
 
 def running(expected=True):
@@ -159,11 +181,14 @@ class Agent(object):
             except Exception:
                 log.exception('Error while leaving agent contexts.')
 
+    def belongs_to_this_host(self):
+        return self.cfg['kvm_host'] != self.this_host
+
     @locked
     def ensure(self):
         if not self.cfg['online'] or not self.cfg['kvm_host']:
             self.ensure_offline()
-        elif self.cfg['kvm_host'] != self.this_host:
+        elif not self.belongs_to_this_host():
             if self.qemu.is_running():
                 self.outmigrate()
             else:
