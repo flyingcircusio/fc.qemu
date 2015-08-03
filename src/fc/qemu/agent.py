@@ -272,16 +272,15 @@ class Agent(object):
     def snapshot(self, snapshot):
         if snapshot in [x['name'] for x in self.ceph.root.snapshots.list()]:
             return
-        if self.qemu.is_running():
-            try:
-                self.qemu.freeze()
-            except socket.timeout:
-                log.warning('Timed out freezing the machine. '
-                            'Continuing with unclean snapshot.')
-                pass
         try:
-
-            self.ceph.root.snapshots.create(snapshot)
+            if self.qemu.is_running():
+                try:
+                    self.qemu.freeze()
+                except socket.timeout:
+                    log.warning('Timed out freezing the machine. '
+                                'Continuing with unclean snapshot.')
+                    pass
+                self.ceph.root.snapshots.create(snapshot)
         finally:
             try:
                 if self.qemu.is_running():
