@@ -274,6 +274,7 @@ class Agent(object):
             return
         if self.qemu.is_running():
             try:
+                    log.info('Freezing root disk ...')
                 self.qemu.freeze()
             except socket.timeout:
                 log.warning('Timed out freezing the machine. '
@@ -285,6 +286,7 @@ class Agent(object):
         finally:
             try:
                 if self.qemu.is_running():
+                    log.info('Thawing root disk ...')
                     self.qemu.thaw()
             except socket.timeout:
                 log.warning('Timed out thawing the machine. '
