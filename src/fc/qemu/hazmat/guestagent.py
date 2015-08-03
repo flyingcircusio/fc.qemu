@@ -16,6 +16,7 @@ class GuestAgent(object):
 
     def __enter__(self):
         self.client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.client.settimeout(5)
         self.client.connect('/run/qemu.{}.gqa.sock'.format(self.machine))
         self.file = self.client.makefile()
 

@@ -33,6 +33,8 @@ class ConsulEventHandler(object):
         separate process."""
         try:
             prefix = event['Key'].split('/')[0]
+            if not event['Value']:
+                return
             getattr(self, prefix)(event)
         except Exception as e:
             log.exception('error handling consul event: %s', e)
@@ -56,7 +58,11 @@ class ConsulEventHandler(object):
         agent = Agent(vm)
         with agent:
             if not agent.belongs_to_this_host():
+                log.debug(
+                    'Ignoring snapshot for {} as it belongs to '
+                    'another host.'.format(vm))
                 return
+            log.info('Ensuring snapshot `{}`'.format(snapshot))
             agent.snapshot(snapshot)
 
 
@@ -155,16 +161,17 @@ class Agent(object):
         events = json.load(sys.stdin)
         if not events:
             return
-        log.info('[Consul] processing %d event(s)', len(events))
+        log.info('Processing %d consul event(s)', len(events))
         for e in events:
             p = multiprocessing.Process(target=_handle_consul_event, args=(e,))
             p.start()
             time.sleep(0.1)
         for proc in multiprocessing.active_children():
             proc.join()
+        log.info('Finished processing %d consul event(s)', len(events))
 
     def save_enc(self):
-        if not p.isdir(p.dirname(self.configfile)):
+        if not p.isdir(p.dirname(self.cocnfigfile)):
             os.makedirs(p.dirname(self.configfile))
         with rewrite(self.configfile) as f:
             yaml.safe_dump(self.enc, f)
@@ -263,13 +270,25 @@ class Agent(object):
 
     @locked
     def snapshot(self, snapshot):
-        if self.is_running():
-            self.qemu.freeze()
+        if snapshot in [x['name'] for x in self.ceph.root.snapshots.list()]:
+            return
+        if self.qemu.is_running():
+            try:
+                self.qemu.freeze()
+            except socket.timeout:
+                log.warning('Timed out freezing the machine. '
+                            'Continuing with unclean snapshot.')
+                pass
         try:
-            self.ceph.root.snapshot(snapshot)
+
+            self.ceph.root.snapshots.create(snapshot)
         finally:
-            if self.is_running():
-                self.qemu.thaw()
+            try:
+                if self.qemu.is_running():
+                    self.qemu.thaw()
+            except socket.timeout:
+                log.warning('Timed out thawing the machine. '
+                            'Hoping for the best.')
 
     def status(self):
         """Determine status of the VM."""
