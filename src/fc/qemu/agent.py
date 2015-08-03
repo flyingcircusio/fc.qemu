@@ -171,7 +171,7 @@ class Agent(object):
         log.info('Finished processing %d consul event(s)', len(events))
 
     def save_enc(self):
-        if not p.isdir(p.dirname(self.cocnfigfile)):
+        if not p.isdir(p.dirname(self.configfile)):
             os.makedirs(p.dirname(self.configfile))
         with rewrite(self.configfile) as f:
             yaml.safe_dump(self.enc, f)
