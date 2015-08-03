@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+test "$1" = -I
+rbd create --size 5120 --image-format 2 "test/${2}.root"

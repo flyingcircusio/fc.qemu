@@ -1,0 +1,5 @@
+#!/bin/sh
+cd /vagrant
+rm -rf bin/ include/ lib/ local/
+virtualenv -p python2.7 --system-site-packages .
+bin/pip install --upgrade -r requirements.txt

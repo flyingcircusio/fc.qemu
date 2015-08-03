@@ -1,0 +1,14 @@
+{
+  "watches": [
+    {
+      "type": "keyprefix",
+      "prefix": "node",
+      "handler": "/vagrant/bin/fc-qemu handle-consul-event"
+    },
+    {
+      "type": "keyprefix",
+      "prefix": "snapshot",
+      "handler": "/vagrant/bin/fc-qemu handle-consul-event"
+    }
+  ]
+}

@@ -5,8 +5,8 @@
 VAGRANTFILE_API_VERSION = "2"
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
-  config.vm.box = "ubuntu/trusty64"
-  config.vm.provision "puppet"
+  config.vm.box = "flyingcircus/nixos-15.07-pre-x86_64"
+
 
   config.vm.provider "virtualbox" do |vb|
     vb.customize ["modifyvm", :id, "--memory", "1024"]
@@ -15,12 +15,13 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.define "host1", primary: true do |host1|
     host1.vm.network "private_network", ip: "192.168.50.4"
     host1.vm.hostname = "host1"
+    config.vm.provision :nixos, :verbose => true, :path => "provision-host1.nix"
   end
 
   config.vm.define "host2" do |host2|
     host2.vm.network "private_network", ip: "192.168.50.5"
     host2.vm.hostname = "host2"
-    host2.vm.provision "shell", path: "bootstrap-ceph.sh"
+    config.vm.provision :nixos, :verbose => true, :path => "provision-host2.nix"
   end
 
 end

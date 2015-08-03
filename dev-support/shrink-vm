@@ -1,0 +1,2 @@
+#!/bin/sh
+echo "fake shrink-vm pool=$1 image=$2 disk=$3"
