@@ -274,14 +274,12 @@ class Agent(object):
             return
         if self.qemu.is_running():
             try:
-                    log.info('Freezing root disk ...')
+                log.info('Freezing root disk ...')
                 self.qemu.freeze()
             except socket.timeout:
                 log.warning('Timed out freezing the machine. '
                             'Continuing with unclean snapshot.')
-                pass
         try:
-
             self.ceph.root.snapshots.create(snapshot)
         finally:
             try:
