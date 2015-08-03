@@ -22,8 +22,24 @@ log = getLogger(__name__)
 
 
 def _handle_consul_event(event):
-    """Actual handling of a single Consul event in a separate process."""
-    try:
+    handler = ConsulEventHandler()
+    handler.handle(event)
+
+
+class ConsulEventHandler(object):
+
+    def handle(self, event):
+        """Actual handling of a single Consul event in a
+        separate process."""
+        try:
+            prefix = event['Key'].split('/')[0]
+            if not event['Value']:
+                return
+            getattr(self, prefix)(event)
+        except Exception as e:
+            log.exception('error handling consul event: %s', e)
+
+    def node(self, event):
         config = json.loads(event['Value'].decode('base64'))
         config['consul-generation'] = event['ModifyIndex']
         vm = config['name']
@@ -34,8 +50,20 @@ def _handle_consul_event(event):
         with agent:
             agent.save_enc()
             agent.ensure()
-    except Exception as e:
-        log.exception('error handling consul event: %s', e)
+
+    def snapshot(self, event):
+        value = json.loads(event['Value'].decode('base64'))
+        vm = value['vm']
+        snapshot = value['snapshot']
+        agent = Agent(vm)
+        with agent:
+            if not agent.belongs_to_this_host():
+                log.debug(
+                    'Ignoring snapshot for {} as it belongs to '
+                    'another host.'.format(vm))
+                return
+            log.info('Ensuring snapshot `{}`'.format(snapshot))
+            agent.snapshot(snapshot)
 
 
 def running(expected=True):
@@ -67,12 +95,12 @@ def swap_size(memory):
         swap = memory / 2
     else:
         swap = 1024
-    return swap * 1024**2
+    return swap * 1024 ** 2
 
 
 def tmp_size(disk):
     # disk in GiB, return Bytes
-    return max(5*1024, disk*1024/10) * 1024**2
+    return max(5 * 1024, disk * 1024 / 10) * 1024 ** 2
 
 
 class Agent(object):
@@ -133,13 +161,14 @@ class Agent(object):
         events = json.load(sys.stdin)
         if not events:
             return
-        log.info('[Consul] processing %d event(s)', len(events))
+        log.info('Processing %d consul event(s)', len(events))
         for e in events:
             p = multiprocessing.Process(target=_handle_consul_event, args=(e,))
             p.start()
             time.sleep(0.1)
         for proc in multiprocessing.active_children():
             proc.join()
+        log.info('Finished processing %d consul event(s)', len(events))
 
     def save_enc(self):
         if not p.isdir(p.dirname(self.configfile)):
@@ -159,11 +188,14 @@ class Agent(object):
             except Exception:
                 log.exception('Error while leaving agent contexts.')
 
+    def belongs_to_this_host(self):
+        return self.cfg['kvm_host'] == self.this_host
+
     @locked
     def ensure(self):
         if not self.cfg['online'] or not self.cfg['kvm_host']:
             self.ensure_offline()
-        elif self.cfg['kvm_host'] != self.this_host:
+        elif not self.belongs_to_this_host():
             if self.qemu.is_running():
                 self.outmigrate()
             else:
@@ -171,7 +203,11 @@ class Agent(object):
         else:
             self.ensure_online()
             self.ensure_online_disk_size()
-        if not self.state_is_consistent():
+
+        if self.state_is_consistent():
+            if not self.qemu.is_running():
+                self.qemu.clean_run_files()
+        else:
             log.warning('%s: state not consistent (monitor, pidfile, ceph), '
                         'destroying VM and cleaning up', self.name)
             self.qemu.destroy()
@@ -198,7 +234,7 @@ class Agent(object):
 
     def ensure_online_disk_size(self):
         """Trigger block resize action for the root disk via Qemu monitor."""
-        target_size = self.cfg['disk'] * (1024**3)
+        target_size = self.cfg['disk'] * (1024 ** 3)
         if self.ceph.root.image.size() >= target_size:
             return
         log.info('Online disk resize for VM %s to %s GiB', self.name,
@@ -231,6 +267,28 @@ class Agent(object):
         # because the start may have failed because of an already running
         # process. Removing the lock in that case is dangerous. OTOH leaving
         # the lock is never dangerous. Lets go with that.
+
+    @locked
+    def snapshot(self, snapshot):
+        if snapshot in [x['name'] for x in self.ceph.root.snapshots.list()]:
+            return
+        if self.qemu.is_running():
+            try:
+                log.info('Freezing root disk ...')
+                self.qemu.freeze()
+            except socket.timeout:
+                log.warning('Timed out freezing the machine. '
+                            'Continuing with unclean snapshot.')
+        try:
+            self.ceph.root.snapshots.create(snapshot)
+        finally:
+            try:
+                if self.qemu.is_running():
+                    log.info('Thawing root disk ...')
+                    self.qemu.thaw()
+            except socket.timeout:
+                log.warning('Timed out thawing the machine. '
+                            'Hoping for the best.')
 
     def status(self):
         """Determine status of the VM."""
@@ -343,7 +401,7 @@ class Agent(object):
             self.qemu.is_running(),
             bool(self.qemu.proc()),
             self.ceph.locked_by_me()]
-        log.info('Current state: qemu=={}, proc=={}, locked=={}'.
+        log.info('Current state: qemu={}, proc={}, locked={}'.
                  format(*substates))
         return any(substates) == all(substates)
 

@@ -15,16 +15,26 @@ def ceph_inst():
 
 @pytest.yield_fixture
 def volume(ceph_inst):
+    volume = Volume(ceph_inst.ioctx, 'othervolume')
+
+    try:
+        for snapshot in volume.snapshots.list():
+            volume.snapshots.remove(snapshot['name'])
+    except Exception:
+        pass
+
     try:
         rbd.RBD().remove(ceph_inst.ioctx, 'othervolume')
     except rbd.ImageNotFound:
         pass
 
-    volume = Volume(ceph_inst.ioctx, 'othervolume')
     yield volume
+
     lock = volume.lock_status()
     if lock is not None:
         volume.image.break_lock(*lock)
+    for snapshot in volume.snapshots.list():
+        volume.snapshots.remove(snapshot['name'])
     rbd.RBD().remove(ceph_inst.ioctx, 'othervolume')
 
 
@@ -37,6 +47,18 @@ def test_volume_presence(volume):
     assert volume.image
     # Check that ensure_presence is fine with being called multiple times.
     volume.ensure_presence()
+
+
+def test_volume_snapshot(volume):
+    volume.ensure_presence()
+    assert volume.image
+    volume.snapshots.create('test')
+    snaps = volume.snapshots.list()
+    assert len(snaps) == 1
+    assert snaps[0]['name'] == 'test'
+
+    volume.snapshots.remove('test')
+    assert volume.snapshots.list() == []
 
 
 def test_volume_size(volume):

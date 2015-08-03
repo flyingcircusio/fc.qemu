@@ -125,6 +125,7 @@ def test_crashed_vm_clean_restart(vm, capsys):
     assert status() == 'offline\n'
 
     vm.ensure()
+
     assert status() == """\
 online
 lock: test00.root@host1
@@ -166,20 +167,20 @@ def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
 
 
 def test_vm_swapsize():
-    assert swap_size(256) == 1 * 1024**3
-    assert swap_size(512) == 1 * 1024**3
-    assert swap_size(768) == 1 * 1024**3
-    assert swap_size(1024) == 1 * 1024**3
-    assert swap_size(2048) == 1 * 1024**3
-    assert swap_size(4096) == 2 * 1024**3
+    assert swap_size(256) == 1 * 1024 ** 3
+    assert swap_size(512) == 1 * 1024 ** 3
+    assert swap_size(768) == 1 * 1024 ** 3
+    assert swap_size(1024) == 1 * 1024 ** 3
+    assert swap_size(2048) == 1 * 1024 ** 3
+    assert swap_size(4096) == 2 * 1024 ** 3
 
 
 def test_vm_tmpsize():
-    assert tmp_size(5) == 5120 * 1024**2
-    assert tmp_size(10) == 5120 * 1024**2
-    assert tmp_size(50) == 5120 * 1024**2
-    assert tmp_size(100) == 10240 * 1024**2
-    assert tmp_size(200) == 20480 * 1024**2
+    assert tmp_size(5) == 5120 * 1024 ** 2
+    assert tmp_size(10) == 5120 * 1024 ** 2
+    assert tmp_size(50) == 5120 * 1024 ** 2
+    assert tmp_size(100) == 10240 * 1024 ** 2
+    assert tmp_size(200) == 20480 * 1024 ** 2
 
 
 def test_vm_migration():
