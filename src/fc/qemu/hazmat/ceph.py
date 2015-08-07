@@ -139,6 +139,7 @@ class Volume(object):
         self.map()
         try:
             cmd('mkfs -F -q -m 1 -t ext4 "/dev/rbd/{}"'.format(self.fullname))
+            time.sleep(0.1)
             cmd('tune2fs -e remount-ro "/dev/rbd/{}"'.format(self.fullname))
         finally:
             self.unmap()
