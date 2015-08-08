@@ -223,7 +223,7 @@ class Qemu(object):
         self.monitor._cmd('block_resize virtio0 {}'.format(size))
 
     def clean_run_files(self):
-        log.info('Removing run files.')
+        log.debug('Removing run files')
         for runfile in glob.glob('/run/qemu.{}.*'.format(self.cfg['name'])):
             os.unlink(runfile)
 

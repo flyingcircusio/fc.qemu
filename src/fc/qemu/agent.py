@@ -401,8 +401,8 @@ class Agent(object):
             self.qemu.is_running(),
             bool(self.qemu.proc()),
             self.ceph.locked_by_me()]
-        log.info('Current state: qemu={}, proc={}, locked={}'.
-                 format(*substates))
+        log.info('[%s] current state: qemu=%s, proc=%s, locked=%s',
+                 *([self.name] + substates))
         return any(substates) == all(substates)
 
     # CAREFUL: changing anything in this config files will cause maintenance w/

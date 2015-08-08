@@ -32,7 +32,7 @@ class Monitor(object):
         # Check whether the monitor port is TCP reachable.
         addr = socket.getaddrinfo(
             'localhost', self.port, socket.AF_UNSPEC, socket.SOCK_STREAM, 0)
-        for (af, socktype, proto, cname, sockaddr) in addr:
+        for (af, socktype, proto, _cname, sockaddr) in addr:
             try:
                 s = socket.socket(af, socktype, proto)
                 s.settimeout(1)
@@ -88,7 +88,7 @@ class Monitor(object):
         """Initiate migration (asynchronously)."""
         self._cmd('migrate_set_capability xbzrle on')
         self._cmd('migrate_set_capability auto-converge on')
-        self._cmd('migrate_set_downtime 0.75')
+        self._cmd('migrate_set_downtime 0.9')
         res = self._cmd('migrate -d {}'.format(address)).strip()
         if res:
             raise MigrationError('error while initiating migration', res)
