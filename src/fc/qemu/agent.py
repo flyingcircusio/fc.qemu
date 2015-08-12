@@ -106,7 +106,8 @@ def tmp_size(disk):
 class Agent(object):
     """The agent to control a single VM."""
 
-    # Those values can be overriden using the /etc/qemu/fc-agent.conf
+    # The following config variables are usually overridden from
+    # main.load_system_config with values from fc-qemu.conf.
     # config file. The defaults are intended for testing purposes.
     this_host = ''
     migration_ctl_address = None

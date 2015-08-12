@@ -25,6 +25,7 @@ class Qemu(object):
     cfg = None
     require_kvm = True
     migration_address = None
+    max_downtime = 1.0
 
     # The non-hosts-specific config configuration of this Qemu instance.
     args = ()
@@ -40,11 +41,11 @@ class Qemu(object):
     configfile = '/run/qemu.{name}.cfg'
     argfile = '/run/qemu.{name}.args'
 
-    def __init__(self, cfg):
-        self.cfg = cfg
+    def __init__(self, vm_cfg):
+        self.cfg = vm_cfg
         # expand template keywords in configuration variables
         for f in ['pidfile', 'configfile', 'argfile', 'migration_address']:
-            setattr(self, f, getattr(self, f).format(**cfg))
+            setattr(self, f, getattr(self, f).format(**vm_cfg))
         # We are running qemu with chroot which causes us to not be able to
         # resolve names. :( See #13837.
         a = self.migration_address.split(':')
@@ -124,7 +125,7 @@ class Qemu(object):
     def migrate(self, address):
         """Initiate actual (out-)migration"""
         log.debug('[qemu] %s: migrate (mon:%s)', self.name, self.monitor_port)
-        self.monitor.migrate(address)
+        self.monitor.migrate(address, self.max_downtime)
 
     def is_running(self):
         # This method must be very reliable. It is perfectly OK to error
@@ -152,8 +153,8 @@ class Qemu(object):
                 try:
                     status = self.monitor.status()
                     monitor_says_running = status == 'VM status: running'
-                except:
-                    log.exception('waiting for monitor status')
+                except Exception as e:
+                    log.exception('waiting for monitor status: %s', e)
                     pass
                 else:
                     break
