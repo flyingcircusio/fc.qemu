@@ -107,7 +107,8 @@ def tmp_size(disk):
 class Agent(object):
     """The agent to control a single VM."""
 
-    # Those values can be overriden using the /etc/qemu/fc-agent.conf
+    # The following config variables are usually overridden from
+    # main.load_system_config with values from fc-qemu.conf.
     # config file. The defaults are intended for testing purposes.
     this_host = ''
     migration_ctl_address = None
@@ -405,8 +406,8 @@ class Agent(object):
             self.qemu.is_running(),
             bool(self.qemu.proc()),
             self.ceph.locked_by_me()]
-        log.info('Current state: qemu={}, proc={}, locked={}'.
-                 format(*substates))
+        log.info('[%s] current state: qemu=%s, proc=%s, locked=%s',
+                 *([self.name] + substates))
         return any(substates) == all(substates)
 
     # CAREFUL: changing anything in this config files will cause maintenance w/

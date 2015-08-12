@@ -6,6 +6,9 @@ Release notes
 -------------------
 
 - Refactor system-wide configuration code.
+- Create swap and tmp partition with proper filesystem labels (#16783).
+- Fix rare race condition during tmp volume creation.
+- Set filesystem labels for swap and tmp volumes (#17078).
 
 
 0.7.9 (2015-08-03)

@@ -29,10 +29,10 @@ class Monitor(object):
         return conn
 
     def peek(self):
-        # Check whether the monitor port is TCP reachable.
+        """Checks whether the monitor port is TCP reachable."""
         addr = socket.getaddrinfo(
             'localhost', self.port, socket.AF_UNSPEC, socket.SOCK_STREAM, 0)
-        for (af, socktype, proto, cname, sockaddr) in addr:
+        for (af, socktype, proto, _cname, sockaddr) in addr:
             try:
                 s = socket.socket(af, socktype, proto)
                 s.settimeout(1)
@@ -43,7 +43,7 @@ class Monitor(object):
         return False
 
     def _cmd(self, command):
-        """Issue a monitor command and return QEMU's response.
+        """Issues a monitor command and return QEMU's response.
 
         The monitor connection will be established on the first
         invocation.
@@ -84,11 +84,11 @@ class Monitor(object):
     def sendkey(self, keys):
         self._cmd('sendkey {}'.format(keys))
 
-    def migrate(self, address):
+    def migrate(self, address, downtime):
         """Initiate migration (asynchronously)."""
         self._cmd('migrate_set_capability xbzrle on')
         self._cmd('migrate_set_capability auto-converge on')
-        self._cmd('migrate_set_downtime 0.75')
+        self._cmd('migrate_set_downtime {}'.format(downtime))
         res = self._cmd('migrate -d {}'.format(address)).strip()
         if res:
             raise MigrationError('error while initiating migration', res)
