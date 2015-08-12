@@ -28,6 +28,7 @@ class SysConfig(object):
             'qemu', 'migration-address')
         self.qemu['require_kvm'] = bool(sysconfig.get('qemu', 'accelerator'))
         self.qemu['vnc'] = sysconfig.get('qemu', 'vnc')
+        self.qemu['max_downtime'] = sysconfig.getfloat('qemu', 'max-downtime')
 
         self.agent['accelerator'] = sysconfig.get('qemu', 'accelerator')
         self.agent['ceph_id'] = sysconfig.get('ceph', 'client-id')
