@@ -4,6 +4,7 @@ from .incoming import IncomingServer
 from .outgoing import Outgoing
 from .timeout import TimeOut
 from .util import rewrite, locate_live_service
+from .sysconfig import sysconfig
 from logging import getLogger
 import consulate
 import copy
@@ -111,7 +112,7 @@ class Agent(object):
     this_host = ''
     migration_ctl_address = None
     accelerator = ''
-    vhost = ''
+    vhost = False
     ceph_id = 'admin'
     timeout_graceful = 80
     vm_config_template_path = [
@@ -123,6 +124,9 @@ class Agent(object):
     _configfile_fd = None
 
     def __init__(self, name, enc=None):
+        # Update configuration values from system or test config.
+        self.__dict__.update(sysconfig.agent)
+
         if '.' in name:
             self.configfile = name
         else:
@@ -435,6 +439,8 @@ class Agent(object):
         self.qemu.args = [a.format(**self.cfg)
                           for a in self.qemu.args]
 
+        vhost = '  vhost = "on"' if self.vhost else ''
+
         netconfig = []
         for net, net_config in sorted(self.cfg['interfaces'].items()):
             ifname = 't{}{}'.format(net, self.cfg['id'])
@@ -450,10 +456,12 @@ class Agent(object):
   script = "/etc/kvm/kvm-ifup"
   downscript = "/etc/kvm/kvm-ifdown"
 {vhost}
-""".format(ifname=ifname, mac=net_config['mac'], vhost=self.vhost))
+""".format(ifname=ifname, mac=net_config['mac'], vhost=vhost))
 
         with open(self.vm_config_template) as f:
             tpl = f.read()
+        accelerator = (' accel = "{}"'.format(self.accelerator)
+                       if self.accelerator else '')
         self.qemu.config = tpl.format(
-            accelerator=self.accelerator,
+            accelerator=accelerator,
             network=''.join(netconfig), **self.cfg)

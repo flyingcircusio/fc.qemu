@@ -4,6 +4,7 @@ We expect Ceph Python bindings to be present in the system site packages.
 """
 
 from __future__ import print_function
+from ..sysconfig import sysconfig
 import hashlib
 import json
 import logging
@@ -13,15 +14,6 @@ import subprocess
 import time
 
 logger = logging.getLogger(__name__)
-
-# Those settings are overwritten by the system config from /etc/qemu/fc-
-# agent.conf. The default values in main() support testing.
-
-CEPH_CLUSTER = None
-CEPH_LOCK_HOST = None
-CEPH_CLIENT = 'admin'
-CREATE_VM = None
-SHRINK_VM = None
 
 
 def cmd(cmdline):
@@ -38,8 +30,9 @@ class Volume(object):
 
     mapped = False
 
-    def __init__(self, ioctx, name):
-        self.ioctx = ioctx
+    def __init__(self, ceph, name):
+        self.ceph = ceph
+        self.ioctx = ceph.ioctx
         self.name = name
         self.rbd = rbd.RBD()
         self.snapshots = Snapshots(self)
@@ -75,7 +68,7 @@ class Volume(object):
         retry = 3
         while retry:
             try:
-                self.image.lock_exclusive(CEPH_LOCK_HOST)
+                self.image.lock_exclusive(self.ceph.CEPH_LOCK_HOST)
             except rbd.ImageExists:
                 # This client and cookie already locked this. This is
                 # definitely fine.
@@ -89,7 +82,7 @@ class Volume(object):
                     # Lets try again
                     retry -= 1
                     continue
-                if status[1] == CEPH_LOCK_HOST:
+                if status[1] == self.ceph.CEPH_LOCK_HOST:
                     # That's locked for us already. We just re-use
                     # the existing lock.
                     return
@@ -123,7 +116,7 @@ class Volume(object):
         if not locked_by:
             return
         client_id, lock_id = locked_by
-        if not force and lock_id != CEPH_LOCK_HOST:
+        if not force and lock_id != self.ceph.CEPH_LOCK_HOST:
             raise rbd.ImageBusy("Can not break lock for {} held by host {}."
                                 .format(self.name, lock_id))
         self.image.break_lock(client_id, lock_id)
@@ -147,15 +140,16 @@ class Volume(object):
     def map(self):
         if self.mapped:
             return
-        cmd('rbd --id "{}" map "{}"'.format(CEPH_CLIENT, self.fullname))
+        cmd('rbd --id "{}" map "{}"'.format(
+            self.ceph.CEPH_CLIENT, self.fullname))
         time.sleep(0.1)
         self.mapped = True
 
     def unmap(self):
         if not self.mapped:
             return
-        cmd('rbd --id "{}" unmap "/dev/rbd/{}"'.format(CEPH_CLIENT,
-                                                       self.fullname))
+        cmd('rbd --id "{}" unmap "/dev/rbd/{}"'.format(
+            self.ceph.CEPH_CLIENT, self.fullname))
         self.mapped = False
 
 
@@ -166,39 +160,51 @@ class Snapshots(object):
 
     def create(self, name):
         cmd('rbd --id "{}" snap create "{}@{}"'.format(
-            CEPH_CLIENT, self.volume.fullname, name))
+            self.volume.ceph.CEPH_CLIENT, self.volume.fullname, name))
         logger.info('Created snapshot {}'.format(name))
 
     def list(self):
         output = cmd(
             'rbd --id "{}" --format=json snap ls "{}"'.format(
-                CEPH_CLIENT, self.volume.fullname))
+                self.volume.ceph.CEPH_CLIENT, self.volume.fullname))
         return json.loads(output)
 
     def remove(self, name):
         cmd('rbd --id "{}" snap rm "{}@{}"'.format(
-            CEPH_CLIENT, self.volume.fullname, name))
+            self.volume.ceph.CEPH_CLIENT, self.volume.fullname, name))
 
 
 class Ceph(object):
 
+    CEPH_CLUSTER = None
+    CEPH_LOCK_HOST = None
+    CEPH_CLIENT = 'admin'
+    CREATE_VM = None
+    SHRINK_VM = None
+
     def __init__(self, cfg):
+        # Update configuration values from system or test config.
+        self.__dict__.update(sysconfig.ceph)
+
         self.cfg = cfg
-        self.ceph_conf = '/etc/ceph/{}.conf'.format(CEPH_CLUSTER)
+        self.ceph_conf = '/etc/ceph/{}.conf'.format(self.CEPH_CLUSTER)
 
     def __enter__(self):
+        # Not sure whether it makes sense that we configure the client ID
+        # without 'client.': qemu doesn't want to see this, whereas the
+        # Rados binding does ... :/
         self.rados = rados.Rados(
             conffile=self.ceph_conf,
-            name='client.' + CEPH_CLIENT)
+            name='client.' + self.CEPH_CLIENT)
         self.rados.connect()
 
         pool = self.cfg['resource_group'].encode('ascii')
         self.ioctx = self.rados.open_ioctx(pool)
 
         volume_prefix = self.cfg['name'].encode('ascii')
-        self.root = Volume(self.ioctx, volume_prefix + '.root')
-        self.swap = Volume(self.ioctx, volume_prefix + '.swap')
-        self.tmp = Volume(self.ioctx, volume_prefix + '.tmp')
+        self.root = Volume(self, volume_prefix + '.root')
+        self.swap = Volume(self, volume_prefix + '.swap')
+        self.tmp = Volume(self, volume_prefix + '.tmp')
 
         self.volumes = [self.root, self.swap, self.tmp]
 
@@ -221,7 +227,7 @@ class Ceph(object):
         if self.root.size <= target_size:
             return
         try:
-            cmd(SHRINK_VM.format(image=self.root.name, **self.cfg))
+            cmd(self.SHRINK_VM.format(image=self.root.name, **self.cfg))
         except subprocess.CalledProcessError:
             raise RuntimeError(
                 'unrecoverable error while shrinking root volume',
@@ -229,7 +235,7 @@ class Ceph(object):
 
     def ensure_root_volume(self):
         if not self.root.exists():
-            cmd(CREATE_VM.format(**self.cfg))
+            cmd(self.CREATE_VM.format(**self.cfg))
         self.shrink_root()
         self.root.lock()
 
@@ -259,7 +265,7 @@ class Ceph(object):
     def locked_by_me(self):
         """Returns True if CEPH_LOCK_HOST holds locks for all volumes."""
         try:
-            return all(v.lock_status()[1] == CEPH_LOCK_HOST
+            return all(v.lock_status()[1] == self.CEPH_LOCK_HOST
                        for v in self.volumes)
         except TypeError:  # status[1] not accessible
             return False

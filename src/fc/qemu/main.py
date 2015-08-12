@@ -1,47 +1,11 @@
 from .agent import Agent
-from .hazmat.qemu import Qemu
+from .sysconfig import sysconfig
 import argparse
-import ConfigParser
 import logging
 import os.path
 import sys
 
-
 logger = logging.getLogger(__name__)
-
-
-def load_system_config():
-    # System-wide config - pretty hacky
-    sysconfig = ConfigParser.SafeConfigParser()
-    sysconfig.read(os.path.dirname(__file__) + '/default.conf')
-    sysconfig.read('/etc/qemu/fc-qemu.conf')
-
-    # QEMU
-    accelerator = sysconfig.get('qemu', 'accelerator')
-    if accelerator:
-        Agent.accelerator = '  accel = "{}"'.format(accelerator)
-    else:
-        Qemu.require_kvm = False
-    if sysconfig.getboolean('qemu', 'vhost'):
-        Agent.vhost = '  vhost = "on"'
-    Agent.timeout_graceful = sysconfig.getint('qemu', 'timeout-graceful')
-    Agent.this_host = sysconfig.get('ceph', 'lock_host')
-    Agent.migration_ctl_address = sysconfig.get(
-        'qemu', 'migration-ctl-address')
-    Agent.consul_token = sysconfig.get('consul', 'access-token')
-    Qemu.migration_address = sysconfig.get('qemu', 'migration-address')
-    Qemu.vnc = sysconfig.get('qemu', 'vnc')
-
-    # CEPH
-    from .hazmat import ceph
-    Agent.ceph_id = sysconfig.get('ceph', 'client-id')
-    ceph.CEPH_CLUSTER = sysconfig.get('ceph', 'cluster', 'ceph')
-    ceph.CEPH_LOCK_HOST = sysconfig.get('ceph', 'lock_host')
-    # Not sure whether it makes sense to hardcode this. Weird that qemu
-    # doesn't want to see client.<name>.
-    ceph.CEPH_CLIENT = Agent.ceph_id
-    ceph.CREATE_VM = sysconfig.get('ceph', 'create-vm')
-    ceph.SHRINK_VM = sysconfig.get('ceph', 'shrink-vm')
 
 
 def daemonize():
@@ -187,7 +151,7 @@ def main():
 
     try:
         init_logging(args.verbose)
-        load_system_config()
+        sysconfig.load_system_config()
         if vm is None:
             # Expecting a class/static method
             agent = Agent

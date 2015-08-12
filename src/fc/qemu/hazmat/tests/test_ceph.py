@@ -15,7 +15,7 @@ def ceph_inst():
 
 @pytest.yield_fixture
 def volume(ceph_inst):
-    volume = Volume(ceph_inst.ioctx, 'othervolume')
+    volume = Volume(ceph_inst, 'othervolume')
 
     try:
         for snapshot in volume.snapshots.list():
@@ -119,13 +119,13 @@ def test_force_unlock(volume):
 
 def test_volume_mkswap(volume):
     volume.ensure_presence()
-    volume.ensure_size(5*1024**2)
+    volume.ensure_size(5 * 1024 ** 2)
     volume.mkswap()
 
 
 def test_volume_mkfs(volume):
     volume.ensure_presence()
-    volume.ensure_size(5*1024**2)
+    volume.ensure_size(5 * 1024 ** 2)
     volume.mkfs()
 
 
@@ -147,7 +147,7 @@ def test_call_shrink_vm(ceph_inst, capfd):
     except rbd.ImageNotFound:
         pass
 
-    ceph_inst.root.ensure_presence(ceph_inst.cfg['disk'] * 1024**3 + 4096)
+    ceph_inst.root.ensure_presence(ceph_inst.cfg['disk'] * 1024 ** 3 + 4096)
     try:
         ceph_inst.ensure_root_volume()
         stdout, stderr = capfd.readouterr()
@@ -158,9 +158,8 @@ def test_call_shrink_vm(ceph_inst, capfd):
 
 
 def test_shrink_vm_raises_if_nonzero_exit(ceph_inst):
-    ceph_inst.root.ensure_presence(ceph_inst.cfg['disk'] * 1024**3 + 4096)
-    from ...hazmat import ceph
-    ceph.SHRINK_VM = '/bin/false'
+    ceph_inst.root.ensure_presence(ceph_inst.cfg['disk'] * 1024 ** 3 + 4096)
+    ceph_inst.SHRINK_VM = '/bin/false'
     try:
         with pytest.raises(RuntimeError):
             ceph_inst.shrink_root()

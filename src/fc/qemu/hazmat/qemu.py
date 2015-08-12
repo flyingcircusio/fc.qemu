@@ -1,9 +1,10 @@
 """Low-level interface to Qemu commands."""
 
 from ..exc import QemuNotRunning
+from ..sysconfig import sysconfig
 from ..timeout import TimeOut
-from .monitor import Monitor
 from .guestagent import GuestAgent, ClientError
+from .monitor import Monitor
 import glob
 import logging
 import os.path
@@ -41,6 +42,9 @@ class Qemu(object):
     argfile = '/run/qemu.{name}.args'
 
     def __init__(self, cfg):
+        # Update configuration values from system or test config.
+        self.__dict__.update(sysconfig.qemu)
+
         self.cfg = cfg
         # expand template keywords in configuration variables
         for f in ['pidfile', 'configfile', 'argfile', 'migration_address']:

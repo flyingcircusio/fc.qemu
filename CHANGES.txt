@@ -5,7 +5,7 @@ Release notes
 0.7.10 (unreleased)
 -------------------
 
-- Nothing changed yet.
+- Refactor system-wide configuration code.
 
 
 0.7.9 (2015-08-03)
