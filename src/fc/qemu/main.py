@@ -31,6 +31,7 @@ def load_system_config():
     Agent.consul_token = sysconfig.get('consul', 'access-token')
     Qemu.migration_address = sysconfig.get('qemu', 'migration-address')
     Qemu.vnc = sysconfig.get('qemu', 'vnc')
+    Qemu.max_downtime = sysconfig.get('qemu', 'max-downtime')
 
     # CEPH
     from .hazmat import ceph
