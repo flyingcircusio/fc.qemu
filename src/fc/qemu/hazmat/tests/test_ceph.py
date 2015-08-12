@@ -15,7 +15,7 @@ def ceph_inst():
 
 @pytest.yield_fixture
 def volume(ceph_inst):
-    volume = Volume(ceph_inst, 'othervolume')
+    volume = Volume(ceph_inst, 'othervolume', 'label')
 
     try:
         for snapshot in volume.snapshots.list():

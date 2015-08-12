@@ -27,13 +27,19 @@ def cmd(cmdline):
 
 
 class Volume(object):
+    """Low-level manipulation of RBD volumes.
+
+    A volume has a name (shown in `rbd ls`) and a filesystem label. The
+    latter is only used for mkfs/mkswap.
+    """
 
     mapped = False
 
-    def __init__(self, ceph, name):
+    def __init__(self, ioctx, name, label):
         self.ceph = ceph
         self.ioctx = ceph.ioctx
         self.name = name
+        self.label = label
         self.rbd = rbd.RBD()
         self.snapshots = Snapshots(self)
 
@@ -124,14 +130,15 @@ class Volume(object):
     def mkswap(self):
         self.map()
         try:
-            cmd('mkswap -f "/dev/rbd/{}"'.format(self.fullname))
+            cmd('mkswap -f -L "{}" "/dev/rbd/{}"'.format(self.label, self.fullname))
         finally:
             self.unmap()
 
     def mkfs(self):
         self.map()
         try:
-            cmd('mkfs -F -q -m 1 -t ext4 "/dev/rbd/{}"'.format(self.fullname))
+            cmd('mkfs -F -q -m 1 -t ext4 -L "{}" "/dev/rbd/{}"'.format(
+                self.label, self.fullname))
             time.sleep(0.1)
             cmd('tune2fs -e remount-ro "/dev/rbd/{}"'.format(self.fullname))
         finally:
