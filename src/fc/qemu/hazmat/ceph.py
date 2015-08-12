@@ -35,7 +35,7 @@ class Volume(object):
 
     mapped = False
 
-    def __init__(self, ioctx, name, label):
+    def __init__(self, ceph, name, label):
         self.ceph = ceph
         self.ioctx = ceph.ioctx
         self.name = name
@@ -183,6 +183,10 @@ class Snapshots(object):
 
 class Ceph(object):
 
+    # Attributes on this class can be overriden (in a controlled fashion
+    # from the sysconfig module. See this class' __init__. The defaults
+    # are here to support testing.
+
     CEPH_CLUSTER = None
     CEPH_LOCK_HOST = None
     CEPH_CLIENT = 'admin'
@@ -209,9 +213,9 @@ class Ceph(object):
         self.ioctx = self.rados.open_ioctx(pool)
 
         volume_prefix = self.cfg['name'].encode('ascii')
-        self.root = Volume(self, volume_prefix + '.root')
-        self.swap = Volume(self, volume_prefix + '.swap')
-        self.tmp = Volume(self, volume_prefix + '.tmp')
+        self.root = Volume(self, volume_prefix + '.root', 'root')
+        self.swap = Volume(self, volume_prefix + '.swap', 'swap')
+        self.tmp = Volume(self, volume_prefix + '.tmp', 'tmp')
 
         self.volumes = [self.root, self.swap, self.tmp]
 

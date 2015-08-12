@@ -22,7 +22,10 @@ class Qemu(object):
 
     executable = 'qemu-system-x86_64'
 
-    # These variables get overridden in agent init or load_system_config()
+    # Attributes on this class can be overriden (in a controlled fashion
+    # from the sysconfig module. See this class' __init__. The defaults
+    # are here to support testing.
+
     cfg = None
     require_kvm = True
     migration_address = None
