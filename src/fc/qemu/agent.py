@@ -266,6 +266,7 @@ class Agent(object):
         self.generate_config()
         log.info('Using Qemu config template %s', self.vm_config_template)
         self.ceph.start()
+        self.ceph.tmp.seed(self.enc)
         log.info('Starting VM %s', self.name)
         self.qemu.start()
         self.consul_register()
