@@ -9,6 +9,7 @@ from ..sysconfig import sysconfig
 import hashlib
 import json
 import logging
+import os
 import rados
 import rbd
 import shutil
@@ -150,13 +151,14 @@ class Volume(object):
     def seed_enc(self, data):
         self.map()
         try:
-            target = tempfile.mkdtemp(prefix='/mnt')
+            target = tempfile.mkdtemp(prefix='/mnt/create-vm.')
             cmd('mount /dev/rbd/{} {}'.format(self.fullname, target))
             try:
-                with open(target + '/fc-enc-data.json', 'w') as f:
+		os.mkdir(target + '/fc-data')
+                with open(target + '/fc-data/enc.json', 'w') as f:
                     f.write(json.dumps(data))
             finally:
-                cmd('unmount {}'.format(target))
+                cmd('umount {}'.format(target))
                 shutil.rmtree(target)
         finally:
             self.unmap()
