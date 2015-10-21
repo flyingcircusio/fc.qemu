@@ -4,13 +4,16 @@ We expect Ceph Python bindings to be present in the system site packages.
 """
 
 from __future__ import print_function
+
 from ..sysconfig import sysconfig
 import hashlib
 import json
 import logging
 import rados
 import rbd
+import shutil
 import subprocess
+import tempfile
 import time
 
 logger = logging.getLogger(__name__)
@@ -141,6 +144,20 @@ class Volume(object):
                 self.label, self.fullname))
             time.sleep(0.1)
             cmd('tune2fs -e remount-ro "/dev/rbd/{}"'.format(self.fullname))
+        finally:
+            self.unmap()
+
+    def seed_enc(self, data):
+        self.map()
+        try:
+            target = tempfile.mkdtemp(prefix='/mnt')
+            cmd('mount /dev/rbd/{} {}'.format(self.fullname, target))
+            try:
+                with open(target + '/fc-enc-data.json', 'w') as f:
+                    f.write(json.dumps(data))
+            finally:
+                cmd('unmount {}'.format(target))
+                shutil.rmtree(target)
         finally:
             self.unmap()
 
