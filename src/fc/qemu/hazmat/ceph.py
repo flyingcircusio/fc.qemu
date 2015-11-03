@@ -187,7 +187,7 @@ class Snapshots(object):
     def create(self, name):
         cmd('rbd --id "{}" snap create "{}@{}"'.format(
             self.volume.ceph.CEPH_CLIENT, self.volume.fullname, name))
-        logger.info('Created snapshot {}'.format(name))
+        logger.info('Created snapshot %s@%s', self.volume.fullname, name)
 
     def list(self):
         output = cmd(
