@@ -18,7 +18,7 @@
   if = "virtio"
   format = "rbd"
   file = "rbd:{resource_group}/{name}.root:id={{ceph_id}}"
-  aio = "native"
+  aio = "threads"
   cache = "writeback"
 
 [drive]
@@ -27,7 +27,7 @@
   if = "virtio"
   format = "rbd"
   file = "rbd:{resource_group}/{name}.swap:id={{ceph_id}}"
-  aio = "native"
+  aio = "threads"
   cache = "writeback"
 
 [drive]
@@ -36,7 +36,7 @@
   if = "virtio"
   format = "rbd"
   file = "rbd:{resource_group}/{name}.tmp:id={{ceph_id}}"
-  aio = "native"
+  aio = "threads"
   cache = "writeback"
 
 [device]

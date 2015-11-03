@@ -59,11 +59,10 @@ class ConsulEventHandler(object):
         agent = Agent(vm)
         with agent:
             if not agent.belongs_to_this_host():
-                log.debug(
-                    'Ignoring snapshot for {} as it belongs to '
-                    'another host.'.format(vm))
+                log.debug('Ignoring snapshot for %s as it belongs to another '
+                          'host.', vm)
                 return
-            log.info('Ensuring snapshot `{}`'.format(snapshot))
+            log.info('[%s] Ensuring snapshot %s', vm, snapshot)
             agent.snapshot(snapshot)
 
 
@@ -281,21 +280,21 @@ class Agent(object):
             return
         if self.qemu.is_running():
             try:
-                log.info('Freezing root disk ...')
+                log.info('[%s] Freezing root disk.', self.name)
                 self.qemu.freeze()
             except socket.timeout:
-                log.warning('Timed out freezing the machine. '
-                            'Continuing with unclean snapshot.')
+                log.warning('[%s] Timed out freezing the machine. '
+                            'Continuing with unclean snapshot.', self.name)
         try:
             self.ceph.root.snapshots.create(snapshot)
         finally:
             try:
                 if self.qemu.is_running():
-                    log.info('Thawing root disk ...')
+                    log.info('[%s] Thawing root disk.', self.name)
                     self.qemu.thaw()
             except socket.timeout:
-                log.warning('Timed out thawing the machine. '
-                            'Hoping for the best.')
+                log.warning('[%s] Timed out thawing the machine. '
+                            'Hoping for the best.', self.name)
 
     def status(self):
         """Determine status of the VM."""

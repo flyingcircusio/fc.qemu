@@ -5,7 +5,8 @@ Release notes
 0.7.11 (unreleased)
 -------------------
 
-- Nothing changed yet.
+- Leave out explicit `aio` settings from the default config file (#18743).
+- Improve logging.
 
 
 0.7.10 (2015-08-12)
