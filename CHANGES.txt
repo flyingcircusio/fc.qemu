@@ -5,7 +5,8 @@ Release notes
 0.7.11 (unreleased)
 -------------------
 
-- Leave out explicit `aio` settings from the default config file (#18743).
+- Switch `aio` setting in default qemu.vm.cfg to "threads". This will keep
+  fc-qemu compatible with future Qemu versions (#18743).
 - Improve logging.
 - Place initial copy of ENC data in `/tmp/fc-data/enc.json`.
 
