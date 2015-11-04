@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.7.11 (unreleased)
+0.7.11 (2015-11-04)
 -------------------
 
 - Switch `aio` setting in default qemu.vm.cfg to "threads". This will keep
