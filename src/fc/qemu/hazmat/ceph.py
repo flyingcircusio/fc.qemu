@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import os
+import os.path as p
 import rados
 import rbd
 import shutil
@@ -134,7 +135,8 @@ class Volume(object):
     def mkswap(self):
         self.map()
         try:
-            cmd('mkswap -f -L "{}" "/dev/rbd/{}"'.format(self.label, self.fullname))
+            cmd('mkswap -f -L "{}" "/dev/rbd/{}"'.format(
+                self.label, self.fullname))
         finally:
             self.unmap()
 
@@ -154,8 +156,8 @@ class Volume(object):
             target = tempfile.mkdtemp(prefix='/mnt/create-vm.')
             cmd('mount /dev/rbd/{} {}'.format(self.fullname, target))
             try:
-		os.mkdir(target + '/fc-data')
-                with open(target + '/fc-data/enc.json', 'w') as f:
+                os.mkdir(p.join(target, 'fc-data'))
+                with open(p.join(target, 'fc-data', 'enc.json'), 'w') as f:
                     f.write(json.dumps(data))
             finally:
                 cmd('umount {}'.format(target))
