@@ -59,15 +59,15 @@ class Outgoing(object):
             inmig = self.consul.catalog.service(service_name)
             if inmig:
                 if len(inmig) > 1:
-                    raise RuntimeError('found more than one inmig services '
-                                       'for {}'.format(self.name), inmig)
-                inmig = inmig[0]
+                    _log.warning('found more than one inmig services for %s, '
+                                 'trying the most recent one', service_name)
+                inmig = inmig[-1]
                 _log.debug('found incoming service %r', inmig)
                 return 'http://{}:{}'.format(
                     inmig['ServiceAddress'], inmig['ServicePort'])
         raise RuntimeError('failed to locate inmigrate service', service_name)
 
-    def connect(self, timeout=990):
+    def connect(self, timeout=330):
         timeout = TimeOut(timeout, interval=3, raise_on_timeout=True)
         while timeout.tick():
             try:
