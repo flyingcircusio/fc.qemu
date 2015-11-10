@@ -75,7 +75,7 @@ class Volume(object):
         self.image.resize(size)
 
     def lock(self):
-        logger.debug('Trying to assume lock for %s', self.fullname)
+        logger.debug('Assuming lock for %s', self.fullname)
         retry = 3
         while retry:
             try:

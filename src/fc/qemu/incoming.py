@@ -31,7 +31,7 @@ class IncomingServer(object):
         self.qemu = agent.qemu
         self.ceph = agent.ceph
         self.bind_address = parse_address(self.agent.migration_ctl_address)
-        self.timeout = TimeOut(timeout, raise_on_timeout=True)
+        self.timeout = TimeOut(timeout, raise_on_timeout=False)
         self.consul = agent.consul
 
     _now = time.time
