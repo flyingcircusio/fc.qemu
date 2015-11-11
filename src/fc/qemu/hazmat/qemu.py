@@ -61,7 +61,7 @@ class Qemu(object):
         self.migration_address = ':'.join(a)
         self.name = self.cfg['name']
         self.monitor_port = self.cfg['id'] + self.MONITOR_OFFSET
-        self.guestagent = GuestAgent(self.name)
+        self.guestagent = GuestAgent(self.name, timeout=30)
 
     def __enter__(self):
         self.monitor = Monitor(self.monitor_port)

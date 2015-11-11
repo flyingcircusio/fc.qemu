@@ -6,6 +6,7 @@ Release notes
 -------------------
 
 - Improve error handling during migration.
+- Fix timeout during fsfreeze that leads to locked up VMs (#18917).
 
 
 0.7.11 (2015-11-04)
