@@ -7,6 +7,7 @@ from .util import rewrite, locate_live_service
 from .sysconfig import sysconfig
 from logging import getLogger
 import consulate
+import contextlib
 import copy
 import fcntl
 import json
@@ -274,27 +275,35 @@ class Agent(object):
         # process. Removing the lock in that case is dangerous. OTOH leaving
         # the lock is never dangerous. Lets go with that.
 
+    @contextlib.contextmanager
+    def frozen_vm(self):
+        try:
+            try:
+                log.debug('[%s] Freezing root disk.', self.name)
+                self.qemu.freeze()
+            except socket.timeout:
+                log.warning('[%s] Timed out freezing the machine. '
+                            'Continuing with unclean snapshot.', self.name)
+            yield
+        finally:
+            try:
+                log.debug('[%s] Thawing root disk.', self.name)
+                self.qemu.thaw()
+            except socket.timeout:
+                log.warning('[%s] Failed to thaw. Retrying.', self.name)
+                self.qemu.thaw()
+
     @locked
     def snapshot(self, snapshot):
         if snapshot in [x['name'] for x in self.ceph.root.snapshots.list()]:
             return
         if self.qemu.is_running():
-            try:
-                log.info('[%s] Freezing root disk.', self.name)
-                self.qemu.freeze()
-            except socket.timeout:
-                log.warning('[%s] Timed out freezing the machine. '
-                            'Continuing with unclean snapshot.', self.name)
-        try:
+            with self.frozen_vm():
+                self.ceph.root.snapshots.create(snapshot)
+        else:
+            log.info('[%s] VM not running, creating snapshot without freezing',
+                     self.name)
             self.ceph.root.snapshots.create(snapshot)
-        finally:
-            try:
-                if self.qemu.is_running():
-                    log.info('[%s] Thawing root disk.', self.name)
-                    self.qemu.thaw()
-            except socket.timeout:
-                log.warning('[%s] Timed out thawing the machine. '
-                            'Hoping for the best.', self.name)
 
     def status(self):
         """Determine status of the VM."""
