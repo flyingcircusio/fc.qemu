@@ -47,8 +47,12 @@ class ConsulEventHandler(object):
         vm = config['name']
         if config['parameters']['machine'] != 'virtual':
             return
-        log.debug('[Consul] checking VM %s', vm)
-        agent = Agent(vm, config)
+        try:
+            agent = Agent(vm, config)
+        except RuntimeError:
+            log.warning('[%s] Ignoring VM check: cannot load config', vm)
+            return
+        log.info('[%s] Checking VM', vm)
         with agent:
             agent.save_enc()
             agent.ensure()
@@ -57,13 +61,17 @@ class ConsulEventHandler(object):
         value = json.loads(event['Value'].decode('base64'))
         vm = value['vm']
         snapshot = value['snapshot']
-        agent = Agent(vm)
+        try:
+            agent = Agent(vm)
+        except RuntimeError:
+            log.warning('Ignoring snapshot for %s: failed to load config', vm)
+            return
         with agent:
             if not agent.belongs_to_this_host():
                 log.debug('Ignoring snapshot for %s as it belongs to another '
                           'host.', vm)
                 return
-            log.info('[%s] Ensuring snapshot %s', vm, snapshot)
+            log.info('[%s] Processing snapshot request %s', vm, snapshot)
             agent.snapshot(snapshot)
 
 
