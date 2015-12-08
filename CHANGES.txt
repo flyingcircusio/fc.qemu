@@ -6,6 +6,8 @@ Release notes
 -------------------
 
 - Ignore consul requests for VMs with missing configuration (#18841).
+- Speed up initial NTP sync in Vagrant to avoid failing Ceph tests due to
+  unsynced MONs.
 
 
 0.7.12 (2015-11-11)
