@@ -135,7 +135,6 @@ class Volume(object):
     def mkswap(self):
         self.map()
         try:
-            cmd('blkdiscard "/dev/rbd/{}"'.format(self.fullname))
             cmd('mkswap -f -L "{}" "/dev/rbd/{}"'.format(
                 self.label, self.fullname))
         finally:
