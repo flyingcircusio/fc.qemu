@@ -8,6 +8,8 @@ Release notes
 - Ignore consul requests for VMs with missing configuration (#18841).
 - Speed up initial NTP sync in Vagrant to avoid failing Ceph tests due to
   unsynced MONs.
+- Refine Ceph.unlock() to remove own locks in a best-effort manner. This is
+  needed to recover from incomplete migrations (#18771).
 
 
 0.7.12 (2015-11-11)

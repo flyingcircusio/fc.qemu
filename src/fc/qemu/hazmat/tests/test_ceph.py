@@ -8,6 +8,7 @@ import pytest
 def ceph_inst():
     cfg = {'resource_group': 'test', 'name': 'test00', 'disk': 10}
     ceph = Ceph(cfg)
+    ceph.CREATE_VM = 'echo {name}'
     ceph.__enter__()
     yield ceph
     ceph.__exit__(None, None, None)
@@ -36,6 +37,17 @@ def volume(ceph_inst):
     for snapshot in volume.snapshots.list():
         volume.snapshots.remove(snapshot['name'])
     rbd.RBD().remove(ceph_inst.ioctx, 'othervolume')
+
+
+@pytest.yield_fixture
+def ceph_with_volumes(ceph_inst):
+    for vol in ceph_inst.volumes:
+        vol.ensure_presence()
+        vol.lock()
+    yield ceph_inst
+    for vol in ceph_inst.volumes:
+        vol.unlock(force=True)
+        rbd.RBD().remove(ceph_inst.ioctx, vol.name)
 
 
 def test_volume_presence(volume):
@@ -165,3 +177,21 @@ def test_shrink_vm_raises_if_nonzero_exit(ceph_inst):
             ceph_inst.shrink_root()
     finally:
         rbd.RBD().remove(ceph_inst.ioctx, ceph_inst.root.name)
+
+
+def test_ceph_stop_should_unlock_all_volumes(ceph_with_volumes):
+    for vol in ceph_with_volumes.volumes:
+        assert vol.lock_status()
+    ceph_with_volumes.stop()
+    for vol in ceph_with_volumes.volumes:
+        assert vol.lock_status() is None
+
+
+def test_ceph_stop_remove_only_own_locks(ceph_with_volumes):
+    """Test case where failed migrations leave inconsistent locking."""
+    ceph_with_volumes.root.unlock()
+    ceph_with_volumes.root.image.lock_exclusive('someotherhost')
+    ceph_with_volumes.stop()
+    assert ceph_with_volumes.root.lock_status()
+    assert ceph_with_volumes.swap.lock_status() is None
+    assert ceph_with_volumes.tmp.lock_status() is None
