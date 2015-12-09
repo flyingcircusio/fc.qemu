@@ -204,9 +204,9 @@ class Snapshots(object):
 
 class Ceph(object):
 
-    # Attributes on this class can be overriden (in a controlled fashion
-    # from the sysconfig module. See this class' __init__. The defaults
-    # are here to support testing.
+    # Attributes on this class can be overriden in a controlled fashion
+    # from the sysconfig module. See __init__(). The defaults are here to
+    # support testing.
 
     CEPH_CLUSTER = None
     CEPH_LOCK_HOST = None
@@ -220,6 +220,12 @@ class Ceph(object):
 
         self.cfg = cfg
         self.ceph_conf = '/etc/ceph/{}.conf'.format(self.CEPH_CLUSTER)
+        self.rados = None
+        self.ioctx = None
+        self.root = None
+        self.swap = None
+        self.tmp = None
+        self.volumes = []
 
     def __enter__(self):
         # Not sure whether it makes sense that we configure the client ID
@@ -307,8 +313,15 @@ class Ceph(object):
             vol.lock()
 
     def unlock(self):
+        """Remove all of *our* volume locks.
+
+        This leaves other hosts' locks in place.
+        """
         for vol in self.volumes:
-            vol.unlock()
+            try:
+                vol.unlock()
+            except rbd.ImageBusy:
+                pass
 
     def force_unlock(self):
         for vol in self.volumes:
