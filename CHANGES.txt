@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.7.13 (unreleased)
+0.7.13 (2015-12-10)
 -------------------
 
 - Ignore consul requests for VMs with missing configuration (#18841).
