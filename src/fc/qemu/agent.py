@@ -331,7 +331,7 @@ class Agent(object):
         log.info('Trying graceful shutdown of VM %s...', self.name)
         try:
             self.qemu.graceful_shutdown()
-        except socket.error:
+        except (socket.error, RuntimeError):
             pass
         while timeout.tick():
             if not self.qemu.is_running():
