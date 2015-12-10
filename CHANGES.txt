@@ -10,6 +10,7 @@ Release notes
   unsynced MONs.
 - Refine Ceph.unlock() to remove own locks in a best-effort manner. This is
   needed to recover from incomplete migrations (#18771).
+- Improve error handling with failed monitor connections.
 
 
 0.7.12 (2015-11-11)
