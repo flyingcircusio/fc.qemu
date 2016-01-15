@@ -156,9 +156,12 @@ class Volume(object):
             target = tempfile.mkdtemp(prefix='/mnt/create-vm.')
             cmd('mount /dev/rbd/{} {}'.format(self.fullname, target))
             try:
-                os.mkdir(p.join(target, 'fc-data'))
-                with open(p.join(target, 'fc-data', 'enc.json'), 'w') as f:
-                    f.write(json.dumps(data))
+                fc_data = p.join(target, 'fc-data')
+                os.mkdir(fc_data)
+                os.chmod(fc_data, 0o750)
+                with open(p.join(fc_data, 'enc.json'), 'w') as f:
+                    json.dump(data, f)
+                    f.write('\n')
             finally:
                 cmd('umount {}'.format(target))
                 shutil.rmtree(target)
