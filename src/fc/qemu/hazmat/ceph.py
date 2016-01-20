@@ -53,6 +53,10 @@ class Volume(object):
         return self.ioctx.name + '/' + self.name
 
     @property
+    def part1(self):
+        return self.fullname + '-part1'
+
+    @property
     def image(self):
         return rbd.Image(self.ioctx, self.name)
 
@@ -143,9 +147,13 @@ class Volume(object):
     def mkfs(self):
         self.map()
         try:
+            cmd('sgdisk -o "/dev/rbd/{}"'.format(self.fullname))
+            cmd('sgdisk -a 8192 -n 1:8192:0 -c 1:root -t 1:8300 '
+                '"/dev/rbd/{}"'.format(self.fullname))
+            while not p.exists('/dev/rbd/{}'.format(self.part1)):
+                time.sleep(0.25)
             cmd('mkfs.xfs -f -m crc=1,finobt=1 -L "{}" "/dev/rbd/{}"'.format(
-                self.label, self.fullname))
-            time.sleep(0.1)
+                self.label, self.part1))
         finally:
             self.unmap()
 
@@ -153,8 +161,9 @@ class Volume(object):
         self.map()
         try:
             target = tempfile.mkdtemp(prefix='/mnt/create-vm.')
-            cmd('mount /dev/rbd/{} {}'.format(self.fullname, target))
+            cmd('mount /dev/rbd/{} {}'.format(self.part1, target))
             try:
+                os.chmod(target, 0o1777)
                 fc_data = p.join(target, 'fc-data')
                 os.mkdir(fc_data)
                 os.chmod(fc_data, 0o750)

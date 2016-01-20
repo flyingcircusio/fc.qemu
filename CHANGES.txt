@@ -5,7 +5,10 @@ Release notes
 0.7.14 (unreleased)
 -------------------
 
-- Nothing changed yet.
+- Use XFS for tmp partitions (#17873).
+- Drop super-floppy setup von vdc and use a proper partition table instead
+  (#17873).
+- Fix file permissions for ENC seed JSON file.
 
 
 0.7.13 (2015-12-10)
