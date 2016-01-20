@@ -137,7 +137,7 @@ def test_volume_mkswap(volume):
 
 def test_volume_mkfs(volume):
     volume.ensure_presence()
-    volume.ensure_size(5 * 1024 ** 2)
+    volume.ensure_size(40 * 1024 ** 2)
     volume.mkfs()
 
 
