@@ -45,6 +45,8 @@ class SysConfig(object):
         self.ceph['CEPH_LOCK_HOST'] = sysconfig.get('ceph', 'lock_host')
         self.ceph['CREATE_VM'] = sysconfig.get('ceph', 'create-vm')
         self.ceph['SHRINK_VM'] = sysconfig.get('ceph', 'shrink-vm')
+        if sysconfig.has_option('ceph', 'mkfs-cmd'):
+            self.ceph['MKFS_CMD'] = sysconfig.get('ceph', 'mkfs-cmd')
 
 
 sysconfig = SysConfig()
