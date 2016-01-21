@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.7.14 (unreleased)
+0.7.14 (2016-01-21)
 -------------------
 
 - Use XFS for tmp partitions (#17873).
