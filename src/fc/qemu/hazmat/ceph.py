@@ -39,6 +39,7 @@ class Volume(object):
     """
 
     mapped = False
+    mkfs_cmd = 'mkfs.xfs -f -m crc=1,finobt=1 -L "{label}" "{partition}"'
 
     def __init__(self, ceph, name, label):
         self.ceph = ceph
@@ -47,6 +48,8 @@ class Volume(object):
         self.label = label
         self.rbd = rbd.RBD()
         self.snapshots = Snapshots(self)
+        if ceph.MKFS_CMD:
+            self.mkfs_cmd = ceph.MKFS_CMD
 
     @property
     def fullname(self):
@@ -152,8 +155,9 @@ class Volume(object):
                 '"/dev/rbd/{}"'.format(self.fullname))
             while not p.exists('/dev/rbd/{}'.format(self.part1)):
                 time.sleep(0.25)
-            cmd('mkfs.xfs -f -m crc=1,finobt=1 -L "{}" "/dev/rbd/{}"'.format(
-                self.label, self.part1))
+
+            partition = '/dev/rbd/{}'.format(self.part1)
+            cmd(self.mkfs_cmd.format(partition=partition, label=self.label))
         finally:
             self.unmap()
 
@@ -224,6 +228,7 @@ class Ceph(object):
     CEPH_CLIENT = 'admin'
     CREATE_VM = None
     SHRINK_VM = None
+    MKFS_CMD = None
 
     def __init__(self, cfg):
         # Update configuration values from system or test config.
