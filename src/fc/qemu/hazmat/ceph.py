@@ -6,6 +6,7 @@ We expect Ceph Python bindings to be present in the system site packages.
 from __future__ import print_function
 
 from ..sysconfig import sysconfig
+import contextlib
 import hashlib
 import json
 import logging
@@ -38,8 +39,15 @@ class Volume(object):
     latter is only used for mkfs/mkswap.
     """
 
+    MKFS_CMD = {
+        'xfs': ('mkfs.xfs -q -f -K -m crc=1,finobt=1 -d su=4m,sw=1 '
+                '-L "{label}" "{device}"'),
+        'ext4': ('mkfs.ext4 -q -m 1 -E nodiscard -L "{label}" "{device}" '
+                 '&& tune2fs -e remount-ro "{device}"')
+    }
     mapped = False
-    mkfs_cmd = 'mkfs.xfs -f -m crc=1,finobt=1 -L "{label}" "{partition}"'
+    device = None
+    part1dev = None
 
     def __init__(self, ceph, name, label):
         self.ceph = ceph
@@ -48,16 +56,10 @@ class Volume(object):
         self.label = label
         self.rbd = rbd.RBD()
         self.snapshots = Snapshots(self)
-        if ceph.MKFS_CMD:
-            self.mkfs_cmd = ceph.MKFS_CMD
 
     @property
     def fullname(self):
         return self.ioctx.name + '/' + self.name
-
-    @property
-    def part1(self):
-        return self.fullname + '-part1'
 
     @property
     def image(self):
@@ -140,60 +142,64 @@ class Volume(object):
         self.image.break_lock(client_id, lock_id)
 
     def mkswap(self):
-        self.map()
-        try:
-            cmd('mkswap -f -L "{}" "/dev/rbd/{}"'.format(
-                self.label, self.fullname))
-        finally:
-            self.unmap()
+        """Creates a swap partition. Requires the volume to be mappped."""
+        cmd('mkswap -f -L "{}" "{}"'.format(self.label, self.device))
 
-    def mkfs(self):
-        self.map()
-        try:
-            cmd('sgdisk -o "/dev/rbd/{}"'.format(self.fullname))
-            cmd('sgdisk -a 8192 -n 1:8192:0 -c 1:root -t 1:8300 '
-                '"/dev/rbd/{}"'.format(self.fullname))
-            while not p.exists('/dev/rbd/{}'.format(self.part1)):
-                time.sleep(0.25)
-
-            partition = '/dev/rbd/{}'.format(self.part1)
-            cmd(self.mkfs_cmd.format(partition=partition, label=self.label))
-        finally:
-            self.unmap()
+    def mkfs(self, fstype='xfs', gptbios=False):
+        cmd('sgdisk -o "{}"'.format(self.device))
+        cmd('sgdisk -a 8192 -n 1:8192:0 -c "1:{}" -t 1:8300 '
+            '"{}"'.format(self.label, self.device))
+        if gptbios:
+            cmd('sgdisk -n 2:2048:+1M -c 2:gptbios -t 2:EF02 "{}"'.format(
+                self.device))
+        cmd('partprobe')
+        while not p.exists(self.part1dev):
+            time.sleep(0.25)
+        cmd(self.MKFS_CMD[fstype].format(
+            device=self.part1dev, label=self.label))
 
     def seed_enc(self, data):
-        self.map()
+        target = tempfile.mkdtemp(prefix='/mnt/create-vm.')
+        cmd('mount "{}" "{}"'.format(self.part1dev, target))
         try:
-            target = tempfile.mkdtemp(prefix='/mnt/create-vm.')
-            cmd('mount /dev/rbd/{} {}'.format(self.part1, target))
-            try:
-                os.chmod(target, 0o1777)
-                fc_data = p.join(target, 'fc-data')
-                os.mkdir(fc_data)
-                os.chmod(fc_data, 0o750)
-                with open(p.join(fc_data, 'enc.json'), 'w') as f:
-                    json.dump(data, f)
-                    f.write('\n')
-            finally:
-                cmd('umount {}'.format(target))
-                shutil.rmtree(target)
+            os.chmod(target, 0o1777)
+            fc_data = p.join(target, 'fc-data')
+            os.mkdir(fc_data)
+            os.chmod(fc_data, 0o750)
+            with open(p.join(fc_data, 'enc.json'), 'w') as f:
+                json.dump(data, f)
+                f.write('\n')
         finally:
-            self.unmap()
+            cmd('umount {}'.format(target))
+            shutil.rmtree(target)
 
     def map(self):
         if self.mapped:
             return
-        cmd('rbd --id "{}" map "{}"'.format(
-            self.ceph.CEPH_CLIENT, self.fullname))
+        cmd('rbd -c "{}" --id "{}" map "{}"'.format(
+            self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.fullname))
         time.sleep(0.1)
         self.mapped = True
+        self.device = '/dev/rbd/' + self.fullname
+        self.part1dev = self.device + '-part1'
 
     def unmap(self):
         if not self.mapped:
             return
-        cmd('rbd --id "{}" unmap "/dev/rbd/{}"'.format(
-            self.ceph.CEPH_CLIENT, self.fullname))
+        cmd('rbd -c "{}" --id "{}" unmap "{}"'.format(
+            self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.device))
         self.mapped = False
+        self.device = None
+        self.part1dev = None
+
+    @contextlib.contextmanager
+    def mapped(self):
+        """Context which maps the volume. Yields the RBD device."""
+        self.map()
+        try:
+            yield self.device
+        finally:
+            self.unmap()
 
 
 class Snapshots(object):
@@ -202,19 +208,15 @@ class Snapshots(object):
         self.volume = volume
 
     def create(self, name):
-        cmd('rbd --id "{}" snap create "{}@{}"'.format(
-            self.volume.ceph.CEPH_CLIENT, self.volume.fullname, name))
-        logger.info('Created snapshot %s@%s', self.volume.fullname, name)
+        self.volume.image.create_snap(name)
+        logger.info('created snapshot %s@%s', self.volume.fullname, name)
 
     def list(self):
-        output = cmd(
-            'rbd --id "{}" --format=json snap ls "{}"'.format(
-                self.volume.ceph.CEPH_CLIENT, self.volume.fullname))
-        return json.loads(output)
+        return list(self.volume.image.list_snaps())
 
     def remove(self, name):
-        cmd('rbd --id "{}" snap rm "{}@{}"'.format(
-            self.volume.ceph.CEPH_CLIENT, self.volume.fullname, name))
+        self.volume.image.remove_snap(name)
+        logger.info('removed snapshot %s@%s', self.volume.fullname, name)
 
 
 class Ceph(object):
@@ -223,19 +225,18 @@ class Ceph(object):
     # from the sysconfig module. See __init__(). The defaults are here to
     # support testing.
 
-    CEPH_CLUSTER = None
+    CEPH_CLUSTER = 'ceph'
+    CEPH_CONF = '/etc/ceph/{}.conf'.format(CEPH_CLUSTER)
     CEPH_LOCK_HOST = None
     CEPH_CLIENT = 'admin'
     CREATE_VM = None
     SHRINK_VM = None
-    MKFS_CMD = None
 
     def __init__(self, cfg):
         # Update configuration values from system or test config.
         self.__dict__.update(sysconfig.ceph)
 
         self.cfg = cfg
-        self.ceph_conf = '/etc/ceph/{}.conf'.format(self.CEPH_CLUSTER)
         self.rados = None
         self.ioctx = None
         self.root = None
@@ -248,7 +249,7 @@ class Ceph(object):
         # without 'client.': qemu doesn't want to see this, whereas the
         # Rados binding does ... :/
         self.rados = rados.Rados(
-            conffile=self.ceph_conf,
+            conffile=self.CEPH_CONF,
             name='client.' + self.CEPH_CLIENT)
         self.rados.connect()
 
@@ -266,9 +267,9 @@ class Ceph(object):
         self.ioctx.close()
         self.rados.shutdown()
 
-    def start(self):
+    def start(self, enc_data=None):
         self.ensure_root_volume()
-        self.ensure_tmp_volume()
+        self.ensure_tmp_volume(enc_data)
         self.ensure_swap_volume()
 
     def stop(self):
@@ -297,13 +298,16 @@ class Ceph(object):
         self.swap.ensure_presence(self.cfg['swap_size'])
         self.swap.lock()
         self.swap.ensure_size(self.cfg['swap_size'])
-        self.swap.mkswap()
+        with self.swap.mapped():
+            self.swap.mkswap()
 
-    def ensure_tmp_volume(self):
+    def ensure_tmp_volume(self, enc_data):
         self.tmp.ensure_presence(self.cfg['tmp_size'])
         self.tmp.lock()
         self.tmp.ensure_size(self.cfg['tmp_size'])
-        self.tmp.mkfs()
+        with self.tmp.mapped():
+            self.tmp.mkfs()
+            self.seed_enc(enc_data)
 
     def locks(self):
         for vol in self.volumes:

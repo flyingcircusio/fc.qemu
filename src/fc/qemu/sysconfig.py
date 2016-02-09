@@ -42,11 +42,12 @@ class SysConfig(object):
 
         self.ceph['CEPH_CLIENT'] = sysconfig.get('ceph', 'client-id')
         self.ceph['CEPH_CLUSTER'] = sysconfig.get('ceph', 'cluster', 'ceph')
+        self.ceph['CEPH_CONF'] = sysconfig.get(
+            'ceph', 'ceph-conf', '/etc/ceph/{}.conf'.format(
+                self.ceph['CEPH_CLUSTER']))
         self.ceph['CEPH_LOCK_HOST'] = sysconfig.get('ceph', 'lock_host')
         self.ceph['CREATE_VM'] = sysconfig.get('ceph', 'create-vm')
         self.ceph['SHRINK_VM'] = sysconfig.get('ceph', 'shrink-vm')
-        if sysconfig.has_option('ceph', 'mkfs-cmd'):
-            self.ceph['MKFS_CMD'] = sysconfig.get('ceph', 'mkfs-cmd')
 
 
 sysconfig = SysConfig()
