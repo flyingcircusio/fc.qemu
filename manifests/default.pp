@@ -42,9 +42,9 @@ file { '/etc/ntp.conf':
 # Add 'iburst' option to reduce clock drift after VM start.
 # Otherwise, Ceph tests tend to fail due to unsynchronized clocks.
 driftfile /var/lib/ntp/ntp.drift
-server 0.ubuntu.pool.ntp.org iburst
-server 1.ubuntu.pool.ntp.org iburst
-server 2.ubuntu.pool.ntp.org iburst
+server 0.ubuntu.pool.ntp.org iburst minpoll 4 maxpoll 5
+server 1.ubuntu.pool.ntp.org iburst minpoll 4 maxpoll 5
+server 2.ubuntu.pool.ntp.org iburst minpoll 4 maxpoll 5
 restrict -4 default kod notrap nomodify nopeer noquery
 restrict -6 default kod notrap nomodify nopeer noquery
 restrict 127.0.0.1
