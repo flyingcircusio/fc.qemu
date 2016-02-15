@@ -9,9 +9,12 @@ def ceph_inst():
     cfg = {'resource_group': 'test', 'name': 'test00', 'disk': 10}
     ceph = Ceph(cfg)
     ceph.CREATE_VM = 'echo {name}'
+    ceph.MKFS_XFS = '-q -f'
     ceph.__enter__()
-    yield ceph
-    ceph.__exit__(None, None, None)
+    try:
+        yield ceph
+    finally:
+        ceph.__exit__(None, None, None)
 
 
 @pytest.yield_fixture
@@ -19,8 +22,7 @@ def volume(ceph_inst):
     volume = Volume(ceph_inst, 'othervolume', 'label')
 
     try:
-        for snapshot in volume.snapshots.list():
-            volume.snapshots.remove(snapshot['name'])
+        volume.snapshots.purge()
     except Exception:
         pass
 
@@ -34,8 +36,7 @@ def volume(ceph_inst):
     lock = volume.lock_status()
     if lock is not None:
         volume.image.break_lock(*lock)
-    for snapshot in volume.snapshots.list():
-        volume.snapshots.remove(snapshot['name'])
+    volume.snapshots.purge()
     rbd.RBD().remove(ceph_inst.ioctx, 'othervolume')
 
 
@@ -47,6 +48,7 @@ def ceph_with_volumes(ceph_inst):
     yield ceph_inst
     for vol in ceph_inst.volumes:
         vol.unlock(force=True)
+        vol.snapshots.purge()
         rbd.RBD().remove(ceph_inst.ioctx, vol.name)
 
 
@@ -132,13 +134,15 @@ def test_force_unlock(volume):
 def test_volume_mkswap(volume):
     volume.ensure_presence()
     volume.ensure_size(5 * 1024 ** 2)
-    volume.mkswap()
+    with volume.mapped():
+        volume.mkswap()
 
 
 def test_volume_mkfs(volume):
     volume.ensure_presence()
     volume.ensure_size(40 * 1024 ** 2)
-    volume.mkfs()
+    with volume.mapped():
+        volume.mkfs()
 
 
 def test_volume_map_unmap(volume):

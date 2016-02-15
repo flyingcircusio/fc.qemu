@@ -40,14 +40,11 @@ class Volume(object):
     """
 
     MKFS_CMD = {
-        'xfs': ('mkfs.xfs -q -f -K -m crc=1,finobt=1 -d su=4m,sw=1 '
-                '-L "{label}" "{device}"'),
-        'ext4': ('mkfs.ext4 -q -m 1 -E nodiscard -L "{label}" "{device}" '
+        'xfs': ('mkfs.xfs {options} -L "{label}" "{device}"'),
+        'ext4': ('mkfs.ext4 {options} -L "{label}" "{device}" '
                  '&& tune2fs -e remount-ro "{device}"')
     }
-    mapped = False
     device = None
-    part1dev = None
 
     def __init__(self, ceph, name, label):
         self.ceph = ceph
@@ -69,6 +66,12 @@ class Volume(object):
     def size(self):
         """Image size in Bytes."""
         return self.image.size()
+
+    @property
+    def part1dev(self):
+        if not self.device:
+            return None
+        return self.device + '-part1'
 
     def exists(self):
         return self.name in self.rbd.list(self.ioctx)
@@ -143,9 +146,11 @@ class Volume(object):
 
     def mkswap(self):
         """Creates a swap partition. Requires the volume to be mappped."""
+        assert self.device, 'volume must be mapped first'
         cmd('mkswap -f -L "{}" "{}"'.format(self.label, self.device))
 
     def mkfs(self, fstype='xfs', gptbios=False):
+        assert self.device, 'volume must be mapped first'
         cmd('sgdisk -o "{}"'.format(self.device))
         cmd('sgdisk -a 8192 -n 1:8192:0 -c "1:{}" -t 1:8300 '
             '"{}"'.format(self.label, self.device))
@@ -155,8 +160,9 @@ class Volume(object):
         cmd('partprobe')
         while not p.exists(self.part1dev):
             time.sleep(0.25)
+        options = getattr(self.ceph, 'MKFS_' + fstype.upper())
         cmd(self.MKFS_CMD[fstype].format(
-            device=self.part1dev, label=self.label))
+            options=options, device=self.part1dev, label=self.label))
 
     def seed_enc(self, data):
         target = tempfile.mkdtemp(prefix='/mnt/create-vm.')
@@ -174,23 +180,19 @@ class Volume(object):
             shutil.rmtree(target)
 
     def map(self):
-        if self.mapped:
+        if self.device is not None:
             return
         cmd('rbd -c "{}" --id "{}" map "{}"'.format(
             self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.fullname))
         time.sleep(0.1)
-        self.mapped = True
         self.device = '/dev/rbd/' + self.fullname
-        self.part1dev = self.device + '-part1'
 
     def unmap(self):
-        if not self.mapped:
+        if self.device is None:
             return
         cmd('rbd -c "{}" --id "{}" unmap "{}"'.format(
             self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.device))
-        self.mapped = False
         self.device = None
-        self.part1dev = None
 
     @contextlib.contextmanager
     def mapped(self):
@@ -212,11 +214,21 @@ class Snapshots(object):
         logger.info('created snapshot %s@%s', self.volume.fullname, name)
 
     def list(self):
-        return list(self.volume.image.list_snaps())
+        snaps = self.volume.image.list_snaps()
+        return list(snaps)
 
     def remove(self, name):
+        """Remove a single snapshot."""
         self.volume.image.remove_snap(name)
         logger.info('removed snapshot %s@%s', self.volume.fullname, name)
+
+    def purge(self):
+        """Remove all snapshots."""
+        snaps = self.volume.image.list_snaps()
+        for snapshot in snaps:
+            logger.info('purge: removing snapshot %s@%s', self.volume.fullname,
+                        snapshot['name'])
+            self.volume.image.remove_snap(snapshot['name'])
 
 
 class Ceph(object):
@@ -225,12 +237,7 @@ class Ceph(object):
     # from the sysconfig module. See __init__(). The defaults are here to
     # support testing.
 
-    CEPH_CLUSTER = 'ceph'
-    CEPH_CONF = '/etc/ceph/{}.conf'.format(CEPH_CLUSTER)
-    CEPH_LOCK_HOST = None
-    CEPH_CLIENT = 'admin'
     CREATE_VM = None
-    SHRINK_VM = None
 
     def __init__(self, cfg):
         # Update configuration values from system or test config.
