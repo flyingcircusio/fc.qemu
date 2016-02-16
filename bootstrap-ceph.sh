@@ -13,3 +13,5 @@ ceph-deploy admin host1 host2
 
 # Create demo VM pool
 ceph osd pool create test 128
+ceph osd pool set test size 2
+ceph osd pool set test min_size 1
