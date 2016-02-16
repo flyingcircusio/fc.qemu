@@ -208,7 +208,7 @@ exec { 'install consul':
     creates => '/usr/local/bin/consul',
     refreshonly => false,
     command => "\
-wget -ck -O /root/consul.zip https://dl.bintray.com/mitchellh/consul/0.5.0_linux_amd64.zip
+wget -ck -O /root/consul.zip https://releases.hashicorp.com/consul/0.5.2/consul_0.5.2_linux_amd64.zip
 cd /usr/local/bin
 unzip /root/consul.zip
     ",
