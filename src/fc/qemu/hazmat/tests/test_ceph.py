@@ -1,7 +1,8 @@
 from ..ceph import Ceph, Volume
-import rbd
 import os.path
 import pytest
+import rbd
+import time
 
 
 @pytest.yield_fixture
@@ -32,6 +33,7 @@ def volume(ceph_inst):
         pass
 
     yield volume
+    time.sleep(.2)
 
     lock = volume.lock_status()
     if lock is not None:
