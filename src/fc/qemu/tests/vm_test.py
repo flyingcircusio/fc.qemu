@@ -48,26 +48,23 @@ def test_simple_vm_lifecycle_start_stop(vm, capfd):
     vm.start()
 
     out, err = capfd.readouterr()
+    # XXX
+    import logging
+    logging.info("\n%s\n", out)
     assert """\
 /usr/local/sbin/create-vm -I test00
-rbd --id "admin" map "test/test00.tmp"
+rbd -c "/etc/ceph/ceph.conf" --id "admin" map "test/test00.tmp"
 sgdisk -o "/dev/rbd/test/test00.tmp"
 Creating new GPT entries.
 The operation has completed successfully.
-sgdisk -a 8192 -n 1:8192:0 -c 1:root -t 1:8300 "/dev/rbd/test/test00.tmp"
+sgdisk -a 8192 -n 1:8192:0 -c 1:tmp -t 1:8300 "/dev/rbd/test/test00.tmp"
 The operation has completed successfully.
-mkfs.xfs -f -L "tmp" "/dev/rbd/test/test00.tmp-part1"
-meta-data=/dev/rbd/test/test00.tmp-part1 isize=256    agcount=9, agsize=162816\
- blks
-         =                       sectsz=512   attr=2, projid32bit=0
-data     =                       bsize=4096   blocks=1309691, imaxpct=25
-         =                       sunit=1024   swidth=1024 blks
-naming   =version 2              bsize=4096   ascii-ci=0
-log      =internal log           bsize=4096   blocks=2560, version=2
-         =                       sectsz=512   sunit=8 blks, lazy-count=1
-realtime =none                   extsz=4096   blocks=0, rtextents=0
-rbd --id "admin" unmap "/dev/rbd/test/test00.tmp"
-rbd --id "admin" map "test/test00.swap"
+partprobe
+mkfs.xfs -q -f -L "tmp" "/dev/rbd/test/test00.tmp-part1"
+mount "/dev/rbd/test/test00.tmp-part1" "/mnt/rbd/test/test00.tmp"
+umount "/mnt/rbd/test/test00.tmp"
+rbd -c "/etc/ceph/ceph.conf" --id "admin" unmap "/dev/rbd/test/test00.tmp"
+rbd -c "/etc/ceph/ceph.conf" --id "admin" map "test/test00.swap"
 mkswap -f -L "swap" "/dev/rbd/test/test00.swap"
 """ in out
 

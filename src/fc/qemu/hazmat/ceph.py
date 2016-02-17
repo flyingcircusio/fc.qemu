@@ -6,6 +6,7 @@ We expect Ceph Python bindings to be present in the system site packages.
 from __future__ import print_function
 
 from ..sysconfig import sysconfig
+from ..util import remove_empty_dirs
 import contextlib
 import hashlib
 import json
@@ -45,6 +46,7 @@ class Volume(object):
                  '&& tune2fs -e remount-ro "{device}"')
     }
     device = None
+    mountpoint = None
 
     def __init__(self, ceph, name, label):
         self.ceph = ceph
@@ -165,19 +167,15 @@ class Volume(object):
             options=options, device=self.part1dev, label=self.label))
 
     def seed_enc(self, data):
-        target = tempfile.mkdtemp(prefix='/mnt/create-vm.')
-        cmd('mount "{}" "{}"'.format(self.part1dev, target))
-        try:
+        with self.mounted() as target:
             os.chmod(target, 0o1777)
             fc_data = p.join(target, 'fc-data')
             os.mkdir(fc_data)
             os.chmod(fc_data, 0o750)
             with open(p.join(fc_data, 'enc.json'), 'w') as f:
+                os.fchmod(f.fileno(), 0o640)
                 json.dump(data, f)
                 f.write('\n')
-        finally:
-            cmd('umount {}'.format(target))
-            shutil.rmtree(target)
 
     def map(self):
         if self.device is not None:
@@ -202,6 +200,33 @@ class Volume(object):
             yield self.device
         finally:
             self.unmap()
+
+    def mount(self):
+        if self.mountpoint is not None:
+            return
+        mountpoint = '/mnt/rbd/{}'.format(self.fullname)
+        try:
+            os.makedirs(mountpoint)
+        except OSError:
+            pass
+        cmd('mount "{}" "{}"'.format(self.part1dev, mountpoint))
+        self.mountpoint = mountpoint
+
+    def umount(self):
+        if self.mountpoint is None:
+            return
+        cmd('umount "{}"'.format(self.mountpoint))
+        remove_empty_dirs(self.mountpoint)
+        self.mountpoint = None
+
+    @contextlib.contextmanager
+    def mounted(self):
+        """Mounts the volume and yields mountpoint."""
+        self.mount()
+        try:
+            yield self.mountpoint
+        finally:
+            self.umount()
 
 
 class Snapshots(object):
@@ -314,7 +339,8 @@ class Ceph(object):
         self.tmp.ensure_size(self.cfg['tmp_size'])
         with self.tmp.mapped():
             self.tmp.mkfs()
-            self.seed_enc(enc_data)
+            logger.debug('%s: seeding ENC data', self.tmp.name)
+            self.tmp.seed_enc(enc_data)
 
     def locks(self):
         for vol in self.volumes:

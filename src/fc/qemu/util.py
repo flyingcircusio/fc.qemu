@@ -51,3 +51,16 @@ def locate_live_service(consul, service_id):
         raise RuntimeError('multiple services with passing checks found',
                            service_id)
     return live[0]['Service'] if len(live) else None
+
+
+def remove_empty_dirs(d):
+    """Remove all empty directories from d up.
+
+    Stops on the first non-empty directory.
+    """
+    while d != '/':
+        try:
+            os.rmdir(d)
+        except OSError:
+            return
+        d = os.path.dirname(d)
