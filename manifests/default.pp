@@ -41,10 +41,9 @@ $ntp_servers = $hostname ? {
 server 0.de.pool.ntp.org iburst minpoll 4 maxpoll 5
 server 1.de.pool.ntp.org iburst minpoll 4 maxpoll 5
 server 2.de.pool.ntp.org iburst minpoll 4 maxpoll 5
-peer host2 iburst minpoll 4 maxpoll 5
 ",
     default => "\
-peer host1 iburst minpoll 4 maxpoll 5
+server host1 iburst minpoll 4 maxpoll 5
 "
 }
 
