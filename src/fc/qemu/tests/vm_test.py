@@ -46,18 +46,14 @@ def test_simple_vm_lifecycle_start_stop(vm, capfd):
     assert status() == 'offline\n'
 
     vm.start()
-
     out, err = capfd.readouterr()
-    # XXX
-    import logging
-    logging.info("\n%s\n", out)
     assert """\
 /usr/local/sbin/create-vm -I test00
 rbd -c "/etc/ceph/ceph.conf" --id "admin" map "test/test00.tmp"
 sgdisk -o "/dev/rbd/test/test00.tmp"
 Creating new GPT entries.
 The operation has completed successfully.
-sgdisk -a 8192 -n 1:8192:0 -c 1:tmp -t 1:8300 "/dev/rbd/test/test00.tmp"
+sgdisk -a 8192 -n 1:8192:0 -c "1:tmp" -t 1:8300 "/dev/rbd/test/test00.tmp"
 The operation has completed successfully.
 partprobe
 mkfs.xfs -q -f -L "tmp" "/dev/rbd/test/test00.tmp-part1"
@@ -69,7 +65,7 @@ mkswap -f -L "swap" "/dev/rbd/test/test00.swap"
 """ in out
 
     assert """\
-rbd --id "admin" unmap "/dev/rbd/test/test00.swap"
+rbd -c "/etc/ceph/ceph.conf" --id "admin" unmap "/dev/rbd/test/test00.swap"
 """ in out
 
     assert status() == """\
@@ -192,4 +188,4 @@ def test_vm_tmpsize():
 
 
 def test_vm_migration():
-    subprocess.check_call('/vagrant/test-migration.sh', shell=True)
+    subprocess.check_call('./test-migration.sh', shell=True)
