@@ -249,7 +249,7 @@ class Agent(object):
     def ensure_online_disk_size(self):
         """Trigger block resize action for the root disk via Qemu monitor."""
         target_size = self.cfg['disk'] * (1024 ** 3)
-        if self.ceph.root.image.size() >= target_size:
+        if self.ceph.root.size >= target_size:
             return
         log.info('Online disk resize for VM %s to %s GiB', self.name,
                  self.cfg['disk'])

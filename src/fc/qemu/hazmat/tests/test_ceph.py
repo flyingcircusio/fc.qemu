@@ -37,7 +37,7 @@ def volume(ceph_inst):
 
     lock = volume.lock_status()
     if lock is not None:
-        volume.image.break_lock(*lock)
+        volume.rbdimage.break_lock(*lock)
     volume.snapshots.purge()
     rbd.RBD().remove(ceph_inst.ioctx, 'othervolume')
 
@@ -58,28 +58,40 @@ def test_volume_presence(volume):
     assert volume.fullname == 'test/othervolume'
     assert not volume.exists()
     with pytest.raises(rbd.ImageNotFound):
-        volume.image
+        volume.rbdimage
     volume.ensure_presence()
-    assert volume.image
+    assert volume.rbdimage
     # Check that ensure_presence is fine with being called multiple times.
     volume.ensure_presence()
 
 
 def test_volume_snapshot(volume):
     volume.ensure_presence()
-    assert volume.image
-    volume.snapshots.create('test')
-    snaps = volume.snapshots.list()
+    volume.snapshots.create('s000')
+    snaps = list(volume.snapshots)
     assert len(snaps) == 1
-    assert snaps[0]['name'] == 'test'
+    snapshot = snaps[0]
+    assert snapshot.name == 'othervolume'
+    assert snapshot.snapname == 's000'
+    assert snapshot.size == volume.size
+    assert snapshot.id == volume.snapshots['s000'].id
 
-    volume.snapshots.remove('test')
-    assert volume.snapshots.list() == []
+    snapshot.remove()
+    assert [] == list(volume.snapshots)
+
+
+def test_purge_snapshots(volume):
+    volume.ensure_presence()
+    for snap in ['s0', 's1']:
+        volume.snapshots.create(snap)
+    assert len(volume.snapshots) == 2
+    volume.snapshots.purge()
+    assert len(volume.snapshots) == 0
 
 
 def test_volume_size(volume):
     volume.ensure_presence()
-    assert volume.image
+    assert volume.rbdimage
     assert volume.size == 1024
     volume.ensure_size(2048)
     assert volume.size == 2048
@@ -90,13 +102,13 @@ def test_volume_size(volume):
 
 def test_volume_shared_lock_protection(volume):
     volume.ensure_presence()
-    volume.image.lock_shared('host1', 'a')
-    volume.image.lock_shared('remotehost', 'a')
+    volume.rbdimage.lock_shared('host1', 'a')
+    volume.rbdimage.lock_shared('remotehost', 'a')
     with pytest.raises(NotImplementedError):
         volume.lock_status()
-    lockers = volume.image.list_lockers()
+    lockers = volume.rbdimage.list_lockers()
     for client, cookie, _ in lockers['lockers']:
-        volume.image.break_lock(client, cookie)
+        volume.rbdimage.break_lock(client, cookie)
 
 
 def test_volume_locking(volume):
@@ -118,7 +130,7 @@ def test_volume_locking(volume):
     # We can call unlock twice if it isn't locked.
     volume.unlock()
 
-    volume.image.lock_exclusive('someotherhost')
+    volume.rbdimage.lock_exclusive('someotherhost')
     with pytest.raises(rbd.ImageBusy):
         volume.lock()
     with pytest.raises(rbd.ImageBusy):
@@ -128,7 +140,7 @@ def test_volume_locking(volume):
 
 def test_force_unlock(volume):
     volume.ensure_presence()
-    volume.image.lock_exclusive('someotherhost')
+    volume.rbdimage.lock_exclusive('someotherhost')
     volume.unlock(force=True)
     assert volume.lock_status() is None
 
@@ -159,32 +171,6 @@ def test_volume_map_unmap(volume):
     assert not os.path.exists('/dev/rbd/test/othervolume')
 
 
-def test_call_shrink_vm(ceph_inst, capfd):
-    try:
-        rbd.RBD().remove(ceph_inst.ioctx, 'test00.root')
-    except rbd.ImageNotFound:
-        pass
-
-    ceph_inst.root.ensure_presence(ceph_inst.cfg['disk'] * 1024 ** 3 + 4096)
-    try:
-        ceph_inst.ensure_root_volume()
-        stdout, stderr = capfd.readouterr()
-        assert 'shrink-vm pool=test image=test00.root disk=10' in stdout
-    finally:
-        ceph_inst.root.unlock()
-        rbd.RBD().remove(ceph_inst.ioctx, ceph_inst.root.name)
-
-
-def test_shrink_vm_raises_if_nonzero_exit(ceph_inst):
-    ceph_inst.root.ensure_presence(ceph_inst.cfg['disk'] * 1024 ** 3 + 4096)
-    ceph_inst.SHRINK_VM = '/bin/false'
-    try:
-        with pytest.raises(RuntimeError):
-            ceph_inst.shrink_root()
-    finally:
-        rbd.RBD().remove(ceph_inst.ioctx, ceph_inst.root.name)
-
-
 def test_ceph_stop_should_unlock_all_volumes(ceph_with_volumes):
     for vol in ceph_with_volumes.volumes:
         assert vol.lock_status()
@@ -196,7 +182,7 @@ def test_ceph_stop_should_unlock_all_volumes(ceph_with_volumes):
 def test_ceph_stop_remove_only_own_locks(ceph_with_volumes):
     """Test case where failed migrations leave inconsistent locking."""
     ceph_with_volumes.root.unlock()
-    ceph_with_volumes.root.image.lock_exclusive('someotherhost')
+    ceph_with_volumes.root.rbdimage.lock_exclusive('someotherhost')
     ceph_with_volumes.stop()
     assert ceph_with_volumes.root.lock_status()
     assert ceph_with_volumes.swap.lock_status() is None

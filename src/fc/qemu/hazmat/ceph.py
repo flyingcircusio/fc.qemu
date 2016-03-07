@@ -15,9 +15,7 @@ import os
 import os.path as p
 import rados
 import rbd
-import shutil
 import subprocess
-import tempfile
 import time
 
 logger = logging.getLogger(__name__)
@@ -33,11 +31,90 @@ def cmd(cmdline):
     return output
 
 
-class Volume(object):
-    """Low-level manipulation of RBD volumes.
+class Image(object):
+    """Abstract base class for all images (volumes and snapshots)."""
+
+    device = None
+    mountpoint = None
+
+    def __init__(self, ceph, name):
+        self.ceph = ceph
+        self.ioctx = ceph.ioctx
+        self.name = name
+        self.rbd = rbd.RBD()
+
+    def __str__(self):
+        return self.fullname
+
+    @property
+    def rbdimage(self):  # pragma: no cover
+        raise NotImplementedError
+
+    @property
+    def fullname(self):  # pragma: no cover
+        raise NotImplementedError
+
+
+class Snapshots(object):
+    """Container for all snapshots of a Volume."""
+
+    def __init__(self, volume):
+        self.vol = volume
+
+    def __iter__(self):
+        """Iterator over all existing snapshots."""
+        return (Snapshot(self.vol, s['name'], s['id'], s['size'])
+                for s in self.vol.rbdimage.list_snaps())
+
+    def __len__(self):
+        return len(list(self.vol.rbdimage.list_snaps()))
+
+    def __getitem__(self, key):
+        for s in self.vol.rbdimage.list_snaps():
+            if key == s['name']:
+                return Snapshot(self.vol, s['name'], s['id'], s['size'])
+
+    def purge(self):
+        """Remove all snapshots."""
+        for snapshot in self:
+            logger.info('purge: removing snapshot %s', snapshot.fullname)
+            snapshot.remove()
+
+    def create(self, snapname):
+        self.vol.rbdimage.create_snap(snapname)
+        logger.info('created snapshot %s@%s', self.vol, snapname)
+
+
+class Snapshot(Image):
+    """Single snapshot of a Volume."""
+
+    def __init__(self, volume, snapname, id, snapsize):
+        super(Snapshot, self).__init__(volume.ceph, volume.name)
+        self.vol = volume
+        self.snapname = snapname
+        self.id = id
+        self.size = snapsize
+
+    @property
+    def rbdimage(self):
+        return rbd.Image(self.ioctx, self.name, self.snapname)
+
+    @property
+    def fullname(self):
+        return self.ioctx.name + '/' + self.name + '@' + self.snapname
+
+    def remove(self):
+        """Destroy myself."""
+        self.vol.rbdimage.remove_snap(self.snapname)
+        logger.info('removed snapshot %s', self)
+
+
+class Volume(Image):
+    """RBD Volume interface.
 
     A volume has a name (shown in `rbd ls`) and a filesystem label. The
-    latter is only used for mkfs/mkswap.
+    latter is only used for mkfs/mkswap. A volume may have a set of
+    snapshots accessible via the `snapshots` container object.
     """
 
     MKFS_CMD = {
@@ -45,29 +122,24 @@ class Volume(object):
         'ext4': ('mkfs.ext4 {options} -L "{label}" "{device}" '
                  '&& tune2fs -e remount-ro "{device}"')
     }
-    device = None
-    mountpoint = None
 
     def __init__(self, ceph, name, label):
-        self.ceph = ceph
-        self.ioctx = ceph.ioctx
-        self.name = name
+        super(Volume, self).__init__(ceph, name)
         self.label = label
-        self.rbd = rbd.RBD()
         self.snapshots = Snapshots(self)
+
+    @property
+    def rbdimage(self):
+        return rbd.Image(self.ioctx, self.name)
 
     @property
     def fullname(self):
         return self.ioctx.name + '/' + self.name
 
     @property
-    def image(self):
-        return rbd.Image(self.ioctx, self.name)
-
-    @property
     def size(self):
         """Image size in Bytes."""
-        return self.image.size()
+        return self.rbdimage.size()
 
     @property
     def part1dev(self):
@@ -86,14 +158,14 @@ class Volume(object):
     def ensure_size(self, size):
         if self.size == size:
             return
-        self.image.resize(size)
+        self.rbdimage.resize(size)
 
     def lock(self):
         logger.debug('Assuming lock for %s', self.fullname)
         retry = 3
         while retry:
             try:
-                self.image.lock_exclusive(self.ceph.CEPH_LOCK_HOST)
+                self.rbdimage.lock_exclusive(self.ceph.CEPH_LOCK_HOST)
             except rbd.ImageExists:
                 # This client and cookie already locked this. This is
                 # definitely fine.
@@ -123,7 +195,7 @@ class Volume(object):
     def lock_status(self):
         """Return None if not locked and (client_id, lock_id) if it is."""
         try:
-            lockers = self.image.list_lockers()
+            lockers = self.rbdimage.list_lockers()
         except rbd.ImageNotFound:
             return None
         if not lockers:
@@ -144,7 +216,7 @@ class Volume(object):
         if not force and lock_id != self.ceph.CEPH_LOCK_HOST:
             raise rbd.ImageBusy("Can not break lock for {} held by host {}."
                                 .format(self.name, lock_id))
-        self.image.break_lock(client_id, lock_id)
+        self.rbdimage.break_lock(client_id, lock_id)
 
     def mkswap(self):
         """Creates a swap partition. Requires the volume to be mappped."""
@@ -229,33 +301,6 @@ class Volume(object):
             self.umount()
 
 
-class Snapshots(object):
-
-    def __init__(self, volume):
-        self.volume = volume
-
-    def create(self, name):
-        self.volume.image.create_snap(name)
-        logger.info('created snapshot %s@%s', self.volume.fullname, name)
-
-    def list(self):
-        snaps = self.volume.image.list_snaps()
-        return list(snaps)
-
-    def remove(self, name):
-        """Remove a single snapshot."""
-        self.volume.image.remove_snap(name)
-        logger.info('removed snapshot %s@%s', self.volume.fullname, name)
-
-    def purge(self):
-        """Remove all snapshots."""
-        snaps = self.volume.image.list_snaps()
-        for snapshot in snaps:
-            logger.info('purge: removing snapshot %s@%s', self.volume.fullname,
-                        snapshot['name'])
-            self.volume.image.remove_snap(snapshot['name'])
-
-
 class Ceph(object):
 
     # Attributes on this class can be overriden in a controlled fashion
@@ -313,12 +358,7 @@ class Ceph(object):
         target_size = self.cfg['disk'] * 1024 ** 3
         if self.root.size <= target_size:
             return
-        try:
-            cmd(self.SHRINK_VM.format(image=self.root.name, **self.cfg))
-        except subprocess.CalledProcessError:
-            raise RuntimeError(
-                'unrecoverable error while shrinking root volume',
-                self.cfg['name'])
+        # XXX
 
     def ensure_root_volume(self):
         if not self.root.exists():
