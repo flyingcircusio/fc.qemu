@@ -216,10 +216,15 @@ class Agent(object):
                 pass
         else:
             self.ensure_online()
-            self.ensure_online_disk_size()
 
         if self.state_is_consistent():
-            if not self.qemu.is_running():
+            if self.qemu.is_running():
+                # We moved this from running directly after ensure_online().
+                # But the result of ensure online is not guanteed to be
+                # consistent nor running and running the online disk size
+                # has caused spurious errors previously.
+                self.ensure_online_disk_size()
+            else:
                 self.qemu.clean_run_files()
         else:
             log.warning('%s: state not consistent (monitor, pidfile, ceph), '
