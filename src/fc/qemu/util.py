@@ -1,6 +1,10 @@
+"""Global helper functions and utilites for fc.qemu."""
+
+from __future__ import print_function
 import contextlib
 import filecmp
 import os
+import subprocess
 import tempfile
 
 
@@ -42,9 +46,10 @@ def locate_live_service(consul, service_id):
     It is an error if multiple live services with the same service name
     are found.
     """
-    passing = lambda checks: (
-        any(check['Status'] == 'passing' for check in checks) and
-        not any(check['Status'] == 'critical' for check in checks))
+    def passing(checks):
+        return (any(check['Status'] == 'passing' for check in checks) and
+                not any(check['Status'] == 'critical' for check in checks))
+
     live = [svc for svc in consul.health.service(service_id)
             if passing(svc['Checks'])]
     if len(live) > 1:
@@ -64,3 +69,13 @@ def remove_empty_dirs(d):
         except OSError:
             return
         d = os.path.dirname(d)
+
+
+def cmd(cmdline):
+    """Execute cmdline with stdin closed to avoid questions on terminal"""
+    print(cmdline)
+    with open('/dev/null') as null:
+        output = subprocess.check_output(cmdline, shell=True, stdin=null)
+    # Keep this here for compatibility with tests
+    print(output, end='')
+    return output
