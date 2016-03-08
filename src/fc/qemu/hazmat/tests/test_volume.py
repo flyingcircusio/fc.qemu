@@ -8,25 +8,23 @@ import time
 @pytest.yield_fixture
 def volume(ceph_inst):
     volume = Volume(ceph_inst, 'othervolume', 'label')
-
-    try:
-        volume.snapshots.purge()
-    except Exception:
-        pass
-
+    volume.snapshots.purge()
     try:
         rbd.RBD().remove(ceph_inst.ioctx, 'othervolume')
     except rbd.ImageNotFound:
         pass
 
     yield volume
-    time.sleep(.1)
+    time.sleep(.2)
 
     lock = volume.lock_status()
     if lock is not None:
         volume.rbdimage.break_lock(*lock)
     volume.snapshots.purge()
-    rbd.RBD().remove(ceph_inst.ioctx, 'othervolume')
+    try:
+        rbd.RBD().remove(ceph_inst.ioctx, 'othervolume')
+    except rbd.ImageNotFound:
+        pass
 
 
 def test_volume_presence(volume):
@@ -62,6 +60,11 @@ def test_purge_snapshots(volume):
     assert len(volume.snapshots) == 2
     volume.snapshots.purge()
     assert len(volume.snapshots) == 0
+
+
+def test_snapshot_not_found(volume):
+    with pytest.raises(KeyError):
+        volume.snapshots['no-such-key']
 
 
 def test_volume_size(volume):
@@ -134,7 +137,12 @@ def test_volume_mkfs(volume):
         volume.mkfs()
 
 
-def test_volume_map_unmap(volume):
+def test_unmapped_volume_should_have_no_part1(volume):
+    # not something like 'None-part1'
+    assert volume.part1dev is None
+
+
+def test_volume_map_unmap_is_idempotent(volume):
     volume.ensure_presence()
     volume.map()
     assert os.path.exists('/dev/rbd/test/othervolume')
@@ -163,9 +171,18 @@ def test_mount_snapshot(volume):
     volume.ensure_presence()
     volume.ensure_size(40 * 1024 ** 2)
     with volume.mapped():
-        volume.mkfs(fstype='xfs')
+        volume.mkfs(fstype='xfs', gptbios=True)
     volume.snapshots.create('s0')
-    with volume.snapshots['s0'].mounted() as mp:
+    snap = volume.snapshots['s0']
+    with snap.mounted() as mp:
+        mountpoint = mp
         assert os.path.ismount(mp)
         with open('/proc/self/mounts') as mounts:
             assert '{} xfs ro'.format(mp) in mounts.read()
+        # test for idempotence
+        snap.mount()
+        assert os.path.ismount(mp)
+    assert not os.path.ismount(mountpoint)
+    # test for idempotence
+    snap.umount()
+    assert not os.path.ismount(mountpoint)

@@ -79,7 +79,7 @@ class Image(object):
         mountpoint = '/mnt/rbd/{}'.format(self.fullname)
         try:
             os.makedirs(mountpoint)
-        except OSError:
+        except OSError:  # pragma: no cover
             pass
         cmd('mount "{}" "{}"'.format(self.part1dev, mountpoint))
         self.mountpoint = mountpoint
@@ -114,17 +114,24 @@ class Snapshots(object):
         self.vol = volume
 
     def __iter__(self):
-        """Iterator over all existing snapshots."""
+        """Iterate over all existing snapshots."""
         return (Snapshot(self.vol, s['name'], s['id'], s['size'])
-                for s in self.vol.rbdimage.list_snaps())
+                for s in self._list_snaps())
 
     def __len__(self):
-        return len(list(self.vol.rbdimage.list_snaps()))
+        return len(list(self._list_snaps()))
 
     def __getitem__(self, key):
-        for s in self.vol.rbdimage.list_snaps():
+        for s in self._list_snaps():
             if key == s['name']:
                 return Snapshot(self.vol, s['name'], s['id'], s['size'])
+        raise KeyError(key)
+
+    def _list_snaps(self):
+        try:
+            return self.vol.rbdimage.list_snaps()
+        except rbd.ImageNotFound:
+            return []
 
     def purge(self):
         """Remove all snapshots."""
@@ -278,7 +285,7 @@ class Volume(Image):
             cmd('sgdisk -n 2:2048:+1M -c 2:gptbios -t 2:EF02 "{}"'.format(
                 self.device))
         cmd('partprobe')
-        while not p.exists(self.part1dev):
+        while not p.exists(self.part1dev):  # pragma: no cover
             time.sleep(0.1)
         options = getattr(self.ceph, 'MKFS_' + fstype.upper())
         cmd(self.MKFS_CMD[fstype].format(
