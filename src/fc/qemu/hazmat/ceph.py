@@ -54,6 +54,72 @@ class Image(object):
     def fullname(self):  # pragma: no cover
         raise NotImplementedError
 
+    @property
+    def part1dev(self):
+        if not self.device:
+            return None
+        return self.device + '-part1'
+
+    def map(self):
+        if self.device is not None:
+            return
+        cmd('rbd -c "{}" --id "{}" map "{}"'.format(
+            self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.fullname))
+        time.sleep(0.1)
+        self.device = '/dev/rbd/' + self.fullname
+
+    def unmap(self):
+        if self.device is None:
+            return
+        cmd('rbd -c "{}" --id "{}" unmap "{}"'.format(
+            self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.device))
+        self.device = None
+
+    @contextlib.contextmanager
+    def mapped(self):
+        """Maps the image to a block device and yields the device name."""
+        self.map()
+        try:
+            yield self.device
+        finally:
+            self.unmap()
+
+    def mount(self):
+        if self.mountpoint is not None:
+            return
+        if not self.device:
+            raise RuntimeError('image must be mapped before mounting',
+                               self.fullname)
+        mountpoint = '/mnt/rbd/{}'.format(self.fullname)
+        try:
+            os.makedirs(mountpoint)
+        except OSError:
+            pass
+        cmd('mount "{}" "{}"'.format(self.part1dev, mountpoint))
+        self.mountpoint = mountpoint
+
+    def umount(self):
+        if self.mountpoint is None:
+            return
+        cmd('umount "{}"'.format(self.mountpoint))
+        remove_empty_dirs(self.mountpoint)
+        self.mountpoint = None
+
+    @contextlib.contextmanager
+    def mounted(self):
+        """Mounts the image and yields mountpoint."""
+        must_unmap = False
+        if not self.device:
+            self.map()
+            must_unmap = True
+        self.mount()
+        try:
+            yield self.mountpoint
+        finally:
+            self.umount()
+            if must_unmap:
+                self.unmap()
+
 
 class Snapshots(object):
     """Container for all snapshots of a Volume."""
@@ -141,12 +207,6 @@ class Volume(Image):
         """Image size in Bytes."""
         return self.rbdimage.size()
 
-    @property
-    def part1dev(self):
-        if not self.device:
-            return None
-        return self.device + '-part1'
-
     def exists(self):
         return self.name in self.rbd.list(self.ioctx)
 
@@ -233,7 +293,7 @@ class Volume(Image):
                 self.device))
         cmd('partprobe')
         while not p.exists(self.part1dev):
-            time.sleep(0.25)
+            time.sleep(0.1)
         options = getattr(self.ceph, 'MKFS_' + fstype.upper())
         cmd(self.MKFS_CMD[fstype].format(
             options=options, device=self.part1dev, label=self.label))
@@ -248,57 +308,6 @@ class Volume(Image):
                 os.fchmod(f.fileno(), 0o640)
                 json.dump(data, f)
                 f.write('\n')
-
-    def map(self):
-        if self.device is not None:
-            return
-        cmd('rbd -c "{}" --id "{}" map "{}"'.format(
-            self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.fullname))
-        time.sleep(0.1)
-        self.device = '/dev/rbd/' + self.fullname
-
-    def unmap(self):
-        if self.device is None:
-            return
-        cmd('rbd -c "{}" --id "{}" unmap "{}"'.format(
-            self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.device))
-        self.device = None
-
-    @contextlib.contextmanager
-    def mapped(self):
-        """Context which maps the volume. Yields the RBD device."""
-        self.map()
-        try:
-            yield self.device
-        finally:
-            self.unmap()
-
-    def mount(self):
-        if self.mountpoint is not None:
-            return
-        mountpoint = '/mnt/rbd/{}'.format(self.fullname)
-        try:
-            os.makedirs(mountpoint)
-        except OSError:
-            pass
-        cmd('mount "{}" "{}"'.format(self.part1dev, mountpoint))
-        self.mountpoint = mountpoint
-
-    def umount(self):
-        if self.mountpoint is None:
-            return
-        cmd('umount "{}"'.format(self.mountpoint))
-        remove_empty_dirs(self.mountpoint)
-        self.mountpoint = None
-
-    @contextlib.contextmanager
-    def mounted(self):
-        """Mounts the volume and yields mountpoint."""
-        self.mount()
-        try:
-            yield self.mountpoint
-        finally:
-            self.umount()
 
 
 class Ceph(object):

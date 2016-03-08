@@ -33,7 +33,7 @@ def volume(ceph_inst):
         pass
 
     yield volume
-    time.sleep(.2)
+    time.sleep(.1)
 
     lock = volume.lock_status()
     if lock is not None:
@@ -67,14 +67,14 @@ def test_volume_presence(volume):
 
 def test_volume_snapshot(volume):
     volume.ensure_presence()
-    volume.snapshots.create('s000')
+    volume.snapshots.create('s0')
     snaps = list(volume.snapshots)
     assert len(snaps) == 1
     snapshot = snaps[0]
     assert snapshot.name == 'othervolume'
-    assert snapshot.snapname == 's000'
+    assert snapshot.snapname == 's0'
     assert snapshot.size == volume.size
-    assert snapshot.id == volume.snapshots['s000'].id
+    assert snapshot.id == volume.snapshots['s0'].id
 
     snapshot.remove()
     assert [] == list(volume.snapshots)
@@ -187,3 +187,28 @@ def test_ceph_stop_remove_only_own_locks(ceph_with_volumes):
     assert ceph_with_volumes.root.lock_status()
     assert ceph_with_volumes.swap.lock_status() is None
     assert ceph_with_volumes.tmp.lock_status() is None
+
+
+def test_map_snapshot(volume):
+    volume.ensure_presence()
+    volume.snapshots.create('s0')
+    with volume.snapshots['s0'].mapped() as device:
+        assert os.path.exists(device)
+
+
+def test_mount_should_fail_if_not_mapped(volume):
+    volume.ensure_presence()
+    with pytest.raises(RuntimeError):
+        volume.mount()
+
+
+def test_mount_snapshot(volume):
+    volume.ensure_presence()
+    volume.ensure_size(40 * 1024 ** 2)
+    with volume.mapped():
+        volume.mkfs(fstype='xfs')
+    volume.snapshots.create('s0')
+    with volume.snapshots['s0'].mounted() as mp:
+        assert os.path.ismount(mp)
+        with open('/proc/self/mounts') as mounts:
+            assert '{} xfs ro'.format(mp) in mounts.read()
