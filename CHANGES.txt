@@ -8,7 +8,11 @@ Release notes
 - Account for different mkfs options for XFS and mkfs.ext4 (#19079).
 - Improved Vagrant VM bootstrapping.
 - Refactor classes in hazmat/{ceph.py,volume.py} (#19079).
-
+- Use the "rbd_pool" ENC option to allow VM-specific selection of the RBD pool
+  instead of deriving it from the resource group name.
+- Improve success rate of recovering from failed migrations properly: certain
+  conditions would result in only partially released locks from the target
+  leading to inconsistent states.
 
 0.7.14 (2016-01-21)
 -------------------
