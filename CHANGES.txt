@@ -5,7 +5,8 @@ Release notes
 0.7.15 (unreleased)
 -------------------
 
-- Nothing changed yet.
+- Use the "rbd_pool" ENC option to allow VM-specific selection of the RBD pool
+  instead of deriving it from the resource group name.
 
 
 0.7.14 (2016-01-21)
