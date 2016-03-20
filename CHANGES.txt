@@ -5,7 +5,9 @@ Release notes
 0.7.15 (unreleased)
 -------------------
 
-- Nothing changed yet.
+- Account for different mkfs options for XFS and mkfs.ext4 (#19079).
+- Improved Vagrant VM bootstrapping.
+- Refactor classes in hazmat/{ceph.py,volume.py} (#19079).
 
 
 0.7.14 (2016-01-21)
