@@ -28,7 +28,7 @@ def volume(ceph_inst):
 
 
 def test_volume_presence(volume):
-    assert volume.fullname == 'test/othervolume'
+    assert volume.fullname == 'rbd.hdd/othervolume'
     assert not volume.exists()
     with pytest.raises(rbd.ImageNotFound):
         volume.rbdimage
@@ -145,13 +145,13 @@ def test_unmapped_volume_should_have_no_part1(volume):
 def test_volume_map_unmap_is_idempotent(volume):
     volume.ensure_presence()
     volume.map()
-    assert os.path.exists('/dev/rbd/test/othervolume')
+    assert os.path.exists('/dev/rbd/rbd.hdd/othervolume')
     volume.map()
-    assert os.path.exists('/dev/rbd/test/othervolume')
+    assert os.path.exists('/dev/rbd/rbd.hdd/othervolume')
     volume.unmap()
-    assert not os.path.exists('/dev/rbd/test/othervolume')
+    assert not os.path.exists('/dev/rbd/rbd.hdd/othervolume')
     volume.unmap()
-    assert not os.path.exists('/dev/rbd/test/othervolume')
+    assert not os.path.exists('/dev/rbd/rbd.hdd/othervolume')
 
 
 def test_map_snapshot(volume):

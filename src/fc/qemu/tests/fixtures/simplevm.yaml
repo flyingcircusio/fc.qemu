@@ -10,6 +10,7 @@ parameters:
   memory: 256
   name: test00
   online: true
+  rbd_pool: rbd.ssd
   resource_group: test
   swap_size: 1073741824
   tmp_size: 5368709120
