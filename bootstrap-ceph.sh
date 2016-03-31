@@ -12,6 +12,7 @@ ceph-deploy osd activate host1:/var/local/osd0 host2:/var/local/osd1
 ceph-deploy admin host1 host2
 
 # Create demo VM pool
-ceph osd pool create test 128
+ceph osd pool create rbd.hdd 8
+ceph osd pool create rbd.ssd 8
 ceph osd pool set test size 2
 ceph osd pool set test min_size 1
