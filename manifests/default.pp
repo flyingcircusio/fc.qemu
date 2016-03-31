@@ -154,7 +154,9 @@ file { "/usr/local/sbin/create-vm":
     content => '#!/bin/bash
 set -e
 test "$1" = -I
-rbd create --size 5120 --image-format 2 "test/${2}.root"
+pool=$2
+vm=$3
+rbd create --size 5120 --image-format 2 "${pool}/${vm}.root"
 ',
     mode => 755,
 }
@@ -203,7 +205,7 @@ access-token =
 client-id = admin
 cluster = ceph
 lock_host = ${hostname}
-create-vm = /usr/local/sbin/create-vm -I {name}
+create-vm = /usr/local/sbin/create-vm -I {rbd_pool} {name}
 shrink-vm = /usr/local/sbin/shrink-vm {resource_group} {image} {disk}
 mkfs-xfs = -q -f
 ",

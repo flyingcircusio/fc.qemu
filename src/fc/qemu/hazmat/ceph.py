@@ -43,7 +43,7 @@ class Ceph(object):
             name='client.' + self.CEPH_CLIENT)
         self.rados.connect()
 
-        pool = self.cfg['resource_group'].encode('ascii')
+        pool = self.cfg['rbd_pool'].encode('ascii')
         self.ioctx = self.rados.open_ioctx(pool)
 
         volume_prefix = self.cfg['name'].encode('ascii')
