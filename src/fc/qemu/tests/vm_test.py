@@ -176,9 +176,10 @@ def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
 
 def test_simple_vm_snapshot(vm):
     assert list(x.fullname for x in vm.ceph.root.snapshots) == []
+    vm.ceph.root.ensure_presence()
     vm.snapshot('asdf')
     assert list(x.fullname for x in vm.ceph.root.snapshots) == [
-        'test/test00.root@asdf']
+        'rbd.ssd/test00.root@asdf']
 
 
 def test_vm_swapsize():
