@@ -27,7 +27,11 @@ def vm(clean_environment):
     vm = Agent('simplevm')
     vm.timeout_graceful = 1
     vm.__enter__()
+    for snapshot in vm.ceph.root.snapshots:
+        snapshot.remove()
     yield vm
+    for snapshot in vm.ceph.root.snapshots:
+        snapshot.remove()
     exc_info = sys.exc_info()
     vm.__exit__(*exc_info)
     if len(exc_info):
@@ -168,6 +172,13 @@ def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
     vm.ensure()
     # We don't really know what's going on here, so, yeah, don't touch it.
     assert vm.ceph.locked_by_me() is True
+
+
+def test_simple_vm_snapshot(vm):
+    assert list(x.fullname for x in vm.ceph.root.snapshots) == []
+    vm.snapshot('asdf')
+    assert list(x.fullname for x in vm.ceph.root.snapshots) == [
+        'test/test00.root@asdf']
 
 
 def test_vm_swapsize():
