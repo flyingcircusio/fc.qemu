@@ -5,14 +5,8 @@ Release notes
 0.7.17 (unreleased)
 -------------------
 
-- Nothing changed yet.
-
-
-0.7.17 (unreleased)
--------------------
-
-- Nothing changed yet.
-
+- Fix unicode/str issue: consul json decoded into unicode but librbd requires
+  a plain string.
 
 0.7.16 (2016-03-31)
 -------------------
