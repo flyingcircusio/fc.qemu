@@ -307,7 +307,7 @@ class Agent(object):
 
     @locked
     def snapshot(self, snapshot):
-        if snapshot in [x['name'] for x in self.ceph.root.snapshots]:
+        if snapshot in [x.snapname for x in self.ceph.root.snapshots]:
             return
         if self.qemu.is_running():
             with self.frozen_vm():

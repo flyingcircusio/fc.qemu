@@ -5,7 +5,8 @@ Release notes
 0.7.18 (unreleased)
 -------------------
 
-- Nothing changed yet.
+- Another brownbag release: the snapshot refactoring wasn't tested properly
+  if snapshots actually existed.
 
 
 0.7.17 (2016-04-04)
