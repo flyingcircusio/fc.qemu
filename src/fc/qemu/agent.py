@@ -60,7 +60,7 @@ class ConsulEventHandler(object):
     def snapshot(self, event):
         value = json.loads(event['Value'].decode('base64'))
         vm = value['vm']
-        snapshot = value['snapshot']
+        snapshot = value['snapshot'].encode('ascii')
         try:
             agent = Agent(vm)
         except RuntimeError:
