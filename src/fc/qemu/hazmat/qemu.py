@@ -154,17 +154,19 @@ class Qemu(object):
         # c) is the monitor available and talks to us?
         monitor_says_running = False
         status = ''
-        if monitor_exists:
-            timeout = TimeOut(10, 1, raise_on_timeout=False)
-            while timeout.tick():
-                try:
-                    status = self.monitor.status()
-                    monitor_says_running = status == 'VM status: running'
-                except Exception as e:
-                    log.exception('waiting for monitor status: %s', e)
-                    pass
-                else:
-                    break
+        timeout = TimeOut(10, 1, raise_on_timeout=False)
+        while monitor_exists and timeout.tick():
+            try:
+                status = self.monitor.status()
+                monitor_says_running = status == 'VM status: running'
+            except Exception as e:
+                log.exception('waiting for monitor status: %s', e)
+                # Update whether the monitor still exists - it may have gone
+                # away intermediately.
+                monitor_exists = self.monitor.peek()
+                pass
+            else:
+                break
 
         if (expected_process_exists and
                 monitor_exists and monitor_says_running):

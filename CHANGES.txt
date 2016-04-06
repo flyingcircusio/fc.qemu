@@ -5,7 +5,9 @@ Release notes
 0.7.19 (unreleased)
 -------------------
 
-- Nothing changed yet.
+- Fix a race condition: when continuously polling monitor status to determine
+  whether a VM is running, also consider the option that the VM was about
+  to shutdown and the monitor has gone away.
 
 
 0.7.18 (2016-04-04)
