@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.7.19 (unreleased)
+0.7.19 (2016-04-08)
 -------------------
 
 - Fix a race condition: when continuously polling monitor status to determine
