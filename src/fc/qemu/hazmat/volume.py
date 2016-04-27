@@ -262,13 +262,16 @@ class Volume(Image):
         return client_id, lock_id
 
     def unlock(self, force=False):
+        logger.debug('Unlocking %s', self.fullname)
         locked_by = self.lock_status()
         if not locked_by:
+            logger.debug('%s was not locked', self.fullname)
             return
         client_id, lock_id = locked_by
         if not force and lock_id != self.ceph.CEPH_LOCK_HOST:
             raise rbd.ImageBusy("Can not break lock for {} held by host {}."
                                 .format(self.name, lock_id))
+        logger.debug('Executing break_lock for %s', self.fullname)
         self.rbdimage.break_lock(client_id, lock_id)
 
     def mkswap(self):
