@@ -65,18 +65,9 @@ class Ceph(object):
     def stop(self):
         self.unlock()
 
-    def shrink_root(self):
-        # Note: we trust the called script to lock and unlock
-        # the root image.
-        target_size = self.cfg['disk'] * 1024 ** 3
-        if self.root.size <= target_size:
-            return
-        # XXX
-
     def ensure_root_volume(self):
         if not self.root.exists():
             cmd(self.CREATE_VM.format(**self.cfg))
-        self.shrink_root()
         self.root.lock()
 
     def ensure_swap_volume(self):
@@ -126,7 +117,7 @@ class Ceph(object):
         for vol in self.volumes:
             try:
                 vol.unlock()
-            except rbd.ImageBusy, rbd.ConnectionShutdown:
+            except (rbd.ImageBusy, rbd.ConnectionShutdown):
                 pass
 
     def force_unlock(self):
