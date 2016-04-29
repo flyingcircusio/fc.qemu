@@ -61,7 +61,6 @@ class SysConfig(object):
             '/etc/ceph/{}.conf'.format(self.ceph['CEPH_CLUSTER']))
         self.ceph['CEPH_LOCK_HOST'] = self.get('ceph', 'lock_host')
         self.ceph['CREATE_VM'] = self.get('ceph', 'create-vm')
-        self.ceph['SHRINK_VM'] = self.get('ceph', 'shrink-vm')
         self.ceph['MKFS_XFS'] = self.get(
             'ceph', 'mkfs-xfs', '-q -f -K -m crc=1,finobt=1 -d su=4m,sw=1')
         self.ceph['MKFS_EXT4'] = self.get(

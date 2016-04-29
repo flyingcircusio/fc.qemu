@@ -5,8 +5,9 @@ Release notes
 0.7.20 (unreleased)
 -------------------
 
-- More logging output to help diagnosing a rare lock recovery failure.
-  (#21345)
+- More logging output to help diagnosing a rare lock recovery failure
+  (#21345).
+- Remove shrink-vm. R.I.P. (#14222).
 
 
 0.7.19 (2016-04-08)
