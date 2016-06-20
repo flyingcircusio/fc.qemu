@@ -3,7 +3,7 @@ from .hazmat.qemu import Qemu
 from .incoming import IncomingServer
 from .outgoing import Outgoing
 from .timeout import TimeOut
-from .util import rewrite, locate_live_service
+from .util import rewrite, locate_live_service, MiB, GiB
 from .sysconfig import sysconfig
 from logging import getLogger
 import consulate
@@ -11,6 +11,7 @@ import contextlib
 import copy
 import fcntl
 import json
+import math
 import multiprocessing
 import os
 import os.path as p
@@ -100,16 +101,15 @@ def locked(f):
 
 
 def swap_size(memory):
-    if memory > 2048:
-        swap = memory / 2
-    else:
-        swap = 1024
-    return swap * 1024 ** 2
+    """Returns the swap partition size in bytes."""
+    swap_mib = max(1024, 32 * math.sqrt(memory))
+    return int(swap_mib) * MiB
 
 
 def tmp_size(disk):
-    # disk in GiB, return Bytes
-    return max(5 * 1024, disk * 1024 / 10) * 1024 ** 2
+    """Returns the tmp partition size in bytes."""
+    tmp_gib = max(5, math.sqrt(disk))
+    return int(tmp_gib) * GiB
 
 
 class Agent(object):

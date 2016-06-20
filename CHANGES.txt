@@ -5,7 +5,8 @@ Release notes
 0.7.21 (unreleased)
 -------------------
 
-- Nothing changed yet.
+- Moderate swap and tmp volume sizes so that they do not scale linearly for very
+  large VMs. #21961
 
 
 0.7.20 (2016-05-03)

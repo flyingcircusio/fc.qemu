@@ -7,6 +7,9 @@ import os
 import subprocess
 import tempfile
 
+MiB = 2 ** 20
+GiB = 2 ** 30
+
 
 @contextlib.contextmanager
 def rewrite(filename):

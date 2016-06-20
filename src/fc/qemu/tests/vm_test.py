@@ -1,4 +1,5 @@
 from ..agent import Agent, swap_size, tmp_size
+from ..util import MiB, GiB
 import os
 import pkg_resources
 import pytest
@@ -182,21 +183,21 @@ def test_simple_vm_snapshot(vm):
         'rbd.ssd/test00.root@asdf']
 
 
-def test_vm_swapsize():
-    assert swap_size(256) == 1 * 1024 ** 3
-    assert swap_size(512) == 1 * 1024 ** 3
-    assert swap_size(768) == 1 * 1024 ** 3
-    assert swap_size(1024) == 1 * 1024 ** 3
-    assert swap_size(2048) == 1 * 1024 ** 3
-    assert swap_size(4096) == 2 * 1024 ** 3
+def test_swap_size():
+    assert swap_size(512) == 1024 * MiB
+    assert swap_size(768) == 1024 * MiB
+    assert swap_size(1024) == 1024 * MiB
+    assert swap_size(2048) == 1448 * MiB
+    assert swap_size(4096) == 2048 * MiB
+    assert swap_size(8192) == 2896 * MiB
 
 
-def test_vm_tmpsize():
-    assert tmp_size(5) == 5120 * 1024 ** 2
-    assert tmp_size(10) == 5120 * 1024 ** 2
-    assert tmp_size(50) == 5120 * 1024 ** 2
-    assert tmp_size(100) == 10240 * 1024 ** 2
-    assert tmp_size(200) == 20480 * 1024 ** 2
+def test_tmp_size():
+    assert tmp_size(30) == 5 * GiB
+    assert tmp_size(50) == 7 * GiB
+    assert tmp_size(100) == 10 * GiB
+    assert tmp_size(500) == 22 * GiB
+    assert tmp_size(1000) == 31 * GiB
 
 
 def test_vm_migration():
