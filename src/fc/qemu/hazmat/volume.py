@@ -287,8 +287,8 @@ class Volume(Image):
         if gptbios:
             cmd('sgdisk -n 2:2048:+1M -c 2:gptbios -t 2:EF02 "{}"'.format(
                 self.device))
-        time.sleep(0.5)
         cmd('partprobe')
+        time.sleep(0.5)
         while not p.exists(self.part1dev):  # pragma: no cover
             time.sleep(0.1)
         options = getattr(self.ceph, 'MKFS_' + fstype.upper())
