@@ -35,8 +35,9 @@ Real-world testing on FCIO DEV network
 --------------------------------------
 
 * Check out the source on a VM host
-* Create virtualenv: `virtualenv --system-site-packages .`
 * Set Puppet stopper
+* Create virtualenv: `virtualenv --system-site-packages .`
+* Install software: `bin/pip install -r requirements.txt`
 * Make symlink /usr/src/fc.qemu point to the local checkout
 * Install fc-qemu package in development mode:
   `ACCEPT_KEYWORDS="**" emerge -1 fc-qemu`
