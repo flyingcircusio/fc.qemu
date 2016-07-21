@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.7.22 (unreleased)
+0.7.22 (2016-07-21)
 -------------------
 
 - Fix bug in `fc-qemu restart` which causes mkfs.xfs for tmp to fail.
