@@ -1,13 +1,10 @@
 from .exc import MigrationError, QemuNotRunning
 from .timeout import TimeOut
-from .util import parse_address
+from .util import parse_address, log
 import contextlib
 import functools
-import logging
 import SimpleXMLRPCServer
 import time
-
-_log = logging.getLogger(__name__)
 
 
 def authenticated(f):
@@ -56,19 +53,19 @@ class IncomingServer(object):
         s = SimpleXMLRPCServer.SimpleXMLRPCServer(
             self.bind_address, logRequests=False, allow_none=True)
         url = 'http://{}:{}/'.format(*self.bind_address)
-        _log.info('%s: listening on %s', self.name, url)
+        log.info('start-server', type='incoming', machine=self.name, url=url)
         s.timeout = 1
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()
         with self.inmigrate_service_registered():
             while self.timeout.tick():
-                _log.debug('[server] %s: waiting (%ds remaining)', self.name,
-                           int(self.timeout.remaining))
+                log.debug('waiting', machine=self.name,
+                          remaining=int(self.timeout.remaining))
                 s.handle_request()
                 if self.finished:
                     break
-        _log.info('%s: incoming migration returns %s', self.name,
-                  self.finished)
+        log.info('stop-server', type='incoming', result=self.finished,
+                 machine=self.name)
         if self.finished == 'success':
             return 0
         else:
@@ -84,26 +81,27 @@ class IncomingServer(object):
         try:
             return self.qemu.inmigrate()
         except Exception:
-            _log.error('%s: incoming migration failed, releasing locks',
-                       self.name)
+            log.exception('incoming-migration-failed',
+                          note='releasing locks',
+                          machine=self.name)
             self.ceph.stop()
             raise
 
     def rescue(self):
         if not self.qemu.is_running():
-            _log.warning('%s: trying to rescue, but VM is not online',
-                         self.name)
+            log.warning('rescue-failed', reason='VM is offline',
+                        machine=self.name)
             self.qemu.clean_run_files()
             self.ceph.stop()
             raise RuntimeError('rescue not possible - destroyed VM', self.name)
         try:
-            _log.info('%s: rescue - assuming locks', self.name)
+            log.info('rescue-locks', machine=self.name)
             self.ceph.lock()
         except Exception:
-            _log.warning('%s: failed to acquire all locks', self.name)
+            log.warning('rescue-locks-failed', machine=self.name)
             self.destroy()
             raise
-        _log.info('%s: rescue succeeded, VM is running', self.name)
+        log.info('rescue-succeeded', machine=self.name)
 
     def acquire_locks(self):
         self.ceph.lock()
@@ -114,11 +112,11 @@ class IncomingServer(object):
 
     def cancel(self):
         self.ceph.unlock()
-        self.finished = 'canceled'
+        self.finished = 'cancelled'
 
     def destroy(self):
         """Gets reliably rid of the VM."""
-        _log.info('%s: self-destructing', self.name)
+        log.info('destroying', machine=self.name)
         self.finished = 'destroyed'
         try:
             self.qemu.destroy()
@@ -140,12 +138,12 @@ class IncomingAPI(object):
     @authenticated
     def ping(self):
         """Check connectivity and extend timeout."""
-        _log.debug('[server] ping()')
+        log.debug('[server] ping()')
         self.server.extend_cutoff_time()
 
     @authenticated
     def acquire_locks(self):
-        _log.debug('[server] acquire_locks()')
+        log.debug('[server] acquire_locks()')
         return self.server.acquire_locks()
 
     @authenticated
@@ -155,27 +153,27 @@ class IncomingAPI(object):
         `args` and `config` should be the output of
         qemu.get_running_config() on the sending side.
         """
-        _log.debug('[server] prepare_incoming()')
+        log.debug('[server] prepare_incoming()')
         return self.server.prepare_incoming(args, config)
 
     @authenticated
     def finish_incoming(self):
-        _log.debug('[server] finish_incoming()')
+        log.debug('[server] finish_incoming()')
         self.server.finish_incoming()
 
     @authenticated
     def rescue(self):
         """Incoming rescue."""
-        _log.debug('[server] rescue()')
+        log.debug('[server] rescue()')
         return self.server.rescue()
 
     @authenticated
     def destroy(self):
         """Incoming destroy."""
-        _log.debug('[server] destroy()')
+        log.debug('[server] destroy()')
         return self.server.destroy()
 
     @authenticated
     def cancel(self):
-        _log.debug('[server] cancel()')
+        log.debug('[server] cancel()')
         self.server.cancel()

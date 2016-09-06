@@ -24,7 +24,7 @@ class TimeOut(object):
         if raise_on_timeout is set.
 
         """
-        self.remaining = self.cutoff - time.time()
+        self.remaining = int(self.cutoff - time.time())
         self.timed_out = self.remaining <= 0
 
         if self.timed_out:

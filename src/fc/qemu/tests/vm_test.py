@@ -48,26 +48,42 @@ def test_simple_vm_lifecycle_start_stop(vm, capfd):
         out, err = capfd.readouterr()
         return out
 
-    assert status() == 'offline\n'
+    status = status()
+    assert status == """\
+machine='simplevm' result='offline' event='vm-status'
+machine='simplevm' volume='rbd.ssd/test00.root' locker=None event='rbd-status'
+machine='simplevm' volume='rbd.ssd/test00.swap' locker=None event='rbd-status'
+machine='simplevm' volume='rbd.ssd/test00.tmp' locker=None event='rbd-status'
+"""
 
     vm.start()
     out, err = capfd.readouterr()
-    assert """\
-/usr/local/sbin/create-vm -I rbd.ssd test00
-rbd -c "/etc/ceph/ceph.conf" --id "admin" map "rbd.ssd/test00.tmp"
-sgdisk -o "/dev/rbd/rbd.ssd/test00.tmp"
-Creating new GPT entries.
-The operation has completed successfully.
-sgdisk -a 8192 -n 1:8192:0 -c "1:tmp" -t 1:8300 "/dev/rbd/rbd.ssd/test00.tmp"
-The operation has completed successfully.
-partprobe
-mkfs.xfs -q -f -L "tmp" "/dev/rbd/rbd.ssd/test00.tmp-part1"
-mount "/dev/rbd/rbd.ssd/test00.tmp-part1" "/mnt/rbd/rbd.ssd/test00.tmp"
-umount "/mnt/rbd/rbd.ssd/test00.tmp"
-rbd -c "/etc/ceph/ceph.conf" --id "admin" unmap "/dev/rbd/rbd.ssd/test00.tmp"
-rbd -c "/etc/ceph/ceph.conf" --id "admin" map "rbd.ssd/test00.swap"
-mkswap -f -L "swap" "/dev/rbd/rbd.ssd/test00.swap"
-""" in out
+    # Cutting off the output around the swap, as the UUID will change
+    # every time.
+    assert out.startswith("""\
+args='-I rbd.ssd test00' event='/usr/local/sbin/create-vm'
+output='' event='/usr/local/sbin/create-vm'
+args='-c "/etc/ceph/ceph.conf" --id "admin" map "rbd.ssd/test00.tmp"' event='rbd'
+output='' event='rbd'
+args='-o "/dev/rbd/rbd.ssd/test00.tmp"' event='sgdisk'
+output='Creating new GPT entries.\nThe operation has completed successfully.\n' event='sgdisk'
+args='-a 8192 -n 1:8192:0 -c "1:tmp" -t 1:8300 "/dev/rbd/rbd.ssd/test00.tmp"' event='sgdisk'
+output='The operation has completed successfully.\n' event='sgdisk'
+args='' event='partprobe'
+output='' event='partprobe'
+args='-q -f -L "tmp" "/dev/rbd/rbd.ssd/test00.tmp-part1"' event='mkfs.xfs'
+output='log stripe unit (4194304 bytes) is too large (maximum is 256KiB)\nlog stripe unit adjusted to 32KiB\n' event='mkfs.xfs'
+volume='test00.tmp' event='seed-enc'
+args='"/dev/rbd/rbd.ssd/test00.tmp-part1" "/mnt/rbd/rbd.ssd/test00.tmp"' event='mount'
+output='' event='mount'
+args='"/mnt/rbd/rbd.ssd/test00.tmp"' event='umount'
+output='' event='umount'
+args='-c "/etc/ceph/ceph.conf" --id "admin" unmap "/dev/rbd/rbd.ssd/test00.tmp"' event='rbd'
+output='' event='rbd'
+args='-c "/etc/ceph/ceph.conf" --id "admin" map "rbd.ssd/test00.swap"' event='rbd'
+output='' event='rbd'
+args='-f -L "swap" "/dev/rbd/rbd.ssd/test00.swap"' event='mkswap'
+""")
 
     assert """\
 rbd -c "/etc/ceph/ceph.conf" --id "admin" unmap "/dev/rbd/rbd.ssd/test00.swap"
@@ -131,7 +147,13 @@ def test_crashed_vm_clean_restart(vm, capsys):
         out, _err = capsys.readouterr()
         return out
 
-    assert status() == 'offline\n'
+    status = status()
+    assert status == """\
+machine='simplevm' result='offline' event='vm-status'
+machine='simplevm' volume='rbd.ssd/test00.root' locker=None event='rbd-status'
+machine='simplevm' volume='rbd.ssd/test00.swap' locker=None event='rbd-status'
+machine='simplevm' volume='rbd.ssd/test00.tmp' locker=None event='rbd-status'
+"""
 
     vm.ensure()
 

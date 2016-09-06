@@ -2,13 +2,13 @@ from .hazmat.ceph import Ceph
 from .hazmat.qemu import Qemu
 from .incoming import IncomingServer
 from .outgoing import Outgoing
-from .timeout import TimeOut
-from .util import rewrite, locate_live_service, MiB, GiB
 from .sysconfig import sysconfig
-from logging import getLogger
+from .timeout import TimeOut
+from .util import rewrite, locate_live_service, MiB, GiB, log
 import consulate
 import contextlib
 import copy
+import distutils.spawn
 import fcntl
 import json
 import math
@@ -21,7 +21,9 @@ import sys
 import time
 import yaml
 
-log = getLogger(__name__)
+
+class InvalidCommand(RuntimeError):
+    pass
 
 
 def _handle_consul_event(event):
@@ -39,8 +41,8 @@ class ConsulEventHandler(object):
             if not event['Value']:
                 return
             getattr(self, prefix)(event)
-        except Exception as e:
-            log.exception('error handling consul event: %s', e)
+        except Exception:
+            log.exception('Error handling consul event')
 
     def node(self, event):
         config = json.loads(event['Value'].decode('base64'))
@@ -51,9 +53,10 @@ class ConsulEventHandler(object):
         try:
             agent = Agent(vm, config)
         except RuntimeError:
-            log.warning('[%s] Ignoring VM check: cannot load config', vm)
+            log.warning('ignoring-consul-event', consul_event='node',
+                        machine=vm, reason='Failed loading config')
             return
-        log.info('[%s] Checking VM', vm)
+        log.info('processing-consul-event', consul_event='node', machine=vm)
         with agent:
             agent.save_enc()
             agent.ensure()
@@ -62,17 +65,17 @@ class ConsulEventHandler(object):
         value = json.loads(event['Value'].decode('base64'))
         vm = value['vm']
         snapshot = value['snapshot'].encode('ascii')
+        log = log.bind(snapshot=snapshot, machine=vm)
         try:
             agent = Agent(vm)
         except RuntimeError:
-            log.warning('Ignoring snapshot for %s: failed to load config', vm)
+            log.warning('snapshot-ignore', reason='failed loading config')
             return
         with agent:
             if not agent.belongs_to_this_host():
-                log.debug('Ignoring snapshot for %s as it belongs to another '
-                          'host.', vm)
+                log.debug('snapshot-ignore', reason='foreign host')
                 return
-            log.info('[%s] Processing snapshot request %s', vm, snapshot)
+            log.info('snapshot')
             agent.snapshot(snapshot)
 
 
@@ -80,9 +83,9 @@ def running(expected=True):
     def wrap(f):
         def checked(self, *args, **kw):
             if self.qemu.is_running() != expected:
-                raise RuntimeError(
-                    'action not allowed - VM must {}be running here'.format(
-                        '' if expected else 'not '))
+                raise InvalidCommand(
+                    'Invalid command: VM must {}be running to use `{}`.'.
+                    format('' if expected else 'not ', f.__name__))
             return f(self, *args, **kw)
         return checked
     return wrap
@@ -135,6 +138,8 @@ class Agent(object):
 
     def __init__(self, name, enc=None):
         # Update configuration values from system or test config.
+        self.log = log.bind(machine=name)
+
         self.__dict__.update(sysconfig.agent)
 
         if '.' in name:
@@ -175,14 +180,14 @@ class Agent(object):
         events = json.load(sys.stdin)
         if not events:
             return
-        log.info('Processing %d consul event(s)', len(events))
+        log.info('start-consul-events', count=len(events))
         for e in events:
             p = multiprocessing.Process(target=_handle_consul_event, args=(e,))
             p.start()
             time.sleep(0.1)
         for proc in multiprocessing.active_children():
             proc.join()
-        log.info('Finished processing %d consul event(s)', len(events))
+        log.info('finish-consul-events')
 
     def save_enc(self):
         if not p.isdir(p.dirname(self.configfile)):
@@ -192,15 +197,19 @@ class Agent(object):
         os.chmod(self.configfile, 0o644)
 
     def __enter__(self):
+        self.log.debug('enter-vm-contexts')
         for c in self.contexts:
+            self.log.debug('enter-vm-context',
+                           context=c.__class__.__name__.lower())
             c.__enter__()
 
     def __exit__(self, exc_value, exc_type, exc_tb):
+        self.log.debug('leave-vm-context')
         for c in self.contexts:
             try:
                 c.__exit__(exc_value, exc_type, exc_tb)
             except Exception:
-                log.exception('Error while leaving agent contexts.')
+                self.log.exception('Error while leaving agent contexts.')
 
     def belongs_to_this_host(self):
         return self.cfg['kvm_host'] == self.this_host
@@ -227,41 +236,51 @@ class Agent(object):
             else:
                 self.qemu.clean_run_files()
         else:
-            log.warning('%s: state not consistent (monitor, pidfile, ceph), '
-                        'destroying VM and cleaning up', self.name)
+            self.log.warning('inconsistent-state')
             self.qemu.destroy()
 
     def ensure_offline(self):
         if not self.qemu.is_running():
+            self.log.info('ensure-state', wanted='offline', found='offline',
+                          action='none')
             return
-        log.info('VM %s should not be running here', self.name)
+        self.log.info('ensure-state', wanted='offline', found='online',
+                      action='stop')
         self.stop()
 
     def ensure_online(self):
         if self.qemu.is_running():
+            self.log.info('ensure-state', wanted='online', found='online',
+                          action='')
             # re-register in case services got lost during Consul restart
             self.consul_register()
             return
-        log.info('VM %s should be running here', self.name)
+        self.log.info('ensure-state', wanted='online', found='offline',
+                      action='start')
         existing = locate_live_service(self.consul, 'qemu-' + self.name)
         if existing and existing['Address'] != self.this_host:
-            log.info('Found VM %s to be running on %s already. '
-                     'Trying an inmigration.', self.name, existing['Address'])
+            self.log.info('check-migration', action='inmigration',
+                          remote=existing['Address'])
             self.inmigrate()
         else:
             self.start()
 
     def ensure_online_disk_size(self):
-        """Trigger block resize action for the root disk via Qemu monitor."""
+        """Trigger block resize action for the root disk."""
         target_size = self.cfg['disk'] * (1024 ** 3)
         if self.ceph.root.size >= target_size:
+            self.log.info('check-disk-size',
+                          wanted=target_size,
+                          found=self.ceph.root.size,
+                          action='none')
             return
-        log.info('Online disk resize for VM %s to %s GiB', self.name,
-                 self.cfg['disk'])
+        self.log.info('check-disk-size', wanted=target_size,
+                      found=self.ceph.root.size, action='resize')
         self.qemu.resize_root(target_size)
 
     def consul_register(self):
         """Register running VM with Consul."""
+        self.log.debug('register-consul')
         self.consul.agent.service.register(
             'qemu-{}'.format(self.name),
             address=self.this_host,
@@ -271,15 +290,14 @@ class Agent(object):
 
     def consul_deregister(self):
         """De-register non-running VM with Consul."""
+        self.log.info('deregister-consul')
         self.consul.agent.service.deregister('qemu-{}'.format(self.name))
 
     @locked
     @running(False)
     def start(self):
         self.generate_config()
-        log.info('Using Qemu config template %s', self.vm_config_template)
         self.ceph.start(self.enc)
-        log.info('Starting VM %s', self.name)
         self.qemu.start()
         self.consul_register()
         # We exit here without releasing the ceph lock in error cases
@@ -289,133 +307,146 @@ class Agent(object):
 
     @contextlib.contextmanager
     def frozen_vm(self):
+        """Ensure a VM isn't making changes to its root disk.
+
+        If the VM is running then freeze it (and thaw it upon exit).
+        If a VM isn't running, this is a noop.
+
+        """
         try:
-            try:
-                log.debug('[%s] Freezing root disk.', self.name)
-                self.qemu.freeze()
-            except socket.timeout:
-                log.warning('[%s] Timed out freezing the machine. '
-                            'Continuing with unclean snapshot.', self.name)
+            if self.qemu.is_running():
+                try:
+                    log.debug('freeze', volume='root', machine=self.name)
+                    self.qemu.freeze()
+                except socket.timeout:
+                    log.warning('freeze-failed',
+                                reason='timeout', action='continue',
+                                machine=self.name)
             yield
         finally:
-            try:
-                log.debug('[%s] Thawing root disk.', self.name)
-                self.qemu.thaw()
-            except socket.timeout:
-                log.warning('[%s] Failed to thaw. Retrying.', self.name)
-                self.qemu.thaw()
+            if self.qemu.is_running():
+                try:
+                    log.debug('thaw', volume='root', machine=self.name)
+                    self.qemu.thaw()
+                except socket.timeout:
+                    log.warning('thaw-failed', reason='timeout',
+                                action='retry', machine=self.name)
+                    self.qemu.thaw()
 
     @locked
     def snapshot(self, snapshot):
         if snapshot in [x.snapname for x in self.ceph.root.snapshots]:
             return
-        if self.qemu.is_running():
-            with self.frozen_vm():
-                self.ceph.root.snapshots.create(snapshot)
-        else:
-            log.info('[%s] VM not running, creating snapshot without freezing',
-                     self.name)
+        with self.frozen_vm():
             self.ceph.root.snapshots.create(snapshot)
 
     def status(self):
         """Determine status of the VM."""
         if self.qemu.is_running():
             status = 0
-            print('online')
+            self.log.info('vm-status', result='online')
         else:
             status = 1
-            print('offline')
-        for lock in self.ceph.locks():
-            print('lock: {}@{}'.format(*lock))
+            self.log.info('vm-status', result='offline')
+        for volume in self.ceph.volumes:
+            locker = volume.lock_status()
+            self.log.info('rbd-status', volume=volume.fullname, locker=locker)
         return status
 
+    @running(True)
+    def telnet(self):
+        """Open telnet connection to the VM monitor."""
+        telnet = distutils.spawn.find_executable('telnet')
+        os.execv(telnet, ('telnet', 'localhost', str(self.qemu.monitor_port)))
+
     @locked
+    @running(True)
     def stop(self):
         timeout = TimeOut(self.timeout_graceful, interval=3)
-        log.info('Trying graceful shutdown of VM %s...', self.name)
+        log.info('graceful-shutdown', machine=self.name)
         try:
             self.qemu.graceful_shutdown()
         except (socket.error, RuntimeError):
             pass
         while timeout.tick():
+            log.debug('checking-offline',
+                      remaining=timeout.remaining,
+                      machine=self.name)
             if not self.qemu.is_running():
+                log.debug('vm-offline', machine=self.name)
                 self.ceph.stop()
                 self.qemu.clean_run_files()
                 self.consul_deregister()
-                log.info('Graceful shutdown of %s succeeded', self.name)
+                log.info('graceful-shutdown-completed', machine=self.name)
                 break
         else:
             self.kill()
 
     @locked
     def restart(self):
-        log.info('Restarting VM %s', self.name)
+        log.info('restart-vm', machine=self.name)
         self.stop()
         self.start()
 
     @locked
     @running(True)
     def kill(self):
-        log.info('Killing VM %s', self.name)
+        log.info('kill-vm', machine=self.name)
         timeout = TimeOut(15, interval=1, raise_on_timeout=True)
         self.qemu.destroy()
         while timeout.tick():
             if not self.qemu.is_running():
-                log.info('VM killed, cleaning up.')
+                log.info('killed-vm', machine=self.name)
                 self.ceph.stop()
                 self.qemu.clean_run_files()
                 self.consul_deregister()
                 break
         else:
-            log.warning('Did not see the VM disappear. '
-                        'Please check lock consistency.')
+            log.warning('kill-vm-failed', note='Check lock consistency.')
 
     @locked
     @running(False)
     def inmigrate(self):
-        log.info('Preparing to migrate-in VM %s', self.name)
+        log.info('inmigrate', machine=self.name)
         if self.ceph.is_unlocked():
-            log.info("%s: VM isn't running at all, starting it directly",
-                     self.name)
+            log.info('start-instead-of-inmigrate', reason='no locks found')
             self.start()
             return
         server = IncomingServer(self)
         exitcode = server.run()
         if not exitcode:
             self.consul_register()
-        log.info('%s: inmigration finished with exitcode %s', self.name,
-                 exitcode)
+        log.info('inmigrate-finished', machine=self.name, exitcode=exitcode)
         return exitcode
 
     @locked
     @running(True)
     def outmigrate(self):
-        log.info('Migrating VM %s out', self.name)
+        log.info('outmigrate', machine=self.name)
         # re-register in case services got lost during Consul restart
         self.consul_register()
         client = Outgoing(self)
         exitcode = client()
         if not exitcode:
             self.consul_deregister()
-        log.info('Out-migration of VM %s finished with exitcode %s',
-                 self.name, exitcode)
+        log.info('outmigrate-finished', machine=self.name, exitcode=exitcode)
         return exitcode
 
     @locked
     def lock(self):
-        log.info('Assuming all Ceph locks for VM %s', self.name)
+        log.info('assume-all-locks', machine=self.name)
         for vol in self.ceph.volumes:
             vol.lock()
 
     @locked
     @running(False)
     def unlock(self):
-        log.info('Releasing all Ceph locks for VM %s', self.name)
+        log.info('release-all-locks', machine=self.name)
         self.ceph.stop()
 
     @running(False)
     def force_unlock(self):
-        log.info('Breaking all Ceph locks for VM %s', self.name)
+        log.info('break-all-locks', machine=self.name)
         self.ceph.force_unlock()
 
     # Helper methods
@@ -428,9 +459,13 @@ class Agent(object):
             self.qemu.is_running(),
             bool(self.qemu.proc()),
             self.ceph.locked_by_me()]
-        log.info('[%s] current state: qemu=%s, proc=%s, locked=%s',
-                 *([self.name] + substates))
-        return any(substates) == all(substates)
+        result = any(substates) == all(substates)
+        log.info('check-state-consistency',
+                 is_consistent=result,
+                 qemu=substates[0],
+                 proc=substates[1],
+                 ceph_lock=substates[2])
+        return result
 
     # CAREFUL: changing anything in this config files will cause maintenance w/
     # reboot of all VMs in the infrastructure.
@@ -445,6 +480,7 @@ class Agent(object):
         to the host running or receiving the VM.
 
         """
+        self.log.debug('generate-config')
         self.qemu.args = [
             '-daemonize',
             '-nodefaults',

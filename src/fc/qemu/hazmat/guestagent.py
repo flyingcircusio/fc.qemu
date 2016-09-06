@@ -2,8 +2,7 @@ import json
 import logging
 import random
 import socket
-
-log = logging.getLogger(__name__)
+from ..util import log
 
 
 class ClientError(RuntimeError):
@@ -42,8 +41,7 @@ class GuestAgent(object):
         while n < 3:
             if result == sync_id:
                 return
-            log.error('[%s] Received incorrect sync id. Expected: %s Got: %s',
-                      self.machine, sync_id, result)
+            log.error('incorrect-sync-id', expected=sync_id, got=result)
             n += 1
             result = self.read()
         raise ClientError('Unable to sync with guest agent after {} tries.'.

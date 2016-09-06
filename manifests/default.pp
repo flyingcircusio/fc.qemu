@@ -20,12 +20,22 @@ LC_ALL=\"en_US.utf8\"
 }
 
 package {
-    ["qemu",
-     "ceph-common",
+    "qemu":
+        ensure => absent;
+}
+
+package {
+    ["ceph-common",
      "python-dev",
      "ntp",
      "python-virtualenv",
      "unzip",
+     "build-essential",
+     "pkg-config",
+     "zlib1g-dev",
+     "libglib2.0-dev",
+     "libpixman-1-dev",
+     "librbd-dev",
     ]:
     ensure => installed;
 }
@@ -55,6 +65,8 @@ restrict -4 default kod notrap nomodify nopeer noquery
 restrict -6 default kod notrap nomodify nopeer noquery
 restrict 127.0.0.1
 restrict ::1
+restrict 10.0.0.0/8
+restrict 192.168.50.0/24
 driftfile /var/lib/ntp/ntp.drift
 ",
     notify => Service['ntp'],
@@ -211,6 +223,20 @@ mkfs-xfs = -q -f
 ",
 }
 
+##### Qemu
+
+exec { 'install qemu':
+    creates => '/usr/local/bin/qemu-system-x86_64',
+    refreshonly => false,
+    command => "/vagrant/bootstrap-qemu.sh",
+    require => [Package['unzip'],
+                Package['build-essential'],
+                Package['pkg-config'],
+                Package['zlib1g-dev'],
+                Package['libglib2.0-dev'],
+                Package['libpixman-1-dev'],
+                Package['librbd-dev']];
+}
 
 ##### Consul
 

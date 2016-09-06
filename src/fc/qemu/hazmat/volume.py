@@ -5,16 +5,13 @@ represents an RBD volume that is not a snapshot. Image is an abstract
 base class for both volumes and snapshots.
 """
 
-from ..util import remove_empty_dirs, cmd
+from ..util import remove_empty_dirs, cmd, log
 import contextlib
 import json
-import logging
 import os
 import os.path as p
 import rbd
 import time
-
-logger = logging.getLogger(__name__)
 
 
 class Image(object):
@@ -136,12 +133,16 @@ class Snapshots(object):
     def purge(self):
         """Remove all snapshots."""
         for snapshot in self:
-            logger.info('purge: removing snapshot %s', snapshot.fullname)
+            log.info('remove-snapshot',
+                     volum=self.vol.fullname,
+                     snapshot=snapshot.name)
             snapshot.remove()
 
     def create(self, snapname):
+        log.info('create-snapshot',
+                 volume=self.vol.fullname,
+                 snapshot=snapname)
         self.vol.rbdimage.create_snap(snapname)
-        logger.info('created snapshot %s@%s', self.vol, snapname)
 
 
 class Snapshot(Image):
@@ -164,8 +165,8 @@ class Snapshot(Image):
 
     def remove(self):
         """Destroy myself."""
+        log.info('remove-snapshot', snapshot=self.fullname)
         self.vol.rbdimage.remove_snap(self.snapname)
-        logger.info('removed snapshot %s', self)
 
 
 class Volume(Image):
@@ -186,6 +187,7 @@ class Volume(Image):
         super(Volume, self).__init__(ceph, name)
         self.label = label
         self.snapshots = Snapshots(self)
+        self.log = ceph.log.bind(volume=self.fullname)
 
     @property
     def rbdimage(self):
@@ -214,7 +216,7 @@ class Volume(Image):
         self.rbdimage.resize(size)
 
     def lock(self):
-        logger.debug('Assuming lock for %s', self.fullname)
+        self.log.info('lock')
         retry = 3
         while retry:
             try:
@@ -237,9 +239,7 @@ class Volume(Image):
                     # the existing lock.
                     return
                 # Its locked for some other client.
-                logger.error(
-                    'Failed assuming lock. Giving up. '
-                    'Competing lock: {}'.format(status))
+                self.log.error('assume-lock-failed', competing=status)
                 raise
         raise rbd.ImageBusy(
             'Could not acquire lock - tried multiple times. '
@@ -262,16 +262,16 @@ class Volume(Image):
         return client_id, lock_id
 
     def unlock(self, force=False):
-        logger.debug('Unlocking %s', self.fullname)
+        self.log.info('unlock')
         locked_by = self.lock_status()
         if not locked_by:
-            logger.debug('%s was not locked', self.fullname)
+            self.log.debug('already-unlocked')
             return
         client_id, lock_id = locked_by
         if not force and lock_id != self.ceph.CEPH_LOCK_HOST:
             raise rbd.ImageBusy("Can not break lock for {} held by host {}."
                                 .format(self.name, lock_id))
-        logger.debug('Executing break_lock for %s', self.fullname)
+        self.log.warn('break-lock')
         self.rbdimage.break_lock(client_id, lock_id)
 
     def mkswap(self):
@@ -280,6 +280,7 @@ class Volume(Image):
         cmd('mkswap -f -L "{}" "{}"'.format(self.label, self.device))
 
     def mkfs(self, fstype='xfs', gptbios=False):
+        self.log.debug('create-fs', type=fstype)
         assert self.device, 'volume must be mapped first'
         cmd('sgdisk -o "{}"'.format(self.device))
         cmd('sgdisk -a 8192 -n 1:8192:0 -c "1:{}" -t 1:8300 '
@@ -296,6 +297,7 @@ class Volume(Image):
             options=options, device=self.part1dev, label=self.label))
 
     def seed_enc(self, data):
+        self.log.info('seed-enc')
         with self.mounted() as target:
             os.chmod(target, 0o1777)
             fc_data = p.join(target, 'fc-data')
