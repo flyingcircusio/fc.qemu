@@ -22,7 +22,7 @@ class Ceph(object):
     def __init__(self, cfg):
         # Update configuration values from system or test config.
         self.__dict__.update(sysconfig.ceph)
-        self.log = log.bind(context='ceph', machine=cfg['name'])
+        self.log = log.bind(subsystem='ceph', machine=cfg['name'])
 
         self.cfg = cfg
         self.rados = None
@@ -66,9 +66,10 @@ class Ceph(object):
         self.unlock()
 
     def ensure_root_volume(self):
+        self.log.info('ensure-root')
         if not self.root.exists():
             self.log.info('create-vm')
-            cmd(self.CREATE_VM.format(**self.cfg))
+            cmd(self.CREATE_VM.format(**self.cfg), self.log)
         self.root.lock()
 
     def ensure_swap_volume(self):

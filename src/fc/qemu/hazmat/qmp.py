@@ -13,20 +13,25 @@ import errno
 import socket
 import sys
 
+
 class QMPError(Exception):
     pass
+
 
 class QMPConnectError(QMPError):
     pass
 
+
 class QMPCapabilitiesError(QMPError):
     pass
+
 
 class QMPTimeoutError(QMPError):
     pass
 
+
 class QEMUMonitorProtocol:
-    def __init__(self, address, server=False, debug=False):
+    def __init__(self, address, log, server=False, debug=False):
         """
         Create a QEMUMonitorProtocol class.
 
@@ -38,6 +43,7 @@ class QEMUMonitorProtocol:
         @note No connection is established, this is done by the connect() or
               accept() methods
         """
+        self.log = log.bind(subsystem='qemu/qmp')
         self.__events = []
         self.__address = address
         self._debug = debug
@@ -154,6 +160,9 @@ class QEMUMonitorProtocol:
         @return QMP response as a Python dict or None if the connection has
                 been closed
         """
+        self.log.debug(qmp_cmd['execute'],
+                       arguments=qmp_cmd.get('arguments', {}),
+                       id=qmp_cmd.get('id', None))
         if self._debug:
             print >>sys.stderr, "QMP:>>> %s" % qmp_cmd
         try:
@@ -175,7 +184,7 @@ class QEMUMonitorProtocol:
         @param args: command arguments (dict)
         @param id: command id (dict, list, string or int)
         """
-        qmp_cmd = { 'execute': name }
+        qmp_cmd = {'execute': name}
         if args:
             qmp_cmd['arguments'] = args
         if id:

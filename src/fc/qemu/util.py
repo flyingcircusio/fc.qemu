@@ -78,7 +78,7 @@ def remove_empty_dirs(d):
         d = os.path.dirname(d)
 
 
-def cmd(cmdline):
+def cmd(cmdline, log):
     """Execute cmdline with stdin closed to avoid questions on terminal"""
     prefix = cmdline.split()[0]
     args = " ".join(cmdline.split()[1:])
@@ -86,6 +86,8 @@ def cmd(cmdline):
     with open('/dev/null') as null:
         output = subprocess.check_output(
             cmdline, shell=True, stdin=null, stderr=subprocess.STDOUT)
+    output = output.strip()
     # Keep this here for compatibility with tests
-    log.debug(prefix, output=output)
+    if output:
+        log.debug(prefix, output=output)
     return output

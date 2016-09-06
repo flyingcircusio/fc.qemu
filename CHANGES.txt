@@ -17,8 +17,7 @@ Release notes
 
 - Activate post migration after having transferred the memory at least once.
 
-- Clean up some output: avoid unnecessary exceptions but display exceptions
-  where we need them for further debugging.
+- Revamp output formatting to use Hynek's great structlog library.
 
 - Limit a few more commands to specific VM states: stop only when running.
 

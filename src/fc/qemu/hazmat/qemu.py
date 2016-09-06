@@ -67,14 +67,14 @@ class Qemu(object):
         self.monitor_port = self.cfg['id'] + self.MONITOR_OFFSET
         self.guestagent = GuestAgent(self.name, timeout=30)
 
-        self.log = log.bind(machine=self.name, context='qemu')
+        self.log = log.bind(machine=self.name, subsystem='qemu')
 
     __qmp = None
 
     @property
     def qmp(self):
         if self.__qmp is None:
-            qmp = Qmp(self.qmp_socket)
+            qmp = Qmp(self.qmp_socket, self.log)
             qmp.settimeout(5)
             try:
                 qmp.connect()
@@ -168,7 +168,7 @@ class Qemu(object):
 
     def migrate(self, address):
         """Initiate actual (out-)migration"""
-        log.debug('migrate', machine=self.name, context='qemu/qmp')
+        log.debug('migrate', machine=self.name, subsystem='qemu/qmp')
         self.qmp.command('migrate-set-capabilities', capabilities=[
             {'capability': 'xbzrle', 'state': True},
             {'capability': 'auto-converge', 'state': True}])
@@ -183,7 +183,7 @@ class Qemu(object):
         for communicating status updates.
 
         """
-        timeout = TimeOut(timeout, 1, raise_on_timeout=True)
+        timeout = TimeOut(timeout, 0.02, raise_on_timeout=True)
         while timeout.tick():
             if timeout.interval < 10:
                 timeout.interval *= 1.4142
@@ -305,12 +305,10 @@ class Qemu(object):
                 pass
 
     def resize_root(self, size):
-        self.qmp.command('block_resize',
-                         device='virtio0',
-                         size=size / 1024 ** 2)  # MiB
+        self.qmp.command('block_resize', device='virtio0', size=size)
 
     def clean_run_files(self):
-        log.debug('Removing run files')
+        self.log.debug('purge-run-files')
         for runfile in glob.glob('/run/qemu.{}.*'.format(self.cfg['name'])):
             os.unlink(runfile)
 

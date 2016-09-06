@@ -53,53 +53,6 @@ http://www.jejik.com/articles/2007/02/a_simple_unix_linux_daemon_in_python/
     os.dup2(se.fileno(), sys.stderr.fileno())
 
 
-def init_logging(verbose=True):
-    import structlog
-    import structlog.processors
-    import structlog.dev
-
-    def method_to_level(logger, method_name, event_dict):
-        event_dict['level'] = method_name
-        return event_dict
-
-    def context_to_event(logger, method_name, event_dict):
-        context = []
-        for key in ['machine', 'context']:
-            try:
-                context.append(event_dict.pop(key))
-            except KeyError:
-                pass
-        if context:
-            context = '/'.join(context)
-            event_dict['event'] = context + ': ' + event_dict['event']
-        return event_dict
-
-    class LevelFilter(object):
-
-        LEVELS = ['exception', 'critical', 'error', 'warn', 'warning',
-                  'info', 'debug']
-
-        def __init__(self, min_level=None):
-            self.min_level = self.LEVELS.index(min_level.lower())
-
-        def __call__(self, logger, method_name, event_dict):
-            if self.LEVELS.index(method_name.lower()) > self.min_level:
-                raise structlog.DropEvent
-            return event_dict
-
-    structlog.configure(
-        processors=[
-            LevelFilter('debug' if verbose else 'info'),
-            method_to_level,
-            context_to_event,
-            structlog.processors.TimeStamper(fmt='iso'),
-            structlog.processors.ExceptionPrettyPrinter(),
-            structlog.dev.ConsoleRenderer()
-        ],
-    )
-    return
-
-
 def main():
     import argparse
 
@@ -181,11 +134,12 @@ def main():
     if args.daemonize:
         daemonize()
 
-    from .agent import Agent, InvalidCommand
+    from .agent import Agent, InvalidCommand, VMConfigNotFound
+    from .logging import init_logging
     try:
         init_logging(args.verbose)
         from .util import log
-        log.debug('loading config')
+        log.debug('load-system-config')
 
         from .sysconfig import sysconfig
         sysconfig.load_system_config()
@@ -199,9 +153,11 @@ def main():
             agent = Agent(vm)
             with agent:
                 sys.exit(getattr(agent, func)(**kwargs) or 0)
-    except InvalidCommand as e:
-        log.warning(e.message)
-    except Exception as e:
-        log.exception("An unexpected exception occured.")
-        raise
+    except (VMConfigNotFound, InvalidCommand):
+        # Those exceptions are properly logged and don't have to be shown
+        # with their traceback.
+        log.debug('unexpected-exception', exc_info=True)
+        sys.exit(69)  # EX_UNAVAILABLE
+    except Exception:
+        log.error("unexpected-exception", exc_info=True)
         sys.exit(69)  # EX_UNAVAILABLE
