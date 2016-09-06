@@ -24,6 +24,7 @@ class IncomingServer(object):
 
     def __init__(self, agent, timeout=330):
         self.agent = agent
+        self.log = agent.log
         self.name = agent.name
         self.qemu = agent.qemu
         self.ceph = agent.ceph
@@ -41,6 +42,7 @@ class IncomingServer(object):
         with-block is executing.
         """
         svcname = 'vm-inmigrate-' + self.name
+        self.log.debug('consul-register-inmigrate')
         self.consul.agent.service.register(
             svcname, address=self.bind_address[0], port=self.bind_address[1],
             ttl=self.timeout.remaining)
@@ -53,19 +55,18 @@ class IncomingServer(object):
         s = SimpleXMLRPCServer.SimpleXMLRPCServer(
             self.bind_address, logRequests=False, allow_none=True)
         url = 'http://{}:{}/'.format(*self.bind_address)
-        log.info('start-server', type='incoming', machine=self.name, url=url)
+        self.log.info('start-server', type='incoming', url=url)
         s.timeout = 1
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()
         with self.inmigrate_service_registered():
             while self.timeout.tick():
-                log.debug('waiting', machine=self.name,
-                          remaining=int(self.timeout.remaining))
+                self.log.debug('waiting',
+                               remaining=int(self.timeout.remaining))
                 s.handle_request()
                 if self.finished:
                     break
-        log.info('stop-server', type='incoming', result=self.finished,
-                 machine=self.name)
+        self.log.info('stop-server', type='incoming', result=self.finished)
         if self.finished == 'success':
             return 0
         else:
@@ -133,17 +134,18 @@ class IncomingAPI(object):
 
     def __init__(self, server):
         self.server = server
+        self.log = self.server.log
         self.cookie = server.agent.ceph.auth_cookie()
 
     @authenticated
     def ping(self):
         """Check connectivity and extend timeout."""
-        log.debug('[server] ping()')
+        self.log.debug('received-ping')
         self.server.extend_cutoff_time()
 
     @authenticated
     def acquire_locks(self):
-        log.debug('[server] acquire_locks()')
+        self.log.debug('received-acquire-locks')
         return self.server.acquire_locks()
 
     @authenticated
@@ -153,27 +155,27 @@ class IncomingAPI(object):
         `args` and `config` should be the output of
         qemu.get_running_config() on the sending side.
         """
-        log.debug('[server] prepare_incoming()')
+        self.log.debug('received-prepare-incoming')
         return self.server.prepare_incoming(args, config)
 
     @authenticated
     def finish_incoming(self):
-        log.debug('[server] finish_incoming()')
+        self.log.debug('received-finish-incoming')
         self.server.finish_incoming()
 
     @authenticated
     def rescue(self):
         """Incoming rescue."""
-        log.debug('[server] rescue()')
+        self.log.debug('received-rescue')
         return self.server.rescue()
 
     @authenticated
     def destroy(self):
         """Incoming destroy."""
-        log.debug('[server] destroy()')
+        self.log.debug('received-destroy')
         return self.server.destroy()
 
     @authenticated
     def cancel(self):
-        log.debug('[server] cancel()')
+        self.log.debug('received-cancel')
         self.server.cancel()

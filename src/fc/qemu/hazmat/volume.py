@@ -46,16 +46,16 @@ class Image(object):
     def map(self):
         if self.device is not None:
             return
-        cmd('rbd -c "{}" --id "{}" map "{}"'.format(
-            self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.fullname))
+        self.cmd('rbd -c "{}" --id "{}" map "{}"'.format(
+                 self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.fullname))
         time.sleep(0.1)
         self.device = '/dev/rbd/' + self.fullname
 
     def unmap(self):
         if self.device is None:
             return
-        cmd('rbd -c "{}" --id "{}" unmap "{}"'.format(
-            self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.device))
+        self.cmd('rbd -c "{}" --id "{}" unmap "{}"'.format(
+                 self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.device))
         self.device = None
 
     @contextlib.contextmanager
@@ -78,13 +78,13 @@ class Image(object):
             os.makedirs(mountpoint)
         except OSError:  # pragma: no cover
             pass
-        cmd('mount "{}" "{}"'.format(self.part1dev, mountpoint))
+        self.cmd('mount "{}" "{}"'.format(self.part1dev, mountpoint))
         self.mountpoint = mountpoint
 
     def umount(self):
         if self.mountpoint is None:
             return
-        cmd('umount "{}"'.format(self.mountpoint))
+        cmd('umount "{}"'.format(self.mountpoint), log=self.log)
         remove_empty_dirs(self.mountpoint)
         self.mountpoint = None
 
@@ -109,6 +109,7 @@ class Snapshots(object):
 
     def __init__(self, volume):
         self.vol = volume
+        self.log = self.vol.log
 
     def __iter__(self):
         """Iterate over all existing snapshots."""
@@ -133,15 +134,15 @@ class Snapshots(object):
     def purge(self):
         """Remove all snapshots."""
         for snapshot in self:
-            log.info('remove-snapshot',
-                     volum=self.vol.fullname,
-                     snapshot=snapshot.name)
+            self.log.info('remove-snapshot',
+                          volum=self.vol.fullname,
+                          snapshot=snapshot.name)
             snapshot.remove()
 
     def create(self, snapname):
-        log.info('create-snapshot',
-                 volume=self.vol.fullname,
-                 snapshot=snapname)
+        self.log.info('create-snapshot',
+                      volume=self.vol.fullname,
+                      snapshot=snapname)
         self.vol.rbdimage.create_snap(snapname)
 
 
@@ -186,8 +187,9 @@ class Volume(Image):
     def __init__(self, ceph, name, label):
         super(Volume, self).__init__(ceph, name)
         self.label = label
-        self.snapshots = Snapshots(self)
         self.log = ceph.log.bind(volume=self.fullname)
+        self.cmd = lambda cmdline: cmd(cmdline, log=self.log)
+        self.snapshots = Snapshots(self)
 
     @property
     def rbdimage(self):
@@ -271,30 +273,29 @@ class Volume(Image):
         if not force and lock_id != self.ceph.CEPH_LOCK_HOST:
             raise rbd.ImageBusy("Can not break lock for {} held by host {}."
                                 .format(self.name, lock_id))
-        self.log.warn('break-lock')
         self.rbdimage.break_lock(client_id, lock_id)
 
     def mkswap(self):
         """Creates a swap partition. Requires the volume to be mappped."""
         assert self.device, 'volume must be mapped first'
-        cmd('mkswap -f -L "{}" "{}"'.format(self.label, self.device))
+        self.cmd('mkswap -f -L "{}" "{}"'.format(self.label, self.device))
 
     def mkfs(self, fstype='xfs', gptbios=False):
         self.log.debug('create-fs', type=fstype)
         assert self.device, 'volume must be mapped first'
-        cmd('sgdisk -o "{}"'.format(self.device))
-        cmd('sgdisk -a 8192 -n 1:8192:0 -c "1:{}" -t 1:8300 '
-            '"{}"'.format(self.label, self.device))
+        self.cmd('sgdisk -o "{}"'.format(self.device))
+        self.cmd('sgdisk -a 8192 -n 1:8192:0 -c "1:{}" -t 1:8300 '
+                 '"{}"'.format(self.label, self.device))
         if gptbios:
             cmd('sgdisk -n 2:2048:+1M -c 2:gptbios -t 2:EF02 "{}"'.format(
                 self.device))
-        cmd('partprobe')
+        self.cmd('partprobe')
         time.sleep(0.5)
         while not p.exists(self.part1dev):  # pragma: no cover
             time.sleep(0.1)
         options = getattr(self.ceph, 'MKFS_' + fstype.upper())
-        cmd(self.MKFS_CMD[fstype].format(
-            options=options, device=self.part1dev, label=self.label))
+        self.cmd(self.MKFS_CMD[fstype].format(
+                 options=options, device=self.part1dev, label=self.label))
 
     def seed_enc(self, data):
         self.log.info('seed-enc')

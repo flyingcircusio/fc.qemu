@@ -1,5 +1,5 @@
 from .timeout import TimeOut
-from .util import log
+import pprint
 import socket
 import xmlrpclib
 
@@ -12,6 +12,7 @@ class Outgoing(object):
 
     def __init__(self, agent):
         self.agent = agent
+        self.log = agent.log
         self.name = agent.name
         self.consul = agent.consul
 
@@ -36,35 +37,32 @@ class Outgoing(object):
         else:
             self.migration_exitcode = 1
             try:
-                log.debug('A problem occured trying to migrate the VM. '
-                          'Trying to rescue it.',
-                          exc_info=(_exc_type, _exc_value, _traceback))
+                self.log.debug('migration-failed',
+                               action='rescue', exc_info=True)
                 self.rescue()
                 return True  # swallow exception
             except:
                 # Purposeful bare except: try really hard to kill
                 # our VM.
-                log.exception('A problem occured trying to rescue the VM '
-                              'after a migration failure. Destroying it.')
+                self.log.exception(
+                    'rescue-failed', exc_info=True, action='destroy')
                 self.destroy()
 
     def locate_inmigrate_service(self, timeout=330):
         service_name = 'vm-inmigrate-' + self.name
         timeout = TimeOut(timeout, interval=3, raise_on_timeout=True)
-        log.info('locate-inmigration-service')
+        self.log.info('locate-inmigration-service')
         while timeout.tick():
-            log.debug('waiting', remaining=int(timeout.remaining),
-                      machine=self.name)
+            self.log.debug('waiting', remaining=int(timeout.remaining))
             inmig = self.consul.catalog.service(service_name)
             if inmig:
                 if len(inmig) > 1:
-                    log.warning('multiple-services-found',
-                                action='use newest',
-                                service=service_name)
+                    self.log.warning('multiple-services-found',
+                                     action='use newest', service=service_name)
                 inmig = inmig[-1]
                 url = 'http://{}:{}'.format(
                     inmig['ServiceAddress'], inmig['ServicePort'])
-                log.info('located-inmigration-service', url=url)
+                self.log.info('located-inmigration-service', url=url)
                 return url
         raise RuntimeError('failed to locate inmigrate service', service_name)
 
@@ -73,14 +71,14 @@ class Outgoing(object):
         while timeout.tick():
             try:
                 address = self.locate_inmigrate_service()
-                log.debug('connecting to {}'.format(address))
+                self.log.debug('connecting to {}'.format(address))
                 self.target = xmlrpclib.ServerProxy(address, allow_none=True)
                 self.target.ping(self.cookie)
                 break
             # XXX the default socket timeout is quite high. we might wanna
             # lower it on this side via socket.settimeout()
             except socket.error:
-                log.debug(
+                self.log.debug(
                     'cannot establish XML-RPC connection, retrying for %ds',
                     timeout.remaining)
 
@@ -91,51 +89,57 @@ class Outgoing(object):
     def migrate(self):
         """Actually move VM between hosts."""
         args, config = self.agent.qemu.get_running_config()
-        log.info('prepare-incoming-environment', machine=self.name)
+        self.log.info('prepare-remote-environment')
         migration_address = self.target.prepare_incoming(
             self.cookie, args, config)
-        log.info('start-migration', machine=self.name,
-                 target=migration_address)
+        self.log.info('start-migration', target=migration_address)
         self.agent.qemu.migrate(migration_address)
         for stat in self.agent.qemu.poll_migration_status():
+            remaining = stat['ram']['remaining'] if 'ram' in stat else '-'
+            mbps = stat['ram']['mbps'] if 'ram' in stat else '-'
+            self.log.info('migration-status',
+                          status=stat['status'],
+                          remaining=remaining,
+                          mbps=mbps,
+                          output=pprint.pformat(stat))
             self.target.ping(self.cookie)
 
         status = self.agent.qemu.qmp.command('query-status')
         assert not status['running'], status
         assert status['status'] == 'postmigrate', status
-        log.info('finish-migration', machine=self.name)
+        self.log.info('finish-migration')
         self.target.finish_incoming(self.cookie)
         self.agent.qemu.destroy()
 
     def rescue(self):
         """Outgoing rescue: try to rescue the remote side first."""
-        log.exception('rescue', machine=self.name)
+        self.log.exception('rescue', exc_info=True)
         if self.target is not None:
             try:
                 self.target.rescue(self.cookie)
                 self.target.finish_incoming(self.cookie)
-                log.info('rescue-remote-success', action='destroy local',
-                         machine=self.name)
+                self.log.info('rescue-remote-success', action='destroy local')
                 self.destroy()
                 # We managed to rescue on the remote side - hooray!
                 self.migration_exitcode = 0
                 return
             except Exception:
-                log.exception('rescue-remote-failed',
-                              action='destroy remote', machien=self.name)
+                self.log.exception('rescue-remote-failed', exc_info=True,
+                                   action='destroy remote')
                 try:
                     self.target.destroy(self.cookie)
                 except Exception:
-                    log.exception('destroy-remote-failed', machine=self.name)
+                    self.log.exception('destroy-remote-failed', exc_info=True)
         try:
-            log.info('acquire-local-locks', machine=self.name)
+            self.log.info('acquire-local-locks')
             self.agent.ceph.lock()
         except Exception:
-            log.exception('acquire-local-locks-failed', action='destroy local')
+            self.log.exception('acquire-local-locks-failed', exc_info=True,
+                               action='destroy local')
             self.destroy()
         else:
-            log.info('acquire-local-locks-succeeded',
-                     result='continuing locally')
+            self.log.info('acquire-local-locks-succeeded',
+                          result='continuing locally')
 
     def destroy(self):
         self.agent.qemu.destroy()
