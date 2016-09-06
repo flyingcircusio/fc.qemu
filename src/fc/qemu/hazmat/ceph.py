@@ -4,14 +4,11 @@ We expect Ceph Python bindings to be present in the system site packages.
 """
 
 from ..sysconfig import sysconfig
-from ..util import cmd
+from ..util import cmd, log
 from .volume import Volume
 import hashlib
-import logging
 import rados
 import rbd
-
-logger = logging.getLogger(__name__)
 
 
 class Ceph(object):
@@ -25,6 +22,7 @@ class Ceph(object):
     def __init__(self, cfg):
         # Update configuration values from system or test config.
         self.__dict__.update(sysconfig.ceph)
+        self.log = log.bind(context='ceph', machine=cfg['name'])
 
         self.cfg = cfg
         self.rados = None
@@ -38,12 +36,14 @@ class Ceph(object):
         # Not sure whether it makes sense that we configure the client ID
         # without 'client.': qemu doesn't want to see this, whereas the
         # Rados binding does ... :/
+        self.log.debug('connect-rados')
         self.rados = rados.Rados(
             conffile=self.CEPH_CONF,
             name='client.' + self.CEPH_CLIENT)
         self.rados.connect()
 
         pool = self.cfg['rbd_pool'].encode('ascii')
+        self.log.debug('open-pool', pool=pool)
         self.ioctx = self.rados.open_ioctx(pool)
 
         volume_prefix = self.cfg['name'].encode('ascii')
@@ -67,10 +67,12 @@ class Ceph(object):
 
     def ensure_root_volume(self):
         if not self.root.exists():
+            self.log.info('create-vm')
             cmd(self.CREATE_VM.format(**self.cfg))
         self.root.lock()
 
     def ensure_swap_volume(self):
+        self.log.info('ensure-swap')
         self.swap.ensure_presence(self.cfg['swap_size'])
         self.swap.lock()
         self.swap.ensure_size(self.cfg['swap_size'])
@@ -78,12 +80,13 @@ class Ceph(object):
             self.swap.mkswap()
 
     def ensure_tmp_volume(self, enc_data):
+        self.log.info('ensure-tmp')
         self.tmp.ensure_presence(self.cfg['tmp_size'])
         self.tmp.lock()
         self.tmp.ensure_size(self.cfg['tmp_size'])
         with self.tmp.mapped():
             self.tmp.mkfs()
-            logger.debug('%s: seeding ENC data', self.tmp.name)
+            log.debug('seed-enc', volume=self.tmp.name)
             self.tmp.seed_enc(enc_data)
 
     def locks(self):

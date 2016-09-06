@@ -19,7 +19,7 @@ def test_builtin_config_template(simplevm_cfg):
     a = Agent(simplevm_cfg)
     a.generate_config()
     # machine type must match Qemu version in virtualbox
-    assert 'type = "pc-q35-2.1"' in a.qemu.config
+    assert 'type = "pc-q35-2.6"' in a.qemu.config
 
 
 def test_userdefined_config_template(simplevm_cfg):

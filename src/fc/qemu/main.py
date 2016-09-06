@@ -1,12 +1,4 @@
-from .agent import Agent
-from .sysconfig import sysconfig
-import argparse
-import logging
-import os.path
 import sys
-
-
-logger = logging.getLogger(__name__)
 
 
 def daemonize():
@@ -22,6 +14,8 @@ http://www.jejik.com/articles/2007/02/a_simple_unix_linux_daemon_in_python/
     Programming in the UNIX Environment" for details (ISBN 0201563177)
     http://www.erlenstar.demon.co.uk/unix/faq_2.html#SEC16
     """
+    import os
+    import os.path
     try:
         pid = os.fork()
         if pid > 0:
@@ -60,24 +54,55 @@ http://www.jejik.com/articles/2007/02/a_simple_unix_linux_daemon_in_python/
 
 
 def init_logging(verbose=True):
-    if verbose:
-        level = logging.DEBUG
-    else:
-        level = logging.INFO
-    logging.basicConfig(
-        filename='/var/log/fc-qemu.log',
-        format='%(asctime)s [%(process)d] %(levelname)s %(message)s',
-        level=level)
+    import structlog
+    import structlog.processors
+    import structlog.dev
 
-    # silence requests package -- we assume that it's just doing its job
-    logging.getLogger('requests').setLevel(logging.CRITICAL)
+    def method_to_level(logger, method_name, event_dict):
+        event_dict['level'] = method_name
+        return event_dict
 
-    console = logging.StreamHandler(sys.stdout)
-    console.setLevel(level)
-    logging.getLogger('').addHandler(console)
+    def context_to_event(logger, method_name, event_dict):
+        context = []
+        for key in ['machine', 'context']:
+            try:
+                context.append(event_dict.pop(key))
+            except KeyError:
+                pass
+        if context:
+            context = '/'.join(context)
+            event_dict['event'] = context + ': ' + event_dict['event']
+        return event_dict
+
+    class LevelFilter(object):
+
+        LEVELS = ['exception', 'critical', 'error', 'warn', 'warning',
+                  'info', 'debug']
+
+        def __init__(self, min_level=None):
+            self.min_level = self.LEVELS.index(min_level.lower())
+
+        def __call__(self, logger, method_name, event_dict):
+            if self.LEVELS.index(method_name.lower()) > self.min_level:
+                raise structlog.DropEvent
+            return event_dict
+
+    structlog.configure(
+        processors=[
+            LevelFilter('debug' if verbose else 'info'),
+            method_to_level,
+            context_to_event,
+            structlog.processors.TimeStamper(fmt='iso'),
+            structlog.processors.ExceptionPrettyPrinter(),
+            structlog.dev.ConsoleRenderer()
+        ],
+    )
+    return
 
 
 def main():
+    import argparse
+
     a = argparse.ArgumentParser(description="Qemu VM agent")
     a.add_argument('--verbose', '-v', action='store_true', default=False,
                    help='Increase logging level.')
@@ -137,6 +162,12 @@ def main():
         help='Handle a change in VM config distributed via consul.')
     p.set_defaults(func='handle_consul_event')
 
+    p = sub.add_parser(
+        'telnet',
+        help='Open a telnet connection to the VM\'s monitor port')
+    p.add_argument('vm', metavar='VM', help='name of the VM')
+    p.set_defaults(func='telnet')
+
     args = a.parse_args()
     func = args.func
     vm = getattr(args, 'vm', None)
@@ -150,10 +181,17 @@ def main():
     if args.daemonize:
         daemonize()
 
+    from .agent import Agent, InvalidCommand
     try:
         init_logging(args.verbose)
+        from .util import log
+        log.debug('loading config')
+
+        from .sysconfig import sysconfig
         sysconfig.load_system_config()
+
         if vm is None:
+
             # Expecting a class/static method
             agent = Agent
             sys.exit(getattr(agent, func)(**kwargs) or 0)
@@ -161,6 +199,9 @@ def main():
             agent = Agent(vm)
             with agent:
                 sys.exit(getattr(agent, func)(**kwargs) or 0)
+    except InvalidCommand as e:
+        log.warning(e.message)
     except Exception as e:
-        logger.exception(e)
+        log.exception("An unexpected exception occured.")
+        raise
         sys.exit(69)  # EX_UNAVAILABLE

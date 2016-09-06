@@ -2,10 +2,25 @@ Release notes
 =============
 
 
-0.7.23 (unreleased)
--------------------
+0.8 (unreleased)
+----------------
 
-- Nothing changed yet.
+- Introduce `fc-qemu telnet` command: a shortcut to connect to the human
+  monitor port without having to look up the port from a config manually.
+
+- Switch the monitor automation from using the telnet port to using the QMP
+  socket. This should be a _lot_ more reliable. This also fixes a previous
+  race condition where a migration status check may intermittently fail and
+  then break a migration unnecessarily.
+
+- Update vagrant environment to check against Qemu 2.6.
+
+- Activate post migration after having transferred the memory at least once.
+
+- Clean up some output: avoid unnecessary exceptions but display exceptions
+  where we need them for further debugging.
+
+- Limit a few more commands to specific VM states: stop only when running.
 
 
 0.7.22 (2016-07-21)

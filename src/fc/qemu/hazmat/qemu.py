@@ -3,19 +3,21 @@
 from ..exc import QemuNotRunning
 from ..sysconfig import sysconfig
 from ..timeout import TimeOut
+from ..util import log
 from .guestagent import GuestAgent, ClientError
-from .monitor import Monitor
+from .qmp import QEMUMonitorProtocol as Qmp, QMPConnectError
 import glob
-import logging
 import os.path
 import psutil
 import socket
 import subprocess
 import time
 import yaml
+import datetime
 
 
-log = logging.getLogger(__name__)
+class InvalidMigrationStatus(Exception):
+    pass
 
 
 class Qemu(object):
@@ -44,6 +46,7 @@ class Qemu(object):
     pidfile = '/run/qemu.{name}.pid'
     configfile = '/run/qemu.{name}.cfg'
     argfile = '/run/qemu.{name}.args'
+    qmp_socket = '/run/qemu.{name}.qmp.sock'
 
     def __init__(self, vm_cfg):
         # Update configuration values from system or test config.
@@ -51,7 +54,8 @@ class Qemu(object):
 
         self.cfg = vm_cfg
         # expand template keywords in configuration variables
-        for f in ['pidfile', 'configfile', 'argfile', 'migration_address']:
+        for f in ['pidfile', 'configfile', 'argfile', 'migration_address',
+                  'qmp_socket']:
             setattr(self, f, getattr(self, f).format(**vm_cfg))
         # We are running qemu with chroot which causes us to not be able to
         # resolve names. :( See #13837.
@@ -63,11 +67,29 @@ class Qemu(object):
         self.monitor_port = self.cfg['id'] + self.MONITOR_OFFSET
         self.guestagent = GuestAgent(self.name, timeout=30)
 
+        self.log = log.bind(machine=self.name, context='qemu')
+
+    __qmp = None
+
+    @property
+    def qmp(self):
+        if self.__qmp is None:
+            qmp = Qmp(self.qmp_socket)
+            qmp.settimeout(5)
+            try:
+                qmp.connect()
+            except socket.error:
+                pass
+            else:
+                self.__qmp = qmp
+        return self.__qmp
+
     def __enter__(self):
-        self.monitor = Monitor(self.monitor_port)
+        pass
 
     def __exit__(self, exc_value, exc_type, exc_tb):
-        self.monitor = None
+        if self.qmp:
+            self.qmp.close()
 
     def proc(self):
         """Qemu processes as psutil.Process object.
@@ -83,10 +105,20 @@ class Qemu(object):
         except (IOError, OSError, ValueError, psutil.NoSuchProcess):
             pass
 
+    def prepare_log(self):
+        if not os.path.exists('/var/log/vm'):
+            os.makedirs('/var/log/vm')
+        logfile = '/var/log/vm/{}.log'.format(self.name)
+        alternate = '/var/log/vm/{}-{}.log'.format(
+            self.name, datetime.datetime.now().isoformat())
+        if os.path.exists(logfile):
+            os.rename(logfile, alternate)
+
     def _start(self, additional_args=()):
         if self.require_kvm and not os.path.exists('/dev/kvm'):
             raise RuntimeError('Refusing to start without /dev/kvm support.')
         self.prepare_config()
+        self.prepare_log()
         with open('/proc/sys/vm/compact_memory', 'w') as f:
             f.write('1\n')
         try:
@@ -96,11 +128,14 @@ class Qemu(object):
                 ' '.join(additional_args))
             # We explicitly close all fds for the child to avoid
             # inheriting locks infinitely.
-            log.info('[qemu] %s: %s', self.name, cmd)
+            self.log.info('start-qemu')
+            self.log.debug(self.executable,
+                           local_args=self.local_args,
+                           additional_args=additional_args)
             subprocess.check_call(cmd, shell=True, close_fds=True)
         except subprocess.CalledProcessError:
             # Did not start. Not running.
-            log.exception('[qemu] %s: Failed to start', self.name)
+            self.log.exception('qemu-failed')
             raise QemuNotRunning()
 
     def start(self):
@@ -126,13 +161,49 @@ class Qemu(object):
     def inmigrate(self):
         self._start(['-incoming {}'.format(self.migration_address)])
         time.sleep(1)
-        self.monitor.assert_status('VM status: paused (inmigrate)')
+        status = self.qmp.command('query-status')
+        assert not status['running'], status
+        assert status['status'] == 'inmigrate', status
         return self.migration_address
 
     def migrate(self, address):
         """Initiate actual (out-)migration"""
-        log.debug('[qemu] %s: migrate (mon:%s)', self.name, self.monitor_port)
-        self.monitor.migrate(address, self.max_downtime)
+        log.debug('migrate', machine=self.name, context='qemu/qmp')
+        self.qmp.command('migrate-set-capabilities', capabilities=[
+            {'capability': 'xbzrle', 'state': True},
+            {'capability': 'auto-converge', 'state': True}])
+        self.qmp.command('migrate_set_downtime', value=self.max_downtime)
+        self.qmp.command('migrate', uri=address)
+
+    def poll_migration_status(self, timeout=30):
+        """Monitor ongoing migration.
+
+        Every few seconds, the migration status is queried from the Qemu
+        monitor. It is yielded to the calling context to provide a hook
+        for communicating status updates.
+
+        """
+        timeout = TimeOut(timeout, 1, raise_on_timeout=True)
+        while timeout.tick():
+            if timeout.interval < 10:
+                timeout.interval *= 1.4142
+            info = self.qmp.command('query-migrate')
+            yield info
+
+            if info['status'] == 'setup':
+                pass
+            elif info['status'] == 'completed':
+                break
+            elif info['status'] == 'active':
+                if info['ram']['transferred'] > info['ram']['total']:
+                    log.info('migrate-start-postcopy')
+                    self.qmp.command('migrate-start-postcopy')
+                log.info('migration-status',
+                         ram_total=info['ram']['total'],
+                         ram_remaining=info['ram']['remaining'])
+            else:
+                raise InvalidMigrationStatus(info)
+            timeout.cutoff += 30
 
     def is_running(self):
         # This method must be very reliable. It is perfectly OK to error
@@ -141,53 +212,53 @@ class Qemu(object):
         # there is no reason to think that any remainder of a Qemu process is
         # still running
 
-        # a) is there a process?
-        proc = self.proc()
-        if proc is None:
-            expected_process_exists = False
-        else:
-            expected_process_exists = proc.is_running()
+        timeout = TimeOut(10, 0.2, raise_on_timeout=False)
+        while timeout.tick():
+            # Try to find a stable result within a few seconds - ignore
+            # unstable results in between. Qemu might just be starting
+            # and the process already there but QMP not, or vice versa.
 
-        # b) is the monitor port around?
-        monitor_exists = self.monitor.peek()
-
-        # c) is the monitor available and talks to us?
-        monitor_says_running = False
-        status = ''
-        timeout = TimeOut(10, 1, raise_on_timeout=False)
-        while monitor_exists and timeout.tick():
-            try:
-                status = self.monitor.status()
-                monitor_says_running = status == 'VM status: running'
-            except Exception as e:
-                log.exception('waiting for monitor status: %s', e)
-                # Update whether the monitor still exists - it may have gone
-                # away intermediately.
-                monitor_exists = self.monitor.peek()
-                pass
+            # a) is there a process?
+            proc = self.proc()
+            if proc is None:
+                expected_process_exists = False
             else:
-                break
+                expected_process_exists = proc.is_running()
 
-        if (expected_process_exists and
-                monitor_exists and monitor_says_running):
-            return True
+            # b) is the monitor port around reliably? Let's assume it does.
+            qmp_available = self.qmp
 
-        if (not expected_process_exists and not monitor_exists):
-            # This is still a bit icky: there were cases where we did
-            # not see the process, the monitor port was open,
-            return False
+            # c) is the monitor available and talks to us?
+            monitor_says_running = False
+            status = ''
 
-        # Any other combination is sufficiently weird so as to give up right
-        # now.
+            if qmp_available:
+                try:
+                    status = self.qmp.command('query-status')
+                except QMPConnectError:
+                    # Force a reconnect in the next iteration.
+                    self.__qmp.close()
+                    self.__qmp = None
+                    qmp_available = False
+                    monitor_says_running = False
+                else:
+                    monitor_says_running = status['running']
+
+            if (expected_process_exists and
+                    qmp_available and monitor_says_running):
+                return True
+
+            if (not expected_process_exists and not qmp_available):
+                return False
+
+        # The timeout passed and we were not able to determine a consistent
+        # result. :/
         raise RuntimeError(
             'Can not determine whether Qemu is running. '
-            'Process: {} Monitor Port: {} '
-            'Monitor output: {} Status: {}'.format(
-                expected_process_exists, monitor_exists, monitor_says_running,
+            'Process exists: {} QMP socket reliable: {} '
+            'Status is running: {} Status detail: {}'.format(
+                expected_process_exists, qmp_available, monitor_says_running,
                 status))
-
-    def status(self):
-        return self.monitor.status()
 
     def rescue(self):
         """Recover from potentially inconsistent state.
@@ -201,10 +272,8 @@ class Qemu(object):
         Returns False if the rescue attempt failed and the VM is stopped now.
 
         """
-        # XXX hold a lock to avoid another process on the same machine to
-        # interfere with the VM while we're on it. E.g. by locking the main
-        # config file.
-        self.monitor.assert_status('VM status: running')
+        status = self.qmp.command('query-status')
+        assert status['running']
         for image in set(self.locks.available) - set(self.locks.held):
             try:
                 self.acquire_lock(image)
@@ -213,7 +282,12 @@ class Qemu(object):
         self.assert_locks()
 
     def graceful_shutdown(self):
-        self.monitor.sendkey('ctrl-alt-delete')
+        if not self.qmp:
+            return
+        self.qmp.command('send-key', keys=[
+            {'type': 'qcode', 'data': 'ctrl'},
+            {'type': 'qcode', 'data': 'alt'},
+            {'type': 'qcode', 'data': 'delete'}])
 
     def destroy(self):
         # We use this destroy command in "fire-and-forget"-style because
@@ -221,16 +295,19 @@ class Qemu(object):
         # we want: that the VM isn't running any longer. We check this
         # by contacting the monitor instead.
         timeout = TimeOut(100, interval=1, raise_on_timeout=True)
-        while timeout.tick():
-            p = self.proc()
-            if p:
+        p = self.proc()
+        if not p:
+            return
+        while p.is_running() and timeout.tick():
+            try:
                 p.terminate()
-            if not self.monitor.peek():
-                break
+            except psutil.NoSuchProcess:
+                pass
 
     def resize_root(self, size):
-        size = size / 1024 ** 2  # MiB
-        self.monitor._cmd('block_resize virtio0 {}'.format(size))
+        self.qmp.command('block_resize',
+                         device='virtio0',
+                         size=size / 1024 ** 2)  # MiB
 
     def clean_run_files(self):
         log.debug('Removing run files')
@@ -238,28 +315,26 @@ class Qemu(object):
             os.unlink(runfile)
 
     def prepare_config(self):
-        if not os.path.exists('/var/log/vm'):
-            os.makedirs('/var/log/vm')
-
         chroot = self.chroot.format(**self.cfg)
         if not os.path.exists(chroot):
             os.makedirs(chroot)
 
-        format = lambda s: s.format(
-            pidfile=self.pidfile,
-            configfile=self.configfile,
-            monitor_port=self.monitor.port,
-            vnc=self.vnc.format(**self.cfg),
-            chroot=chroot,
-            **self.cfg)
+        def format(s):
+            return s.format(
+                pidfile=self.pidfile,
+                configfile=self.configfile,
+                monitor_port=self.monitor_port,
+                vnc=self.vnc.format(**self.cfg),
+                chroot=chroot,
+                **self.cfg)
         self.local_args = [format(a) for a in self.args]
         self.local_config = format(self.config)
 
-        with open(self.configfile+'.in', 'w') as f:
+        with open(self.configfile + '.in', 'w') as f:
             f.write(self.config)
         with open(self.configfile, 'w') as f:
             f.write(self.local_config)
-        with open(self.argfile+'.in', 'w') as f:
+        with open(self.argfile + '.in', 'w') as f:
             yaml.safe_dump(self.args, f)
 
         # Qemu tends to overwrite the pid file incompletely -> truncate

@@ -6,9 +6,13 @@ import filecmp
 import os
 import subprocess
 import tempfile
+from structlog import get_logger
 
 MiB = 2 ** 20
 GiB = 2 ** 30
+
+
+log = get_logger()
 
 
 @contextlib.contextmanager
@@ -76,9 +80,12 @@ def remove_empty_dirs(d):
 
 def cmd(cmdline):
     """Execute cmdline with stdin closed to avoid questions on terminal"""
-    print(cmdline)
+    prefix = cmdline.split()[0]
+    args = " ".join(cmdline.split()[1:])
+    log.debug(prefix, args=args)
     with open('/dev/null') as null:
-        output = subprocess.check_output(cmdline, shell=True, stdin=null)
+        output = subprocess.check_output(
+            cmdline, shell=True, stdin=null, stderr=subprocess.STDOUT)
     # Keep this here for compatibility with tests
-    print(output, end='')
+    log.debug(prefix, output=output)
     return output
