@@ -307,6 +307,18 @@ class Qemu(object):
     def resize_root(self, size):
         self.qmp.command('block_resize', device='virtio0', size=size)
 
+    def block_info(self):
+        devices = {}
+        for device in self.qmp.command('query-block'):
+            devices[device['device']] = device
+        return devices
+
+    def block_io_throttle(self, device, iops):
+        self.qmp.command('block_set_io_throttle',
+                         device=device,
+                         iops=iops, iops_rd=0, iops_wr=0,
+                         bps=0, bps_wr=0, bps_rd=0)
+
     def clean_run_files(self):
         self.log.debug('purge-run-files')
         for runfile in glob.glob('/run/qemu.{}.*'.format(self.cfg['name'])):

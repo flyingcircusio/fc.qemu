@@ -44,6 +44,10 @@ class SysConfig(object):
         self.qemu['vnc'] = self.get('qemu', 'vnc')
         self.qemu['max_downtime'] = self.cp.getfloat('qemu', 'max-downtime')
 
+        self.qemu['throttle_by_pool'] = tbp = {}
+        for pool, iops in self.cp.items('qemu-throttle-by-pool'):
+            tbp[pool] = int(iops)
+
         self.agent['accelerator'] = self.get('qemu', 'accelerator')
         self.agent['ceph_id'] = self.get('ceph', 'client-id')
         self.agent['consul_token'] = self.get('consul', 'access-token')
