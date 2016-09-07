@@ -83,8 +83,8 @@ class IncomingServer(object):
             return self.qemu.inmigrate()
         except Exception:
             log.exception('incoming-migration-failed',
-                          note='releasing locks',
-                          machine=self.name)
+                          note='releasing locks', machine=self.name,
+                          exc_info=True)
             self.ceph.stop()
             raise
 
@@ -99,7 +99,8 @@ class IncomingServer(object):
             log.info('rescue-locks', machine=self.name)
             self.ceph.lock()
         except Exception:
-            log.warning('rescue-locks-failed', machine=self.name)
+            log.warning('rescue-locks-failed', machine=self.name,
+                        exc_info=True)
             self.destroy()
             raise
         log.info('rescue-succeeded', machine=self.name)
