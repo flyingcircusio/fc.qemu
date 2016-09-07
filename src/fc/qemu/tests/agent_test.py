@@ -71,3 +71,11 @@ def test_consistency_ceph_lock_missing(simplevm_cfg):
     a.qemu.proc = mock.Mock(return_value=psutil.Process(1))
     a.ceph.locked_by_me = mock.Mock(return_value=False)
     assert a.state_is_consistent() is False
+
+
+def test_ensure_resize(simplevm_cfg):
+    a = Agent(simplevm_cfg)
+    a.qemu.is_running = mock.Mock(return_value=True)
+    a.qemu.proc = mock.Mock(return_value=psutil.Process(1))
+    a.ceph.locked_by_me = mock.Mock(return_value=False)
+    assert a.state_is_consistent() is False

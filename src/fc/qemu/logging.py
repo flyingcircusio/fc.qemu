@@ -8,6 +8,8 @@ from six import StringIO
 import structlog
 import structlog.dev
 import structlog.processors
+import sys
+
 
 try:
     import colorama
@@ -30,16 +32,28 @@ def _pad(s, l):
     return s + " " * (missing if missing > 0 else 0)
 
 
-if colorama is not None:
+if sys.stdout.isatty() and colorama:
     RESET_ALL = colorama.Style.RESET_ALL
     BRIGHT = colorama.Style.BRIGHT
     DIM = colorama.Style.DIM
     RED = colorama.Fore.RED
+    BACKRED = colorama.Back.RED
     BLUE = colorama.Fore.BLUE
     CYAN = colorama.Fore.CYAN
     MAGENTA = colorama.Fore.MAGENTA
     YELLOW = colorama.Fore.YELLOW
     GREEN = colorama.Fore.GREEN
+else:
+    RESET_ALL = ''
+    BRIGHT = ''
+    DIM = ''
+    RED = ''
+    BACKRED = ''
+    BLUE = ''
+    CYAN = ''
+    MAGENTA = ''
+    YELLOW = ''
+    GREEN = ''
 
 
 class ConsoleRenderer(object):
@@ -55,7 +69,8 @@ class ConsoleRenderer(object):
                     package="colorama"
                 )
             )
-        colorama.init()
+        if sys.stdout.isatty():
+            colorama.init()
 
         self._pad_event = pad_event
         self._level_to_color = {
@@ -66,7 +81,7 @@ class ConsoleRenderer(object):
             "warning": YELLOW,
             "info": GREEN,
             "debug": GREEN,
-            "notset": colorama.Back.RED,
+            "notset": BACKRED,
         }
         for key in self._level_to_color.keys():
             self._level_to_color[key] += BRIGHT
@@ -171,4 +186,3 @@ def init_logging(verbose=True):
             ConsoleRenderer()
         ],
     )
-    return

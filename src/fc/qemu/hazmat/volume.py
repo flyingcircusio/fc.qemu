@@ -155,6 +155,8 @@ class Snapshot(Image):
         self.snapname = snapname
         self.id = id
         self.size = snapsize
+        self.log = volume.log.bind(snapshot=snapname)
+        self.cmd = lambda cmdline: cmd(cmdline, self.log)
 
     @property
     def rbdimage(self):
@@ -166,7 +168,7 @@ class Snapshot(Image):
 
     def remove(self):
         """Destroy myself."""
-        log.info('remove-snapshot', snapshot=self.fullname)
+        self.log.info('remove-snapshot')
         self.vol.rbdimage.remove_snap(self.snapname)
 
 
@@ -287,8 +289,8 @@ class Volume(Image):
         self.cmd('sgdisk -a 8192 -n 1:8192:0 -c "1:{}" -t 1:8300 '
                  '"{}"'.format(self.label, self.device))
         if gptbios:
-            cmd('sgdisk -n 2:2048:+1M -c 2:gptbios -t 2:EF02 "{}"'.format(
-                self.device))
+            self.cmd('sgdisk -n 2:2048:+1M -c 2:gptbios -t 2:EF02 "{}"'.format(
+                     self.device))
         self.cmd('partprobe')
         time.sleep(0.5)
         while not p.exists(self.part1dev):  # pragma: no cover

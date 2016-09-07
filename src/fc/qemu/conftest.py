@@ -12,10 +12,14 @@ def pytest_collectstart(collector):
 @pytest.fixture(scope='session')
 def setup_structlog():
     from . import util
-    util.log = []
+    util.log_data = []
 
     def test_logger(logger, method_name, event):
-        util.log.append((method_name, event))
+        result = []
+        for key in sorted(event):
+            result.append('{}={}'.format(key, event[key]))
+        util.log_data.append(' '.join(result))
+        raise structlog.DropEvent
 
     structlog.configure(
         processors=[test_logger])
@@ -24,4 +28,11 @@ def setup_structlog():
 @pytest.fixture(autouse=True)
 def reset_structlog(setup_structlog):
     from . import util
-    util.log.log = []
+    util.log_data = []
+
+
+def pytest_assertrepr_compare(op, left, right):
+    if left.__class__.__name__ == 'Ellipsis':
+        return left.compare(right).diff
+    elif right.__class__.__name__ == 'Ellipsis':
+        return right.compare(left).diff

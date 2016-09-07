@@ -238,6 +238,7 @@ class Agent(object):
                 # consistent nor running and running the online disk size
                 # has caused spurious errors previously.
                 self.ensure_online_disk_size()
+                self.ensure_online_disk_throttle()
             else:
                 self.qemu.clean_run_files()
         else:
@@ -283,6 +284,24 @@ class Agent(object):
                       found=self.ceph.root.size, action='resize')
         self.qemu.resize_root(target_size)
 
+    def ensure_online_disk_throttle(self):
+        """Ensure throttling settings."""
+        target = self.cfg.get(
+            'iops',
+            self.qemu.throttle_by_pool.get(self.cfg['rbd_pool'], 250))
+        devices = self.qemu.block_info()
+        for device in devices.values():
+            current = device['inserted']['iops']
+            if current != target:
+                self.log.info('ensure-throttle', device=device['device'],
+                              target_iops=target, current_iops=current,
+                              action='throttle')
+                self.qemu.block_io_throttle(device['device'], target)
+            else:
+                self.log.info('ensure-throttle', device=device['device'],
+                              target_iops=target, current_iops=current,
+                              action='none')
+
     def consul_register(self):
         """Register running VM with Consul."""
         self.log.debug('register-consul')
@@ -304,6 +323,7 @@ class Agent(object):
         self.generate_config()
         self.ceph.start(self.enc)
         self.qemu.start()
+        self.ensure_online_disk_throttle()
         self.consul_register()
         # We exit here without releasing the ceph lock in error cases
         # because the start may have failed because of an already running
