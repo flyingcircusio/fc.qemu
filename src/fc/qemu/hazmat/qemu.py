@@ -79,7 +79,8 @@ class Qemu(object):
             try:
                 qmp.connect()
             except socket.error:
-                pass
+                self.log.debug(
+                    'connect-failed', subsystem='qemu/qmp', exc_info=True)
             else:
                 self.__qmp = qmp
         return self.__qmp
@@ -135,7 +136,7 @@ class Qemu(object):
             subprocess.check_call(cmd, shell=True, close_fds=True)
         except subprocess.CalledProcessError:
             # Did not start. Not running.
-            self.log.exception('qemu-failed')
+            self.log.exception('qemu-failed', exc_info=True)
             raise QemuNotRunning()
 
     def start(self):
@@ -147,7 +148,7 @@ class Qemu(object):
             try:
                 guest.cmd('guest-fsfreeze-freeze')
             except ClientError:
-                pass
+                self.log.debug('guset-fsfreeze-freeze-failed', exc_info=True)
             assert guest.cmd('guest-fsfreeze-status') == 'frozen'
 
     def thaw(self):
@@ -155,7 +156,7 @@ class Qemu(object):
             try:
                 guest.cmd('guest-fsfreeze-thaw')
             except ClientError:
-                pass
+                self.log.debug('guset-fsfreeze-freeze-thaw', exc_info=True)
             assert guest.cmd('guest-fsfreeze-status') == 'thawed'
 
     def inmigrate(self):
@@ -278,7 +279,7 @@ class Qemu(object):
             try:
                 self.acquire_lock(image)
             except Exception:
-                pass
+                self.log.debug('acquire-lock-failed', exc_info=True)
         self.assert_locks()
 
     def graceful_shutdown(self):

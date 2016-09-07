@@ -121,7 +121,8 @@ class Ceph(object):
         for vol in self.volumes:
             try:
                 vol.unlock()
-            except (rbd.ImageBusy, rbd.ConnectionShutdown):
+            except Exception:
+                vol.log.warning('unlock-failed', exc_info=True)
                 pass
 
     def force_unlock(self):

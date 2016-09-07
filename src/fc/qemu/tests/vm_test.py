@@ -57,6 +57,7 @@ def test_simple_vm_lifecycle_start_stop(vm):
 
     status = get_log()
     assert status == """\
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.swap
@@ -66,6 +67,7 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.tmp"""
 
     out = get_log()
     assert out == Ellipsis("""\
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
 event=generate-config machine=simplevm
 event=ensure-root machine=test00 subsystem=ceph
 event=create-vm machine=test00 subsystem=ceph
@@ -122,6 +124,7 @@ event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/t
 
     vm.status()
     assert get_log() == """\
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.swap
@@ -131,6 +134,7 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.tmp"""
 def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys, caplog):
     vm.status()
     assert get_log() == """\
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.swap
@@ -138,7 +142,7 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.tmp"""
 
     vm.ensure()
     out = get_log()
-    assert out.startswith("action=start event=ensure-state found=offline machine=simplevm wanted=online")
+    assert "action=start event=ensure-state found=offline machine=simplevm wanted=online" in out
 
     vm.status()
     assert get_log() == Ellipsis("""\
@@ -154,6 +158,7 @@ event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/t
     get_log()
     vm.status()
     assert get_log() == """\
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.swap
@@ -163,6 +168,7 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.tmp"""
 def test_vm_not_running_here(vm, capsys):
     vm.status()
     assert get_log() == """\
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.swap
@@ -172,8 +178,12 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.tmp"""
     vm.ensure()
     vm.status()
     assert get_log() == """\
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
 ceph_lock=False event=check-state-consistency is_consistent=True machine=simplevm proc=False qemu=False
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
 event=purge-run-files machine=test00 subsystem=qemu
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.swap
@@ -184,6 +194,7 @@ def test_crashed_vm_clean_restart(vm):
     vm.status()
 
     assert get_log() == Ellipsis("""\
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.swap
@@ -192,6 +203,7 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.tmp""")
     vm.ensure()
     vm.status()
     assert get_log() == Ellipsis("""\
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
 action=start event=ensure-state found=offline machine=simplevm wanted=online
 ...
 event=vm-status machine=simplevm result=online
@@ -215,6 +227,7 @@ event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/t
 
     vm.status()
     assert get_log() == Ellipsis("""\
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
 action=start event=ensure-state found=offline machine=simplevm wanted=online
 ...
 event=vm-status machine=simplevm result=online
@@ -238,6 +251,7 @@ event=unlock machine=test00 subsystem=ceph volume=rbd.ssd/test00.swap
 event=unlock machine=test00 subsystem=ceph volume=rbd.ssd/test00.tmp
 event=purge-run-files machine=test00 subsystem=qemu
 event=deregister-consul machine=simplevm
+event=connect-failed exc_info=True machine=test00 subsystem=qemu/qmp
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/test00.swap
@@ -262,6 +276,57 @@ def test_simple_vm_snapshot(vm):
     vm.snapshot('asdf')
     assert list(x.fullname for x in vm.ceph.root.snapshots) == [
         'rbd.ssd/test00.root@asdf']
+
+
+def test_vm_throttle_iops(vm):
+    vm.start()
+    get_log()
+
+    vm.ensure_online_disk_throttle()
+    assert get_log() == """\
+arguments={} event=query-block id=None machine=test00 subsystem=qemu/qmp
+action=none current_iops=3000 device=virtio0 event=ensure-throttle machine=simplevm target_iops=3000
+action=none current_iops=3000 device=virtio1 event=ensure-throttle machine=simplevm target_iops=3000
+action=none current_iops=3000 device=virtio2 event=ensure-throttle machine=simplevm target_iops=3000"""
+
+    vm.cfg['iops'] = 10
+
+    vm.ensure_online_disk_throttle()
+    assert get_log() == """\
+arguments={} event=query-block id=None machine=test00 subsystem=qemu/qmp
+action=throttle current_iops=3000 device=virtio0 event=ensure-throttle machine=simplevm target_iops=10
+arguments={'bps_rd': 0, 'bps_wr': 0, 'bps': 0, 'iops': 10, 'iops_rd': 0, 'device': u'virtio0', 'iops_wr': 0} event=block_set_io_throttle id=None machine=test00 subsystem=qemu/qmp
+action=throttle current_iops=3000 device=virtio1 event=ensure-throttle machine=simplevm target_iops=10
+arguments={'bps_rd': 0, 'bps_wr': 0, 'bps': 0, 'iops': 10, 'iops_rd': 0, 'device': u'virtio1', 'iops_wr': 0} event=block_set_io_throttle id=None machine=test00 subsystem=qemu/qmp
+action=throttle current_iops=3000 device=virtio2 event=ensure-throttle machine=simplevm target_iops=10
+arguments={'bps_rd': 0, 'bps_wr': 0, 'bps': 0, 'iops': 10, 'iops_rd': 0, 'device': u'virtio2', 'iops_wr': 0} event=block_set_io_throttle id=None machine=test00 subsystem=qemu/qmp"""
+
+    vm.ensure_online_disk_throttle()
+    assert get_log() == """\
+arguments={} event=query-block id=None machine=test00 subsystem=qemu/qmp
+action=none current_iops=10 device=virtio0 event=ensure-throttle machine=simplevm target_iops=10
+action=none current_iops=10 device=virtio1 event=ensure-throttle machine=simplevm target_iops=10
+action=none current_iops=10 device=virtio2 event=ensure-throttle machine=simplevm target_iops=10"""
+
+
+def test_vm_resize_disk(vm):
+    vm.start()
+    get_log()
+    vm.ensure_online_disk_size()
+    assert get_log() == """\
+action=none event=check-disk-size found=5368709120 machine=simplevm wanted=5368709120\
+"""
+
+    vm.cfg['disk'] *= 2
+
+    vm.ensure_online_disk_size()
+    assert get_log() == """\
+action=resize event=check-disk-size found=5368709120 machine=simplevm wanted=10737418240
+arguments={'device': 'virtio0', 'size': 10737418240} event=block_resize id=None machine=test00 subsystem=qemu/qmp"""
+
+    vm.ensure_online_disk_size()
+    assert get_log() == """\
+action=none event=check-disk-size found=10737418240 machine=simplevm wanted=10737418240"""
 
 
 def test_swap_size():

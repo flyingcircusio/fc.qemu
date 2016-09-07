@@ -21,6 +21,10 @@ Release notes
 
 - Limit a few more commands to specific VM states: stop only when running.
 
+- Implement IOPS limiting either based on VM-specific ENC data,
+  a Ceph pool default, or a global default. This limits IOPS for all disks
+  (individually, no groups, yet) in a VM and maintains this over time.
+
 
 0.7.22 (2016-07-21)
 -------------------

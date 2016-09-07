@@ -71,16 +71,15 @@ class Outgoing(object):
         while timeout.tick():
             try:
                 address = self.locate_inmigrate_service()
-                self.log.debug('connecting to {}'.format(address))
+                self.log.debug('connect', address=address)
                 self.target = xmlrpclib.ServerProxy(address, allow_none=True)
                 self.target.ping(self.cookie)
                 break
             # XXX the default socket timeout is quite high. we might wanna
             # lower it on this side via socket.settimeout()
             except socket.error:
-                self.log.debug(
-                    'cannot establish XML-RPC connection, retrying for %ds',
-                    timeout.remaining)
+                self.log.debug('failed-connect', retrying=timeout.remaining,
+                               exce_info=True)
 
     def transfer_locks(self):
         self.agent.ceph.unlock()
