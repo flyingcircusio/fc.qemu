@@ -169,7 +169,7 @@ class Qemu(object):
 
     def migrate(self, address):
         """Initiate actual (out-)migration"""
-        log.debug('migrate', machine=self.name, subsystem='qemu/qmp')
+        self.log.debug('migrate')
         self.qmp.command('migrate-set-capabilities', capabilities=[
             {'capability': 'xbzrle', 'state': True},
             {'capability': 'auto-converge', 'state': True}])
@@ -196,12 +196,13 @@ class Qemu(object):
             elif info['status'] == 'completed':
                 break
             elif info['status'] == 'active':
-                if info['ram']['transferred'] > info['ram']['total']:
-                    log.info('migrate-start-postcopy')
-                    self.qmp.command('migrate-start-postcopy')
-                log.info('migration-status',
-                         ram_total=info['ram']['total'],
-                         ram_remaining=info['ram']['remaining'])
+                # This didn't work out of the box on our 2.5, so I'll leave
+                # this out for now. I think it's due to the need for the
+                # userfaultd that needs to be installed on the host.
+                # if info['ram']['transferred'] > info['ram']['total']:
+                #     self.log.info('migrate-start-postcopy')
+                #     self.qmp.command('migrate-start-postcopy')
+                pass
             else:
                 raise InvalidMigrationStatus(info)
             timeout.cutoff += 30

@@ -32,6 +32,7 @@ setup(
         'psutil>=2.1',
         'consulate==0.4',
         'structlog',
+        'colorama',
     ],
     entry_points={
         'console_scripts': [
