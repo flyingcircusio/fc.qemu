@@ -159,5 +159,5 @@ def main():
         log.debug('unexpected-exception', exc_info=True)
         sys.exit(69)  # EX_UNAVAILABLE
     except Exception:
-        log.error("unexpected-exception", exc_info=True)
+        log.exception("unexpected-exception", exc_info=True)
         sys.exit(69)  # EX_UNAVAILABLE
