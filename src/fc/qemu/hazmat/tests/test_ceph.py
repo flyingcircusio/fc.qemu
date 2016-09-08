@@ -26,7 +26,9 @@ def test_ceph_stop_remove_only_own_locks(ceph_with_volumes):
     """Test case where failed migrations leave inconsistent locking."""
     ceph_with_volumes.root.unlock()
     ceph_with_volumes.root.rbdimage.lock_exclusive('someotherhost')
-    ceph_with_volumes.stop()
+    with pytest.raises(Exception):
+        # It raises an exception but it unlocks what it can.
+        ceph_with_volumes.stop()
     assert ceph_with_volumes.root.lock_status()
     assert ceph_with_volumes.swap.lock_status() is None
     assert ceph_with_volumes.tmp.lock_status() is None
