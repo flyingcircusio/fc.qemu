@@ -15,8 +15,6 @@ Release notes
 
 - Update vagrant environment to check against Qemu 2.6.
 
-- Activate post migration after having transferred the memory at least once.
-
 - Revamp output formatting to use Hynek's great structlog library.
 
 - Limit a few more commands to specific VM states: stop only when running.
@@ -25,6 +23,11 @@ Release notes
   a Ceph pool default, or a global default. This limits IOPS for all disks
   (individually, no groups, yet) in a VM and maintains this over time.
 
+- Rework Ceph volume unlocking: if a client owns a lock then breaking it
+  will cause an immediate disconnect of the rbd/rados connection to avoid
+  it sending further data updates. This can happen to us if we're setting
+  up the locks on an inmigration and then have to give them up again if the
+  migration fails.
 
 0.7.22 (2016-07-21)
 -------------------

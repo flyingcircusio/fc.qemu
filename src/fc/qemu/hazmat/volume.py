@@ -192,6 +192,7 @@ class Volume(Image):
         self.log = ceph.log.bind(volume=self.fullname)
         self.cmd = lambda cmdline: cmd(cmdline, log=self.log)
         self.snapshots = Snapshots(self)
+        self.locked_by_me = False
 
     @property
     def rbdimage(self):
@@ -225,6 +226,7 @@ class Volume(Image):
         while retry:
             try:
                 self.rbdimage.lock_exclusive(self.ceph.CEPH_LOCK_HOST)
+                self.locked_by_me = True
             except rbd.ImageExists:
                 # This client and cookie already locked this. This is
                 # definitely fine.
@@ -272,7 +274,17 @@ class Volume(Image):
             self.log.debug('already-unlocked')
             return
         client_id, lock_id = locked_by
-        if not force and lock_id != self.ceph.CEPH_LOCK_HOST:
+        if self.locked_by_me:
+            self.rbdimage.unlock(lock_id)
+            self.locked_by_me = False
+            return
+        if lock_id == self.ceph.CEPH_LOCK_HOST:
+            # This host owns this lock but from a different connection. This
+            # means we have to break it.
+            self.rbdimage.break_lock(client_id, lock_id)
+            return
+        # We do not own this lock: need to explicitly ask for breaking.
+        if not force:
             raise rbd.ImageBusy("Can not break lock for {} held by host {}."
                                 .format(self.name, lock_id))
         self.rbdimage.break_lock(client_id, lock_id)

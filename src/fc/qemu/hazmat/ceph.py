@@ -8,7 +8,6 @@ from ..util import cmd, log
 from .volume import Volume
 import hashlib
 import rados
-import rbd
 
 
 class Ceph(object):
@@ -31,6 +30,7 @@ class Ceph(object):
         self.swap = None
         self.tmp = None
         self.volumes = []
+        self.pool = self.cfg['rbd_pool'].encode('ascii')
 
     def __enter__(self):
         # Not sure whether it makes sense that we configure the client ID
@@ -42,9 +42,8 @@ class Ceph(object):
             name='client.' + self.CEPH_CLIENT)
         self.rados.connect()
 
-        pool = self.cfg['rbd_pool'].encode('ascii')
-        self.log.debug('open-pool', pool=pool)
-        self.ioctx = self.rados.open_ioctx(pool)
+        self.log.debug('open-pool', pool=self.pool)
+        self.ioctx = self.rados.open_ioctx(self.pool)
 
         volume_prefix = self.cfg['name'].encode('ascii')
         self.root = Volume(self, volume_prefix + '.root', 'root')
@@ -54,6 +53,7 @@ class Ceph(object):
         self.volumes = [self.root, self.swap, self.tmp]
 
     def __exit__(self, exc_value, exc_type, exc_tb):
+        self.log.debug('close-pool', pool=self.pool)
         self.ioctx.close()
         self.rados.shutdown()
 
@@ -116,14 +116,21 @@ class Ceph(object):
     def unlock(self):
         """Remove all of *our* volume locks.
 
+        We try to agressively get rid of as many locks as we can, but propagate
+        an exception if it occurs.
+
         This leaves other hosts' locks in place.
         """
+        exception = False
         for vol in self.volumes:
             try:
                 vol.unlock()
             except Exception:
                 vol.log.warning('unlock-failed', exc_info=True)
-                pass
+                exception = True
+        if exception:
+            raise RuntimeError(
+                "Failed to unlock all locks. See log for specific exceptions.")
 
     def force_unlock(self):
         for vol in self.volumes:
