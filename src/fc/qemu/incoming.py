@@ -117,7 +117,7 @@ class IncomingServer(object):
         self.finished = 'cancelled'
 
     def destroy(self):
-        """Gets reliably rid of the VM."""
+        """Reliably get rid of the VM."""
         log.info('destroying', machine=self.name)
         self.finished = 'destroyed'
         try:
