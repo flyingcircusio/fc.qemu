@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.8.1 (unreleased)
+0.8.1 (2016-09-11)
 ------------------
 
 - Explicitly add logging to /var/log/fc-qemu.log. Do not filter
