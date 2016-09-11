@@ -5,8 +5,8 @@ Release notes
 0.8.1 (unreleased)
 ------------------
 
-- Nothing changed yet.
-
+- Explicitly add logging to /var/log/fc-qemu.log. Do not filter
+  log output there: we always want all the information we can get.
 
 0.8 (2016-09-08)
 ----------------

@@ -61,7 +61,12 @@ class ConsoleRenderer(object):
     Render `event_dict` nicely aligned, in colors, and ordered with
     specific knowledge about fc.qemu structures.
     """
-    def __init__(self, pad_event=_EVENT_WIDTH):
+
+    LEVELS = ['exception', 'critical', 'error', 'warn', 'warning',
+              'info', 'debug']
+
+    def __init__(self, min_level, pad_event=_EVENT_WIDTH):
+        self.min_level = self.LEVELS.index(min_level.lower())
         if colorama is None:
             raise SystemError(
                 _MISSING.format(
@@ -90,69 +95,76 @@ class ConsoleRenderer(object):
             key=lambda e: len(e)
         ))
 
-    def __call__(self, _, __, event_dict):
+    def __call__(self, logger, method_name, event_dict):
         sio = StringIO()
+        logio = StringIO()
+
+        def write(line):
+            sio.write(line)
+            if RESET_ALL:
+                for SYMB in [RESET_ALL, BRIGHT, DIM, RED, BACKRED,
+                             BLUE, CYAN, MAGENTA, YELLOW, GREEN]:
+                    line = line.replace(SYMB, '')
+            logio.write(line)
 
         ts = event_dict.pop("timestamp", None)
         if ts is not None:
-            sio.write(
+            write(
                 # can be a number if timestamp is UNIXy
-                DIM + str(ts) + RESET_ALL + " "
-            )
+                DIM + str(ts) + RESET_ALL + " ")
         level = event_dict.pop("level", None)
         if level is not None:
-            sio.write(
-                self._level_to_color[level] + level[0].upper() +
-                RESET_ALL + ' '
-            )
+            write(self._level_to_color[level] + level[0].upper() +
+                  RESET_ALL + ' ')
 
         machine = event_dict.pop('machine', '')
         if machine:
-            sio.write(machine + ' ')
+            write(machine + ' ')
 
         event = event_dict.pop("event")
-        sio.write(
-            BRIGHT +
-            _pad(event, self._pad_event) +
-            RESET_ALL + " "
-        )
+        write(BRIGHT +
+              _pad(event, self._pad_event) +
+              RESET_ALL + " ")
 
         logger_name = event_dict.pop("logger", None)
         if logger_name is not None:
-            sio.write(
-                "[" + BLUE + BRIGHT +
-                logger_name + RESET_ALL +
-                "] "
-            )
+            write("[" + BLUE + BRIGHT +
+                  logger_name + RESET_ALL +
+                  "] ")
 
         output = event_dict.pop("output", None)
         args = event_dict.pop("args", None)
         stack = event_dict.pop("stack", None)
         exc = event_dict.pop("exception", None)
-        sio.write(
-            " ".join(
-                CYAN + key + RESET_ALL +
-                "=" +
-                MAGENTA + repr(event_dict[key]) +
-                RESET_ALL
-                for key in sorted(event_dict.keys())
-            )
-        )
+        write(" ".join(CYAN + key + RESET_ALL +
+                       "=" +
+                       MAGENTA + repr(event_dict[key]) +
+                       RESET_ALL
+                       for key in sorted(event_dict.keys())))
 
         if args is not None:
-            sio.write(DIM + '\n{}>\t'.format(machine) +
-                      event + ' ' + ''.join(args) + RESET_ALL)
+            write(DIM + '\n{}>\t'.format(machine) +
+                  event + ' ' + ''.join(args) + RESET_ALL)
         if output is not None:
             output = '{}>\t'.format(machine) + output.replace(
                 '\n', '\n{}>\t'.format(machine))
-            sio.write('\n' + DIM + output + RESET_ALL)
+            write('\n' + DIM + output + RESET_ALL)
 
         if stack is not None:
-            sio.write("\n" + stack)
+            write("\n" + stack)
             if exc is not None:
-                sio.write("\n\n" + "=" * 79 + "\n")
+                write("\n\n" + "=" * 79 + "\n")
         if exc is not None:
-            sio.write("\n" + exc)
+            write("\n" + exc)
+
+        # Log everything to the persistent log.
+        with open('/var/log/fc-qemu.log', 'a') as l:
+            l.write(logio.getvalue() + '\n')
+
+        # Filter according to the -v switch when outputting to the
+        # console.
+        if self.LEVELS.index(method_name.lower()) > self.min_level:
+            raise structlog.DropEvent
 
         return sio.getvalue()
 
@@ -162,27 +174,12 @@ def method_to_level(logger, method_name, event_dict):
     return event_dict
 
 
-class LevelFilter(object):
-
-    LEVELS = ['exception', 'critical', 'error', 'warn', 'warning',
-              'info', 'debug']
-
-    def __init__(self, min_level=None):
-        self.min_level = self.LEVELS.index(min_level.lower())
-
-    def __call__(self, logger, method_name, event_dict):
-        if self.LEVELS.index(method_name.lower()) > self.min_level:
-            raise structlog.DropEvent
-        return event_dict
-
-
 def init_logging(verbose=True):
     structlog.configure(
         processors=[
-            LevelFilter('debug' if verbose else 'info'),
             method_to_level,
             structlog.processors.format_exc_info,
             structlog.processors.TimeStamper(fmt='iso'),
-            ConsoleRenderer()
+            ConsoleRenderer(min_level='debug' if verbose else 'info')
         ],
     )

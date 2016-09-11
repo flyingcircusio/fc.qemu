@@ -136,9 +136,9 @@ def main():
 
     from .agent import Agent, InvalidCommand, VMConfigNotFound
     from .logging import init_logging
+    from .util import log
     try:
         init_logging(args.verbose)
-        from .util import log
         log.debug('load-system-config')
 
         from .sysconfig import sysconfig
