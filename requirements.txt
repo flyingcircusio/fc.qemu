@@ -4,3 +4,4 @@ pytest-cov
 pytest-capturelog
 pytest-cache
 mock>=1.0
+pytest-timeout==0.5

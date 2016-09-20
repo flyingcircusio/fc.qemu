@@ -107,7 +107,10 @@ class Outgoing(object):
         assert not status['running'], status
         assert status['status'] == 'postmigrate', status
         self.log.info('finish-migration')
-        self.target.finish_incoming(self.cookie)
+        try:
+            self.target.finish_incoming(self.cookie)
+        except Exception:
+            self.log.exception('error-finish-remote', exc_info=True)
         self.agent.qemu.destroy()
 
     def rescue(self):

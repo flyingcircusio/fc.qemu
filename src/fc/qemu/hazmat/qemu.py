@@ -79,8 +79,9 @@ class Qemu(object):
             try:
                 qmp.connect()
             except socket.error:
-                self.log.debug(
-                    'connect-failed', subsystem='qemu/qmp', exc_info=True)
+                # We do not log this as this does happen quite regularly and
+                # is usually fine as the VM wasn't started (yet).
+                pass
             else:
                 self.__qmp = qmp
         return self.__qmp

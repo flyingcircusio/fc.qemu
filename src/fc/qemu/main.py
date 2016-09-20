@@ -1,4 +1,5 @@
 import sys
+import os.path
 
 
 def daemonize():
@@ -145,11 +146,15 @@ def main():
         sysconfig.load_system_config()
 
         if vm is None:
-
             # Expecting a class/static method
             agent = Agent
             sys.exit(getattr(agent, func)(**kwargs) or 0)
         else:
+            if '.' in vm:
+                # Our fc.agent calls us with path names. This is kinda stupid
+                # but this was hidden in the Agent class before and now is
+                # a bit more explicit.
+                vm = os.path.basename(vm).split('.')[0]
             agent = Agent(vm)
             with agent:
                 sys.exit(getattr(agent, func)(**kwargs) or 0)

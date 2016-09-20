@@ -5,7 +5,22 @@ Release notes
 0.8.2 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Switch from using multiprocessing to threaded management of multiple consul
+  VM event handlers to reduce Python startup overhead when processing many VMs
+  in a single location. Also remove the sleep time.
+
+- Fix log error in consul snapshot event handling. Improve the test coverage
+  for consul event handling.
+
+- Remove superfluous VM name handling where a VM config file could be
+  specified instead of a VM name. This was causing obfuscation in the code
+  and was barely used anyway.
+
+- Allow using the telnet command even when fc.qemu _thinks_ that the VM
+  is not running. This command is helpful for debugging and blocking it
+  is a useless seatbelt.
+
+- Do not log QMP connection errors as the are extremely common and expected.
 
 
 0.8.1 (2016-09-11)

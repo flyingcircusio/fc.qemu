@@ -6,7 +6,7 @@ import pytest
 def ceph_inst():
     cfg = {'resource_group': 'test',
            'rbd_pool': 'rbd.hdd',
-           'name': 'test00', 'disk': 10}
+           'name': 'simplevm', 'disk': 10}
     ceph = Ceph(cfg)
     ceph.CREATE_VM = 'echo {name}'
     ceph.MKFS_XFS = '-q -f'
