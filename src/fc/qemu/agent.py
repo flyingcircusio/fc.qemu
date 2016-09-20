@@ -12,13 +12,12 @@ import distutils.spawn
 import fcntl
 import json
 import math
-import multiprocessing
 import os
 import os.path as p
 import pkg_resources
 import socket
 import sys
-import time
+import threading
 import yaml
 
 
@@ -44,6 +43,7 @@ class ConsulEventHandler(object):
             log.debug("handle-key", key=event['Key'])
             prefix = event['Key'].split('/')[0]
             if not event['Value']:
+                log.debug("ignore-key", key=event['Key'], reason='empty value')
                 return
             getattr(self, prefix)(event)
         except Exception:
@@ -54,13 +54,10 @@ class ConsulEventHandler(object):
         config['consul-generation'] = event['ModifyIndex']
         vm = config['name']
         if config['parameters']['machine'] != 'virtual':
+            log.debug('ignore-consul-event',
+                      machine=vm, reason='is a physical machine')
             return
-        try:
-            agent = Agent(vm, config)
-        except RuntimeError:
-            log.warning('ignoring-consul-event', consul_event='node',
-                        machine=vm, reason='Failed loading config')
-            return
+        agent = Agent(vm, config)
         log.info('processing-consul-event', consul_event='node', machine=vm)
         with agent:
             agent.save_enc()
@@ -70,17 +67,17 @@ class ConsulEventHandler(object):
         value = json.loads(event['Value'].decode('base64'))
         vm = value['vm']
         snapshot = value['snapshot'].encode('ascii')
-        log = self.log.bind(snapshot=snapshot, machine=vm)
+        log_ = log.bind(snapshot=snapshot, machine=vm)
         try:
             agent = Agent(vm)
         except RuntimeError:
-            log.warning('snapshot-ignore', reason='failed loading config')
+            log_.warning('snapshot-ignore', reason='failed loading config')
             return
         with agent:
             if not agent.belongs_to_this_host():
-                log.debug('snapshot-ignore', reason='foreign host')
+                log_.debug('snapshot-ignore', reason='foreign host')
                 return
-            log.info('snapshot')
+            log_.info('snapshot')
             agent.snapshot(snapshot)
 
 
@@ -150,10 +147,7 @@ class Agent(object):
 
         self.__dict__.update(sysconfig.agent)
 
-        if '.' in name:
-            self.configfile = name
-        else:
-            self.configfile = '/etc/qemu/vm/{}.cfg'.format(name)
+        self.name = name
         if enc is not None:
             self.enc = enc
         else:
@@ -176,6 +170,10 @@ class Agent(object):
                 break
         self.consul = consulate.Consul(token=self.consul_token)
 
+    @property
+    def configfile(self):
+        return '/etc/qemu/vm/{}.cfg'.format(self.name)
+
     def _load_enc(self):
         try:
             with open(self.configfile) as f:
@@ -185,17 +183,18 @@ class Agent(object):
             raise VMConfigNotFound("Could not load {}".format(self.configfile))
 
     @classmethod
-    def handle_consul_event(cls):
-        events = json.load(sys.stdin)
+    def handle_consul_event(cls, input=sys.stdin):
+        events = json.load(input)
         if not events:
             return
         log.info('start-consul-events', count=len(events))
+        threads = []
         for e in events:
-            p = multiprocessing.Process(target=_handle_consul_event, args=(e,))
-            p.start()
-            time.sleep(0.1)
-        for proc in multiprocessing.active_children():
-            proc.join()
+            t = threading.Thread(target=_handle_consul_event, args=(e,))
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
         log.info('finish-consul-events')
 
     def save_enc(self):
@@ -384,7 +383,6 @@ class Agent(object):
             self.log.info('rbd-status', volume=volume.fullname, locker=locker)
         return status
 
-    @running(True)
     def telnet(self):
         """Open telnet connection to the VM monitor."""
         self.log.info('connect-via-telnet')
