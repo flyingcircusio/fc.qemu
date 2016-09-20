@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.8.2 (unreleased)
+0.8.2 (2016-09-20)
 ------------------
 
 - Switch from using multiprocessing to threaded management of multiple consul
