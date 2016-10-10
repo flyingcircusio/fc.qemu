@@ -97,6 +97,9 @@ def running(expected=True):
 
 
 def locked(f):
+    # This is thread-safe *AS LONG* as every thread uses a separate instance
+    # of the agent. Using multiple file descriptors will guarantee that the
+    # lock can only be held once even within a single process.
     def locked(self, *args, **kw):
         if not self._configfile_fd:
             self._configfile_fd = os.open(self.configfile, os.O_RDONLY)
