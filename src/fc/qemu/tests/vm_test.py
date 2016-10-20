@@ -38,8 +38,8 @@ args= event=partprobe machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tm
 args=-q -f -L "tmp" "/dev/rbd/rbd.ssd/simplevm.tmp-part1" event=mkfs.xfs machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 event=mkfs.xfs machine=simplevm output=log stripe unit (4194304 bytes) is too large (maximum is 256KiB)
 log stripe unit adjusted to 32KiB subsystem=ceph volume=rbd.ssd/simplevm.tmp
-event=seed-enc volume=simplevm.tmp
-event=seed-enc machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+event=seed volume=simplevm.tmp
+event=seed machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 args="/dev/rbd/rbd.ssd/simplevm.tmp-part1" "/mnt/rbd/rbd.ssd/simplevm.tmp" event=mount machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 args="/mnt/rbd/rbd.ssd/simplevm.tmp" event=umount machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 args=-c "/etc/ceph/ceph.conf" --id "admin" unmap "/dev/rbd/rbd.ssd/simplevm.tmp" event=rbd machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp

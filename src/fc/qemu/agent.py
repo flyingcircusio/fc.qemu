@@ -1,5 +1,5 @@
 from .hazmat.ceph import Ceph
-from .hazmat.qemu import Qemu
+from .hazmat.qemu import Qemu, detect_current_machine_type
 from .incoming import IncomingServer
 from .outgoing import Outgoing
 from .sysconfig import sysconfig
@@ -133,6 +133,7 @@ class Agent(object):
     this_host = ''
     migration_ctl_address = None
     accelerator = ''
+    machine_type = 'pc-i440fx'
     vhost = False
     ceph_id = 'admin'
     timeout_graceful = 10
@@ -141,6 +142,22 @@ class Agent(object):
         pkg_resources.resource_filename(__name__, 'qemu.vm.cfg.in')
     ]
     consul_token = None
+
+    # The binary generation is used to signal into a VM that the host
+    # environment has changed in a way that requires a _cold_ reboot, thus
+    # asking the VM to shut down cleanly so we can start it again. Change this
+    # introducing a new Qemu machine type, or providing security fixes that
+    # can't be applied by live migration.
+    # The counter should be increased through the platform management as
+    # this may change independently from fc.qemu releases.
+    # If a VM is booted without a generation counter, then we assume that it's
+    # at generation '' and it should perform a reboot at a generation different
+    # from that.
+    # We assume nothing about the generation itself - it's purely a string,
+    # and we suggest a reboot if the current one differs from the booted one.
+    # You could use numbers and count, you can use UUIDs, you can use speaking
+    # names, release numbers, ...
+    binary_generation = ''
 
     _configfile_fd = None
 
@@ -239,6 +256,7 @@ class Agent(object):
                 # But the result of ensure online is not guanteed to be
                 # consistent nor running and running the online disk size
                 # has caused spurious errors previously.
+                self.mark_qemu_binary_generation()
                 self.ensure_online_disk_size()
                 self.ensure_online_disk_throttle()
             else:
@@ -272,6 +290,15 @@ class Agent(object):
             self.inmigrate()
         else:
             self.start()
+
+    def mark_qemu_binary_generation(self):
+        self.log.info('mark-qemu-binary-generation',
+                      generation=self.binary_generation)
+        try:
+            self.qemu.write_file('/run/qemu-binary-generation-current',
+                                 self.binary_generation)
+        except socket.timeout:
+            self.log.exception('mark-qemu-binary-generation')
 
     def ensure_online_disk_size(self):
         """Trigger block resize action for the root disk."""
@@ -323,7 +350,7 @@ class Agent(object):
     @running(False)
     def start(self):
         self.generate_config()
-        self.ceph.start(self.enc)
+        self.ceph.start(self.enc, self.binary_generation)
         self.qemu.start()
         self.ensure_online_disk_throttle()
         self.consul_register()
@@ -554,6 +581,8 @@ class Agent(object):
             tpl = f.read()
         accelerator = (' accel = "{}"'.format(self.accelerator)
                        if self.accelerator else '')
+        machine_type = detect_current_machine_type(self.machine_type)
         self.qemu.config = tpl.format(
             accelerator=accelerator,
+            machine_type=machine_type,
             network=''.join(netconfig), **self.cfg)

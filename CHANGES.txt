@@ -5,7 +5,18 @@ Release notes
 0.8.3 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Lower the guest agent timeout to help the tests complete faster and also
+  stay responsive if the guest shouldn't have an agent available either
+  yet, or currently, or generally.
+
+- Provide a Qemu config template variable that will determine the most current
+  Qemu machine type, given a prefix to filter for.
+
+- Provide a "binary generation counter" that is a) injected a boot
+  (to /tmp/fc-data/qemu-binary-generation-booted) and b) updated during every
+  "ensure" command (to /run/qemu-binary-generation-current). The guest should
+  use a difference between those files to schedule a cold reboot (i.e. a
+  shutdown) to restart with a fresh Qemu binary.
 
 
 0.8.2 (2016-09-20)

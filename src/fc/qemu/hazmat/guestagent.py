@@ -1,5 +1,4 @@
 import json
-import logging
 import random
 import socket
 from ..util import log
@@ -12,7 +11,7 @@ class ClientError(RuntimeError):
 class GuestAgent(object):
     """Wraps qemu guest agent wire protocol."""
 
-    def __init__(self, machine, timeout=5):
+    def __init__(self, machine, timeout=1):
         self.machine = machine
         self.file = None
         self.client = None
