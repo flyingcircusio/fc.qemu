@@ -20,6 +20,20 @@ class InvalidMigrationStatus(Exception):
     pass
 
 
+def detect_current_machine_type(prefix):
+    """Given a machine type prefix, e.g. 'pc-i440fx-' return the newest
+    current machine on the available Qemu system.
+
+    Newest in this case means the first item in the list as given by Qemu.
+    """
+    result = subprocess.check_output(
+        ['qemu-system-x86_64', '-machine', 'help'])
+    for line in result.splitlines():
+        if line.startswith(prefix):
+            return line.split()[0]
+    raise KeyError("No machine type found for prefix `{}`".format(prefix))
+
+
 class Qemu(object):
 
     executable = 'qemu-system-x86_64'
@@ -65,7 +79,7 @@ class Qemu(object):
         self.migration_address = ':'.join(a)
         self.name = self.cfg['name']
         self.monitor_port = self.cfg['id'] + self.MONITOR_OFFSET
-        self.guestagent = GuestAgent(self.name, timeout=30)
+        self.guestagent = GuestAgent(self.name, timeout=1)
 
         self.log = log.bind(machine=self.name, subsystem='qemu')
 
@@ -157,8 +171,19 @@ class Qemu(object):
             try:
                 guest.cmd('guest-fsfreeze-thaw')
             except ClientError:
-                self.log.debug('guset-fsfreeze-freeze-thaw', exc_info=True)
+                self.log.debug('guest-fsfreeze-freeze-thaw', exc_info=True)
             assert guest.cmd('guest-fsfreeze-status') == 'thawed'
+
+    def write_file(self, path, content):
+        with self.guestagent as guest:
+            try:
+                handle = guest.cmd('guest-file-open', path=path, mode='w')
+                guest.cmd('guest-file-write',
+                          handle=handle,
+                          **{'buf-b64': content.encode('base64')})
+                guest.cmd('guest-file-close', handle=handle)
+            except ClientError:
+                self.log.error('guest-write-file', exc_info=True)
 
     def inmigrate(self):
         self._start(['-incoming {}'.format(self.migration_address)])

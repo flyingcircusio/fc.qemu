@@ -311,8 +311,8 @@ class Volume(Image):
         self.cmd(self.MKFS_CMD[fstype].format(
                  options=options, device=self.part1dev, label=self.label))
 
-    def seed_enc(self, data):
-        self.log.info('seed-enc')
+    def seed(self, enc, generation):
+        self.log.info('seed')
         with self.mounted() as target:
             os.chmod(target, 0o1777)
             fc_data = p.join(target, 'fc-data')
@@ -320,5 +320,9 @@ class Volume(Image):
             os.chmod(fc_data, 0o750)
             with open(p.join(fc_data, 'enc.json'), 'w') as f:
                 os.fchmod(f.fileno(), 0o640)
-                json.dump(data, f)
+                json.dump(enc, f)
                 f.write('\n')
+            generation_marker = p.join(
+                fc_data, 'qemu-binary-generation-booted')
+            with open(generation_marker, 'w') as f:
+                f.write(str(generation))

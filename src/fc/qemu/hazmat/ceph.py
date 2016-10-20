@@ -57,9 +57,9 @@ class Ceph(object):
         self.ioctx.close()
         self.rados.shutdown()
 
-    def start(self, enc_data=None):
+    def start(self, enc_data, generation):
         self.ensure_root_volume()
-        self.ensure_tmp_volume(enc_data)
+        self.ensure_tmp_volume(enc_data, generation)
         self.ensure_swap_volume()
 
     def stop(self):
@@ -80,15 +80,15 @@ class Ceph(object):
         with self.swap.mapped():
             self.swap.mkswap()
 
-    def ensure_tmp_volume(self, enc_data):
+    def ensure_tmp_volume(self, enc_data, generation):
         self.log.info('ensure-tmp')
         self.tmp.ensure_presence(self.cfg['tmp_size'])
         self.tmp.lock()
         self.tmp.ensure_size(self.cfg['tmp_size'])
         with self.tmp.mapped():
             self.tmp.mkfs()
-            log.debug('seed-enc', volume=self.tmp.name)
-            self.tmp.seed_enc(enc_data)
+            log.debug('seed', volume=self.tmp.name)
+            self.tmp.seed(enc_data, generation)
 
     def locks(self):
         for vol in self.volumes:
