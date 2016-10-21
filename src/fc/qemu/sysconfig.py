@@ -54,7 +54,8 @@ class SysConfig(object):
         self.agent['consul_token'] = self.get('consul', 'access-token')
         self.agent['migration_ctl_address'] = self.get(
             'qemu', 'migration-ctl-address')
-        self.agent['binary-generation'] = self.get('qemu', 'binary-generation')
+        self.agent['binary_generation'] = self.cp.getint(
+            'qemu', 'binary-generation')
         self.agent['timeout_graceful'] = self.cp.getint(
             'qemu', 'timeout-graceful')
         self.agent['this_host'] = self.get('ceph', 'lock_host')
