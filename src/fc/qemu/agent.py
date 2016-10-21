@@ -296,7 +296,7 @@ class Agent(object):
                       generation=self.binary_generation)
         try:
             self.qemu.write_file('/run/qemu-binary-generation-current',
-                                 self.binary_generation)
+                                 str(self.binary_generation))
         except socket.timeout:
             self.log.exception('mark-qemu-binary-generation')
 
