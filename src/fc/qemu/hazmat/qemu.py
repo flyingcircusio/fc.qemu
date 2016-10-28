@@ -233,6 +233,12 @@ class Qemu(object):
                 raise InvalidMigrationStatus(info)
             timeout.cutoff += 30
 
+    def process_exists(self):
+        proc = self.proc()
+        if proc is None:
+            return False
+        return proc.is_running()
+
     def is_running(self):
         # This method must be very reliable. It is perfectly OK to error
         # out in the case of inconsistencies. But a "true" must mean:
@@ -247,11 +253,7 @@ class Qemu(object):
             # and the process already there but QMP not, or vice versa.
 
             # a) is there a process?
-            proc = self.proc()
-            if proc is None:
-                expected_process_exists = False
-            else:
-                expected_process_exists = proc.is_running()
+            expected_process_exists = self.process_exists()
 
             # b) is the monitor port around reliably? Let's assume it does.
             qmp_available = self.qmp

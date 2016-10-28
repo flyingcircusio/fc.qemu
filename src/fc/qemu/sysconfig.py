@@ -48,18 +48,25 @@ class SysConfig(object):
         for pool, iops in self.cp.items('qemu-throttle-by-pool'):
             tbp[pool] = int(iops)
 
+        # Consul
+        self.agent['consul_token'] = self.get('consul', 'access-token')
+        self.agent['consul_event_threads'] = int(self.get(
+            'consul', 'event-threads', 10))
+
+        # Qemu
         self.agent['accelerator'] = self.get('qemu', 'accelerator')
         self.agent['machine_type'] = self.get('qemu', 'machine-type')
-        self.agent['ceph_id'] = self.get('ceph', 'client-id')
-        self.agent['consul_token'] = self.get('consul', 'access-token')
         self.agent['migration_ctl_address'] = self.get(
             'qemu', 'migration-ctl-address')
-        self.agent['binary_generation'] = self.cp.getint(
-            'qemu', 'binary-generation')
+        self.agent['binary_generation'] = int(self.cp.get(
+            'qemu', 'binary-generation', 0))
         self.agent['timeout_graceful'] = self.cp.getint(
             'qemu', 'timeout-graceful')
-        self.agent['this_host'] = self.get('ceph', 'lock_host')
         self.agent['vhost'] = self.cp.getboolean('qemu', 'vhost')
+
+        # Ceph
+        self.agent['this_host'] = self.get('ceph', 'lock_host')
+        self.agent['ceph_id'] = self.get('ceph', 'client-id')
 
         self.ceph['CEPH_CLIENT'] = self.get('ceph', 'client-id', 'admin')
         self.ceph['CEPH_CLUSTER'] = self.get('ceph', 'cluster', 'ceph')

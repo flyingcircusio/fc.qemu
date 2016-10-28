@@ -5,7 +5,23 @@ Release notes
 0.8.4 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Limit the number of parallel processed consul events to avoid
+  overloading the host. Can be configured in the fc-qemu config file through::
+
+  [consul]
+  event-threads = <INT>
+
+  The default is 10 threads.
+
+- Lower the overhead of processing a consul config change event: do not
+  activate Ceph and Qemu connections and do not perform scrubbing (ensure)
+  when the config hasn't changed. Ceph and Qemu connections aren't needed in
+  that case and scrubbing is expected to be performed in a separate task from
+  a scheduler, not from an event handler that is supposed to only respond to
+  changes.
+
+- Provide a default for the binary-generation counter to allow smooth
+  upgrades from previous versions.
 
 
 0.8.3 (2016-10-23)

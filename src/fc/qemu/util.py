@@ -28,6 +28,7 @@ def rewrite(filename):
             delete=False) as tf:
         if os.path.exists(filename):
             os.chmod(tf.name, os.stat(filename).st_mode & 0o7777)
+        tf.has_changed = False
         yield tf
         if not os.path.exists(tf.name):
             return
@@ -37,6 +38,7 @@ def rewrite(filename):
         os.unlink(filename_tmp)
     else:
         os.rename(filename_tmp, filename)
+        tf.has_changed = True
 
 
 def parse_address(addr):

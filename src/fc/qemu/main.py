@@ -64,6 +64,10 @@ def main():
                    help="Run command in background.")
 
     sub = a.add_subparsers(title='subcommands')
+
+    p = sub.add_parser('ls', help='List VMs on this host.')
+    p.set_defaults(func='ls')
+
     p = sub.add_parser('status', help='Get the status of a VM.')
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.set_defaults(func='status')

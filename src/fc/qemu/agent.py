@@ -5,11 +5,13 @@ from .outgoing import Outgoing
 from .sysconfig import sysconfig
 from .timeout import TimeOut
 from .util import rewrite, locate_live_service, MiB, GiB, log
+from multiprocessing.pool import ThreadPool
 import consulate
 import contextlib
 import copy
 import distutils.spawn
 import fcntl
+import glob
 import json
 import math
 import os
@@ -17,7 +19,6 @@ import os.path as p
 import pkg_resources
 import socket
 import sys
-import threading
 import yaml
 
 
@@ -59,9 +60,12 @@ class ConsulEventHandler(object):
             return
         agent = Agent(vm, config)
         log.info('processing-consul-event', consul_event='node', machine=vm)
-        with agent:
-            agent.save_enc()
-            agent.ensure()
+        if agent.save_enc():
+            with agent:
+                agent.ensure()
+        else:
+            log.debug('ignore-consul-event',
+                      machine=vm, reason='config is unchanged')
 
     def snapshot(self, event):
         value = json.loads(event['Value'].decode('base64'))
@@ -208,21 +212,43 @@ class Agent(object):
         if not events:
             return
         log.info('start-consul-events', count=len(events))
-        threads = []
-        for e in events:
-            t = threading.Thread(target=_handle_consul_event, args=(e,))
-            t.start()
-            threads.append(t)
-        for t in threads:
-            t.join()
+        pool = ThreadPool(sysconfig.agent.get('consul_event_threads', 10))
+        pool.apply_async(_handle_consul_event, events)
+        pool.close()
+        pool.join()
         log.info('finish-consul-events')
 
+    @classmethod
+    def ls(cls):
+        """List all VMs that this host knows about.
+
+        This means specifically that we have status (PID) files for the
+        VM in the expected places.
+
+        Gives a quick status for each VM.
+        """
+        for candidate in sorted(glob.glob('/run/qemu.*.pid')):
+            name = candidate.replace('/run/qemu.', '')
+            name = name.replace('.pid', '')
+            try:
+                agent = Agent(name)
+                with agent:
+                    running = agent.qemu.process_exists()
+                    log.info('vm-status', name=name, online=running)
+            except:
+                log.exception('query-vm-status', name=name, exc_info=True)
+
     def save_enc(self):
+        """Save the current config on the agent into the local persistent file.
+
+        This method is safe to call outside of the agent's context manager.
+        """
         if not p.isdir(p.dirname(self.configfile)):
             os.makedirs(p.dirname(self.configfile))
         with rewrite(self.configfile) as f:
             yaml.safe_dump(self.enc, f)
         os.chmod(self.configfile, 0o644)
+        return f.has_changed
 
     def __enter__(self):
         for c in self.contexts:
@@ -405,6 +431,10 @@ class Agent(object):
         if self.qemu.is_running():
             status = 0
             self.log.info('vm-status', result='online')
+            for device in self.qemu.block_info().values():
+                self.log.info('disk-throttle',
+                              device=device['device'],
+                              iops=device['inserted']['iops'])
         else:
             status = 1
             self.log.info('vm-status', result='offline')
