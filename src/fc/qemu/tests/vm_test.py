@@ -67,6 +67,10 @@ event=register-consul machine=simplevm""")
     assert get_log() == Ellipsis("""\
 arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=vm-status machine=simplevm result=online
+arguments={} event=query-block id=None machine=simplevm subsystem=qemu/qmp
+device=virtio0 event=disk-throttle iops=3000 machine=simplevm
+device=virtio1 event=disk-throttle iops=3000 machine=simplevm
+device=virtio2 event=disk-throttle iops=3000 machine=simplevm
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp""")
@@ -98,6 +102,10 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     assert get_log() == Ellipsis("""\
 arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=vm-status machine=simplevm result=online
+arguments={} event=query-block id=None machine=simplevm subsystem=qemu/qmp
+device=virtio0 event=disk-throttle iops=3000 machine=simplevm
+device=virtio1 event=disk-throttle iops=3000 machine=simplevm
+device=virtio2 event=disk-throttle iops=3000 machine=simplevm
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp""")
@@ -149,6 +157,10 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp""")
 action=start event=ensure-state found=offline machine=simplevm wanted=online
 ...
 event=vm-status machine=simplevm result=online
+arguments={} event=query-block id=None machine=simplevm subsystem=qemu/qmp
+device=virtio0 event=disk-throttle iops=3000 machine=simplevm
+device=virtio1 event=disk-throttle iops=3000 machine=simplevm
+device=virtio2 event=disk-throttle iops=3000 machine=simplevm
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp""")
@@ -172,6 +184,10 @@ event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/s
 action=start event=ensure-state found=offline machine=simplevm wanted=online
 ...
 event=vm-status machine=simplevm result=online
+arguments={} event=query-block id=None machine=simplevm subsystem=qemu/qmp
+device=virtio0 event=disk-throttle iops=3000 machine=simplevm
+device=virtio1 event=disk-throttle iops=3000 machine=simplevm
+device=virtio2 event=disk-throttle iops=3000 machine=simplevm
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp""")
