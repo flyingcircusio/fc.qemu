@@ -5,7 +5,9 @@ Release notes
 0.8.5 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Fixed a major bug with event processing: the consul event processor was
+  using the multiprocessing.pool API incorrectly. This wasn't caught by the
+  tests and resulted in silent "no ops" of all event processing mechanisms.
 
 
 0.8.4 (2016-10-31)

@@ -255,3 +255,59 @@ event=open-pool machine=simplevm pool=rbd.ssd subsystem=ceph
 event=snapshot-ignore machine=simplevm reason=foreign host snapshot=backy-1234
 event=close-pool machine=simplevm pool=rbd.ssd subsystem=ceph
 event=finish-consul-events"""
+
+
+def test_multiple_events():
+    test22 = json.dumps(
+        {u'classes': [u'role::appserver',
+                      u'role::backupclient',
+                      u'role::generic',
+                      u'role::postgresql90',
+                      u'role::pspdf',
+                      u'role::webproxy'],
+         u'name': u'test22',
+         u'parameters': {u'ceph_id': u'admin',
+                         u'cores': 1,
+                         u'directory_password': u'1jmGYd3dddyjpFlLqg63RHie',
+                         u'directory_ring': 1,
+                         u'disk': 15,
+                         u'environment': u'staging',
+                         u'id': 4097,
+                         u'interfaces': {},
+                         u'kvm_host': u'host1',
+                         u'location': u'whq',
+                         u'machine': u'physical',
+                         u'memory': 512,
+                         u'name': u'test22',
+                         u'online': False,
+                         u'production': False,
+                         u'profile': u'generic',
+                         u'rbd_pool': u'rbd.ssd',
+                         u'resource_group': u'test',
+                         u'resource_group_parent': u'',
+                         u'reverses': {},
+                         u'service_description': u'asdf',
+                         u'servicing': True,
+                         u'swap_size': 1073741824,
+                         u'timezone': u'Europe/Berlin',
+                         u'tmp_size': 5368709120}}).encode('base64')
+    test22 = test22.replace('\n', '')
+
+    stdin = StringIO(
+        '[{{"ModifyIndex": 123, "Value": "{0}", "Key": "node/test22"}},'
+        '{{"ModifyIndex": 123, "Value": "{0}", "Key": "node/test22"}},'
+        '{{"ModifyIndex": 123, "Value": "{0}", "Key": "node/test22"}},'
+        '{{"ModifyIndex": 123, "Value": "{0}", "Key": "node/test22"}}]'
+        .format(test22))
+    Agent.handle_consul_event(stdin)
+    assert util.log_data == [
+        'count=4 event=start-consul-events',
+        'event=handle-key key=node/test22',
+        'event=ignore-consul-event machine=test22 reason=is a physical machine',
+        'event=handle-key key=node/test22',
+        'event=ignore-consul-event machine=test22 reason=is a physical machine',
+        'event=handle-key key=node/test22',
+        'event=ignore-consul-event machine=test22 reason=is a physical machine',
+        'event=handle-key key=node/test22',
+        'event=ignore-consul-event machine=test22 reason=is a physical machine',
+        'event=finish-consul-events']
