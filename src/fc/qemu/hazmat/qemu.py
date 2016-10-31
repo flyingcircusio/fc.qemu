@@ -265,7 +265,7 @@ class Qemu(object):
             if qmp_available:
                 try:
                     status = self.qmp.command('query-status')
-                except QMPConnectError:
+                except (QMPConnectError, socket.error):
                     # Force a reconnect in the next iteration.
                     self.__qmp.close()
                     self.__qmp = None

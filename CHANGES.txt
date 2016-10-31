@@ -5,6 +5,9 @@ Release notes
 0.8.4 (unreleased)
 ------------------
 
+- Waiting for Qemu to shutdown gracefully was not expecting a socket error,
+  which caused restarts to fail (cleanly). #24434
+
 - Limit the number of parallel processed consul events to avoid
   overloading the host. Can be configured in the fc-qemu config file through::
 
