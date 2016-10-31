@@ -213,7 +213,8 @@ class Agent(object):
             return
         log.info('start-consul-events', count=len(events))
         pool = ThreadPool(sysconfig.agent.get('consul_event_threads', 10))
-        pool.apply_async(_handle_consul_event, events)
+        for event in events:
+            pool.apply_async(_handle_consul_event, (event,))
         pool.close()
         pool.join()
         log.info('finish-consul-events')
