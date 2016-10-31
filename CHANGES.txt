@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.8.4 (unreleased)
+0.8.4 (2016-10-31)
 ------------------
 
 - Waiting for Qemu to shutdown gracefully was not expecting a socket error,
