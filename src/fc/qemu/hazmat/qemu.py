@@ -148,11 +148,15 @@ class Qemu(object):
             self.log.debug(self.executable,
                            local_args=self.local_args,
                            additional_args=additional_args)
-            subprocess.check_call(cmd, shell=True, close_fds=True)
-        except subprocess.CalledProcessError:
+            p = subprocess.Popen(cmd, shell=True, close_fds=True,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = p.communicate()
+            if p.returncode != 0:
+                raise QemuNotRunning(p.returncode, stdout, stderr)
+        except QemuNotRunning:
             # Did not start. Not running.
-            self.log.exception('qemu-failed', exc_info=True)
-            raise QemuNotRunning()
+            self.log.exception('qemu-failed')
+            raise
 
     def start(self):
         self._start()
