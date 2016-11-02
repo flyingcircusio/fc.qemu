@@ -11,7 +11,7 @@ class ClientError(RuntimeError):
 class GuestAgent(object):
     """Wraps qemu guest agent wire protocol."""
 
-    def __init__(self, machine, timeout=1):
+    def __init__(self, machine, timeout=3):
         self.machine = machine
         self.file = None
         self.client = None
