@@ -291,6 +291,12 @@ class Agent(object):
         else:
             self.log.warning('inconsistent-state')
             self.qemu.destroy()
+            if not self.belongs_to_this_host():
+                self.log.info('cleanup-ceph-runfiles-consul',
+                              kvm_host=self.cfg['kvm_host'])
+                self.ceph.stop()
+                self.qemu.clean_run_files()
+                self.consul_deregister()
 
     def ensure_offline(self):
         if not self.qemu.is_running():
@@ -323,9 +329,9 @@ class Agent(object):
                       generation=self.binary_generation)
         try:
             self.qemu.write_file('/run/qemu-binary-generation-current',
-                                 str(self.binary_generation))
+                                 str(self.binary_generation) + '\n')
         except socket.timeout:
-            self.log.exception('mark-qemu-binary-generation')
+            self.log.exception('mark-qemu-binary-generation', exc_info=True)
 
     def ensure_online_disk_size(self):
         """Trigger block resize action for the root disk."""
@@ -379,7 +385,6 @@ class Agent(object):
         self.generate_config()
         self.ceph.start(self.enc, self.binary_generation)
         self.qemu.start()
-        self.ensure_online_disk_throttle()
         self.consul_register()
         # We exit here without releasing the ceph lock in error cases
         # because the start may have failed because of an already running
@@ -610,7 +615,7 @@ class Agent(object):
 
         with open(self.vm_config_template) as f:
             tpl = f.read()
-        accelerator = (' accel = "{}"'.format(self.accelerator)
+        accelerator = ('  accel = "{}"'.format(self.accelerator)
                        if self.accelerator else '')
         machine_type = detect_current_machine_type(self.machine_type)
         self.qemu.config = tpl.format(
