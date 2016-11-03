@@ -5,7 +5,7 @@ represents an RBD volume that is not a snapshot. Image is an abstract
 base class for both volumes and snapshots.
 """
 
-from ..util import remove_empty_dirs, cmd, log
+from ..util import remove_empty_dirs, cmd
 import contextlib
 import json
 import os
@@ -268,26 +268,26 @@ class Volume(Image):
         return client_id, lock_id
 
     def unlock(self, force=False):
-        self.log.info('unlock')
         locked_by = self.lock_status()
         if not locked_by:
             self.log.debug('already-unlocked')
             return
         client_id, lock_id = locked_by
         if self.locked_by_me:
+            self.log.info('unlock')
             self.rbdimage.unlock(lock_id)
             self.locked_by_me = False
             return
         if lock_id == self.ceph.CEPH_LOCK_HOST:
             # This host owns this lock but from a different connection. This
             # means we have to break it.
+            self.log.info('unlock')
             self.rbdimage.break_lock(client_id, lock_id)
             return
         # We do not own this lock: need to explicitly ask for breaking.
-        if not force:
-            raise rbd.ImageBusy("Can not break lock for {} held by host {}."
-                                .format(self.name, lock_id))
-        self.rbdimage.break_lock(client_id, lock_id)
+        if force:
+            self.log.info('break-lock')
+            self.rbdimage.break_lock(client_id, lock_id)
 
     def mkswap(self):
         """Creates a swap partition. Requires the volume to be mappped."""
