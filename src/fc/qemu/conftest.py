@@ -64,6 +64,7 @@ def vm(clean_environment):
     shutil.copy(fixtures + '/simplevm.yaml', '/etc/qemu/vm/simplevm.cfg')
     vm = Agent('simplevm')
     vm.timeout_graceful = 1
+    vm.qemu.guestagent.timeout = .1
     vm.__enter__()
     for snapshot in vm.ceph.root.snapshots:
         snapshot.remove()

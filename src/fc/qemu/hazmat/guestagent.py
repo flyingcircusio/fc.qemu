@@ -11,11 +11,12 @@ class ClientError(RuntimeError):
 class GuestAgent(object):
     """Wraps qemu guest agent wire protocol."""
 
-    def __init__(self, machine, timeout=3):
+    def __init__(self, machine, timeout):
         self.machine = machine
+        self.timeout = timeout
+        self.log = log.bind(machine=machine)
         self.file = None
         self.client = None
-        self.timeout = timeout
 
     def read(self):
         """Reads single response from the GA and returns the result.
@@ -29,6 +30,7 @@ class GuestAgent(object):
 
     def cmd(self, cmd, **args):
         """Issues GA command and returns the result."""
+        self.log.debug('ga-send', cmd=cmd, args=str(args))
         self.client.send(json.dumps({"execute": cmd, "arguments": args}))
         return self.read()
 
@@ -40,7 +42,7 @@ class GuestAgent(object):
         while n < 3:
             if result == sync_id:
                 return
-            log.error('incorrect-sync-id', expected=sync_id, got=result)
+            self.log.error('incorrect-sync-id', expected=sync_id, got=result)
             n += 1
             result = self.read()
         raise ClientError('Unable to sync with guest agent after {} tries.'.
@@ -48,6 +50,7 @@ class GuestAgent(object):
 
     def __enter__(self):
         self.client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.log.debug('set-socket-timeout', timeout=self.timeout)
         self.client.settimeout(self.timeout)
         self.client.connect('/run/qemu.{}.gqa.sock'.format(self.machine))
         self.file = self.client.makefile()

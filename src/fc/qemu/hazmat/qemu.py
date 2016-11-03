@@ -46,6 +46,7 @@ class Qemu(object):
     require_kvm = True
     migration_address = None
     max_downtime = 1.0
+    guestagent_timeout = 3.0
 
     # The non-hosts-specific config configuration of this Qemu instance.
     args = ()
@@ -79,7 +80,8 @@ class Qemu(object):
         self.migration_address = ':'.join(a)
         self.name = self.cfg['name']
         self.monitor_port = self.cfg['id'] + self.MONITOR_OFFSET
-        self.guestagent = GuestAgent(self.name, timeout=1)
+        self.guestagent = GuestAgent(
+            self.name, timeout=self.guestagent_timeout)
 
         self.log = log.bind(machine=self.name, subsystem='qemu')
 
@@ -289,8 +291,8 @@ class Qemu(object):
         # result. :/
         raise RuntimeError(
             'Can not determine whether Qemu is running. '
-            'Process exists: {} QMP socket reliable: {} '
-            'Status is running: {} Status detail: {}'.format(
+            'Process exists: {}, QMP socket reliable: {}, '
+            'Status is running: {}, Status detail: {}'.format(
                 expected_process_exists, qmp_available, monitor_says_running,
                 status))
 

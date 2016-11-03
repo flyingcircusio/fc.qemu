@@ -1,3 +1,4 @@
+from .exc import InvalidCommand, VMConfigNotFound
 from .hazmat.ceph import Ceph
 from .hazmat.qemu import Qemu, detect_current_machine_type
 from .incoming import IncomingServer
@@ -17,17 +18,10 @@ import math
 import os
 import os.path as p
 import pkg_resources
+import requests
 import socket
 import sys
 import yaml
-
-
-class InvalidCommand(RuntimeError):
-    pass
-
-
-class VMConfigNotFound(RuntimeError):
-    pass
 
 
 def _handle_consul_event(event):
@@ -267,15 +261,19 @@ class Agent(object):
 
     @locked
     def ensure(self):
+        starting = False
         if not self.cfg['online'] or not self.cfg['kvm_host']:
             self.ensure_offline()
         elif not self.belongs_to_this_host():
             if self.qemu.is_running():
                 self.outmigrate()
             else:
-                pass
+                self.ceph.stop()
+                self.consul_deregister()
+                self.cleanup()
         else:
             self.ensure_online()
+            starting = True
 
         if self.state_is_consistent():
             if self.qemu.is_running():
@@ -283,20 +281,16 @@ class Agent(object):
                 # But the result of ensure online is not guanteed to be
                 # consistent nor running and running the online disk size
                 # has caused spurious errors previously.
-                self.mark_qemu_binary_generation()
                 self.ensure_online_disk_size()
                 self.ensure_online_disk_throttle()
+                if not starting:
+                    # guest agent isn't usually up yet
+                    self.mark_qemu_binary_generation()
             else:
-                self.qemu.clean_run_files()
+                self.cleanup()
         else:
             self.log.warning('inconsistent-state')
             self.qemu.destroy()
-            if not self.belongs_to_this_host():
-                self.log.info('cleanup-ceph-runfiles-consul',
-                              kvm_host=self.cfg['kvm_host'])
-                self.ceph.stop()
-                self.qemu.clean_run_files()
-                self.consul_deregister()
 
     def ensure_offline(self):
         if not self.qemu.is_running():
@@ -323,6 +317,12 @@ class Agent(object):
             self.inmigrate()
         else:
             self.start()
+
+    def cleanup(self):
+        """Removes various run and tmp files."""
+        self.qemu.clean_run_files()
+        for tmp in glob.glob(self.configfile + '?*'):
+            os.unlink(tmp)
 
     def mark_qemu_binary_generation(self):
         self.log.info('mark-qemu-binary-generation',
@@ -364,11 +364,16 @@ class Agent(object):
                               target_iops=target, current_iops=current,
                               action='none')
 
+    @property
+    def svc_name(self):
+        """Consul service name."""
+        return 'qemu-{}'.format(self.name)
+
     def consul_register(self):
         """Register running VM with Consul."""
-        self.log.debug('register-consul')
+        self.log.debug('consul-register')
         self.consul.agent.service.register(
-            'qemu-{}'.format(self.name),
+            self.svc_name,
             address=self.this_host,
             interval='5s',
             check=('test -e /proc/$(< /run/qemu.{}.pid )/mem || exit 2'.
@@ -376,8 +381,19 @@ class Agent(object):
 
     def consul_deregister(self):
         """De-register non-running VM with Consul."""
-        self.log.info('deregister-consul')
-        self.consul.agent.service.deregister('qemu-{}'.format(self.name))
+        try:
+            svc = self.consul.agent.services()[0][self.svc_name]
+        except (KeyError, IndexError):
+            return
+        if not svc['Address'] == self.this_host:
+            return
+        try:
+            self.log.info('consul-deregister')
+            self.consul.agent.service.deregister('qemu-{}'.format(self.name))
+        except requests.exceptions.ConnectionError:
+            pass
+        except Exception:
+            self.log.exception('consul-deregister-failed', exc_info=True)
 
     @locked
     @running(False)
@@ -386,6 +402,7 @@ class Agent(object):
         self.ceph.start(self.enc, self.binary_generation)
         self.qemu.start()
         self.consul_register()
+        self.ensure_online_disk_throttle()
         # We exit here without releasing the ceph lock in error cases
         # because the start may have failed because of an already running
         # process. Removing the lock in that case is dangerous. OTOH leaving
@@ -469,8 +486,8 @@ class Agent(object):
             if not self.qemu.is_running():
                 self.log.info('vm-offline')
                 self.ceph.stop()
-                self.qemu.clean_run_files()
                 self.consul_deregister()
+                self.cleanup()
                 self.log.info('graceful-shutdown-completed')
                 break
         else:
@@ -493,8 +510,8 @@ class Agent(object):
             if not self.qemu.is_running():
                 self.log.info('killed-vm')
                 self.ceph.stop()
-                self.qemu.clean_run_files()
                 self.consul_deregister()
+                self.cleanup()
                 break
         else:
             self.log.warning('kill-vm-failed', note='Check lock consistency.')
