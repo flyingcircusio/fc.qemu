@@ -325,4 +325,4 @@ class Volume(Image):
             generation_marker = p.join(
                 fc_data, 'qemu-binary-generation-booted')
             with open(generation_marker, 'w') as f:
-                f.write(str(generation))
+                f.write(str(generation) + '\n')

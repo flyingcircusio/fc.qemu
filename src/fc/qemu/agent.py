@@ -148,14 +148,7 @@ class Agent(object):
     # can't be applied by live migration.
     # The counter should be increased through the platform management as
     # this may change independently from fc.qemu releases.
-    # If a VM is booted without a generation counter, then we assume that it's
-    # at generation '' and it should perform a reboot at a generation different
-    # from that.
-    # We assume nothing about the generation itself - it's purely a string,
-    # and we suggest a reboot if the current one differs from the booted one.
-    # You could use numbers and count, you can use UUIDs, you can use speaking
-    # names, release numbers, ...
-    binary_generation = ''
+    binary_generation = 0
 
     _configfile_fd = None
 
@@ -261,7 +254,7 @@ class Agent(object):
 
     @locked
     def ensure(self):
-        starting = False
+        booting = False
         if not self.cfg['online'] or not self.cfg['kvm_host']:
             self.ensure_offline()
         elif not self.belongs_to_this_host():
@@ -272,8 +265,7 @@ class Agent(object):
                 self.consul_deregister()
                 self.cleanup()
         else:
-            self.ensure_online()
-            starting = True
+            booting = self.ensure_online()
 
         if self.state_is_consistent():
             if self.qemu.is_running():
@@ -283,8 +275,7 @@ class Agent(object):
                 # has caused spurious errors previously.
                 self.ensure_online_disk_size()
                 self.ensure_online_disk_throttle()
-                if not starting:
-                    # guest agent isn't usually up yet
+                if not booting:  # guest agent usually isn't up yet
                     self.mark_qemu_binary_generation()
             else:
                 self.cleanup()
@@ -302,12 +293,17 @@ class Agent(object):
         self.stop()
 
     def ensure_online(self):
+        """Ensures that a VM is running here.
+
+        Triggers in-migation or starts a VM if necessary. Returns True
+        if the VM is currently booting (i.e., after a cold start).
+        """
         if self.qemu.is_running():
             self.log.info('ensure-state', wanted='online', found='online',
                           action='')
             # re-register in case services got lost during Consul restart
             self.consul_register()
-            return
+            return False
         self.log.info('ensure-state', wanted='online', found='offline',
                       action='start')
         existing = locate_live_service(self.consul, 'qemu-' + self.name)
@@ -315,8 +311,10 @@ class Agent(object):
             self.log.info('check-migration', action='inmigration',
                           remote=existing['Address'])
             self.inmigrate()
+            return False
         else:
             self.start()
+            return True
 
     def cleanup(self):
         """Removes various run and tmp files."""
@@ -382,12 +380,8 @@ class Agent(object):
     def consul_deregister(self):
         """De-register non-running VM with Consul."""
         try:
-            svc = self.consul.agent.services()[0][self.svc_name]
-        except (KeyError, IndexError):
-            return
-        if not svc['Address'] == self.this_host:
-            return
-        try:
+            if not self.svc_name in self.consul.agent.services()[0]:
+                return
             self.log.info('consul-deregister')
             self.consul.agent.service.deregister('qemu-{}'.format(self.name))
         except requests.exceptions.ConnectionError:

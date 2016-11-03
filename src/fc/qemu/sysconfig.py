@@ -58,8 +58,8 @@ class SysConfig(object):
         self.agent['machine_type'] = self.get('qemu', 'machine-type')
         self.agent['migration_ctl_address'] = self.get(
             'qemu', 'migration-ctl-address')
-        self.agent['binary_generation'] = self.cp.get(
-            'qemu', 'binary-generation', 0)
+        self.agent['binary_generation'] = int(self.cp.get(
+            'qemu', 'binary-generation', 0))
         self.agent['timeout_graceful'] = self.cp.getint(
             'qemu', 'timeout-graceful')
         self.agent['vhost'] = self.cp.getboolean('qemu', 'vhost')
