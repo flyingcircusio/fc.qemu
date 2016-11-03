@@ -3,6 +3,7 @@ from .timeout import TimeOut
 from .util import parse_address, log
 import contextlib
 import functools
+import re
 import SimpleXMLRPCServer
 import time
 
@@ -21,6 +22,7 @@ class IncomingServer(object):
     """Run an XML-RPC server to orchestrate a single migration."""
 
     finished = False
+    obsolete_config_items = ['iommu']
 
     def __init__(self, agent, timeout=330):
         self.agent = agent
@@ -76,9 +78,17 @@ class IncomingServer(object):
     def extend_cutoff_time(self, timeout=60):
         self.timeout.cutoff = self._now() + timeout
 
+    def screen_config(self, config):
+        """Remove obsolete items from transferred Qemu config."""
+        exprs = [re.compile(r'^\s*{}\s*=.*$'.format(re.escape(c)), re.M)
+                 for c in self.obsolete_config_items]
+        for expr in exprs:
+            config = expr.sub('', config)
+        return config
+
     def prepare_incoming(self, args, config):
         self.qemu.args = args
-        self.qemu.config = config
+        self.qemu.config = self.screen_config(config)
         try:
             return self.qemu.inmigrate()
         except Exception:
