@@ -27,12 +27,13 @@ setup(
     license='BSD',
     namespace_packages=['fc'],
     install_requires=[
-        'setuptools',
-        'PyYaml>=3.10',
-        'psutil>=2.1',
-        'consulate==0.4',
-        'structlog',
         'colorama',
+        'consulate==0.4',
+        'psutil>=2.1',
+        'PyYaml>=3.10',
+        'requests',
+        'setuptools',
+        'structlog',
     ],
     entry_points={
         'console_scripts': [

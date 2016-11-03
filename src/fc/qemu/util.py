@@ -24,8 +24,8 @@ def rewrite(filename):
     """
 
     with tempfile.NamedTemporaryFile(
-            dir=os.path.dirname(filename), prefix=os.path.basename(filename),
-            delete=False) as tf:
+            dir=os.path.dirname(filename), delete=False,
+            prefix=os.path.basename(filename) + '.') as tf:
         if os.path.exists(filename):
             os.chmod(tf.name, os.stat(filename).st_mode & 0o7777)
         tf.has_changed = False

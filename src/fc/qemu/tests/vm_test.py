@@ -52,16 +52,16 @@ LABEL=swap, UUID=...-...-...-...-... subsystem=ceph volume=rbd.ssd/simplevm.swap
 args=-c "/etc/ceph/ceph.conf" --id "admin" unmap "/dev/rbd/rbd.ssd/simplevm.swap" event=rbd machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 event=start-qemu machine=simplevm subsystem=qemu
 additional_args=() event=qemu-system-x86_64 local_args=[\'-daemonize\', \'-nodefaults\', \'-name simplevm,process=kvm.simplevm\', \'-chroot /srv/vm/simplevm\', \'-runas nobody\', \'-serial file:/var/log/vm/simplevm.log\', \'-display vnc=host1:2345\', \'-pidfile /run/qemu.simplevm.pid\', \'-vga std\', \'-m 256\', \'-watchdog i6300esb\', \'-watchdog-action reset\', \'-readconfig /run/qemu.simplevm.cfg\'] machine=simplevm subsystem=qemu
-arguments={} event=qmp_capabilities id=None machine=simplevm subsystem=qemu/qmp
-arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
+...
+event=consul-register machine=simplevm
 arguments={} event=query-block id=None machine=simplevm subsystem=qemu/qmp
 action=throttle current_iops=0 device=virtio0 event=ensure-throttle machine=simplevm target_iops=3000
-arguments={\'bps_rd\': 0, \'bps_wr\': 0, \'bps\': 0, \'iops\': 3000, \'iops_rd\': 0, \'device\': u\'virtio0\', \'iops_wr\': 0} event=block_set_io_throttle id=None machine=simplevm subsystem=qemu/qmp
+...
 action=throttle current_iops=0 device=virtio1 event=ensure-throttle machine=simplevm target_iops=3000
-arguments={\'bps_rd\': 0, \'bps_wr\': 0, \'bps\': 0, \'iops\': 3000, \'iops_rd\': 0, \'device\': u\'virtio1\', \'iops_wr\': 0} event=block_set_io_throttle id=None machine=simplevm subsystem=qemu/qmp
+...
 action=throttle current_iops=0 device=virtio2 event=ensure-throttle machine=simplevm target_iops=3000
-arguments={\'bps_rd\': 0, \'bps_wr\': 0, \'bps\': 0, \'iops\': 3000, \'iops_rd\': 0, \'device\': u\'virtio2\', \'iops_wr\': 0} event=block_set_io_throttle id=None machine=simplevm subsystem=qemu/qmp
-event=register-consul machine=simplevm""")
+...
+""")
 
     vm.status()
     assert get_log() == Ellipsis("""\
@@ -133,13 +133,14 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     vm.cfg['kvm_host'] = 'otherhost'
     vm.ensure()
     vm.status()
-    assert get_log() == """\
+    assert get_log() == Ellipsis("""\
+...
 ceph_lock=False event=check-state-consistency is_consistent=True machine=simplevm proc=False qemu=False
 event=purge-run-files machine=simplevm subsystem=qemu
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
-event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp""")
 
 
 def test_crashed_vm_clean_restart(vm):
@@ -206,8 +207,8 @@ event=killed-vm machine=simplevm
 event=unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 event=unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 event=unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+event=consul-deregister machine=simplevm
 event=purge-run-files machine=simplevm subsystem=qemu
-event=deregister-consul machine=simplevm
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
