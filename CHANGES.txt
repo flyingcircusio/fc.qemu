@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.8.6 (unreleased)
+0.8.6 (2016-11-04)
 ------------------
 
 - Break inconsistent Ceph locks if the host holding an old lock is sure that a
