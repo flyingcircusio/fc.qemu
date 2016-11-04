@@ -1,3 +1,4 @@
+from .exc import InvalidCommand, VMConfigNotFound
 from .hazmat.ceph import Ceph
 from .hazmat.qemu import Qemu, detect_current_machine_type
 from .incoming import IncomingServer
@@ -17,17 +18,10 @@ import math
 import os
 import os.path as p
 import pkg_resources
+import requests
 import socket
 import sys
 import yaml
-
-
-class InvalidCommand(RuntimeError):
-    pass
-
-
-class VMConfigNotFound(RuntimeError):
-    pass
 
 
 def _handle_consul_event(event):
@@ -154,14 +148,7 @@ class Agent(object):
     # can't be applied by live migration.
     # The counter should be increased through the platform management as
     # this may change independently from fc.qemu releases.
-    # If a VM is booted without a generation counter, then we assume that it's
-    # at generation '' and it should perform a reboot at a generation different
-    # from that.
-    # We assume nothing about the generation itself - it's purely a string,
-    # and we suggest a reboot if the current one differs from the booted one.
-    # You could use numbers and count, you can use UUIDs, you can use speaking
-    # names, release numbers, ...
-    binary_generation = ''
+    binary_generation = 0
 
     _configfile_fd = None
 
@@ -267,15 +254,18 @@ class Agent(object):
 
     @locked
     def ensure(self):
+        booting = False
         if not self.cfg['online'] or not self.cfg['kvm_host']:
             self.ensure_offline()
         elif not self.belongs_to_this_host():
             if self.qemu.is_running():
                 self.outmigrate()
             else:
-                pass
+                self.ceph.stop()
+                self.consul_deregister()
+                self.cleanup()
         else:
-            self.ensure_online()
+            booting = self.ensure_online()
 
         if self.state_is_consistent():
             if self.qemu.is_running():
@@ -283,11 +273,12 @@ class Agent(object):
                 # But the result of ensure online is not guanteed to be
                 # consistent nor running and running the online disk size
                 # has caused spurious errors previously.
-                self.mark_qemu_binary_generation()
                 self.ensure_online_disk_size()
                 self.ensure_online_disk_throttle()
+                if not booting:  # guest agent usually isn't up yet
+                    self.mark_qemu_binary_generation()
             else:
-                self.qemu.clean_run_files()
+                self.cleanup()
         else:
             self.log.warning('inconsistent-state')
             self.qemu.destroy()
@@ -302,12 +293,17 @@ class Agent(object):
         self.stop()
 
     def ensure_online(self):
+        """Ensures that a VM is running here.
+
+        Triggers in-migation or starts a VM if necessary. Returns True
+        if the VM is currently booting (i.e., after a cold start).
+        """
         if self.qemu.is_running():
             self.log.info('ensure-state', wanted='online', found='online',
                           action='')
             # re-register in case services got lost during Consul restart
             self.consul_register()
-            return
+            return False
         self.log.info('ensure-state', wanted='online', found='offline',
                       action='start')
         existing = locate_live_service(self.consul, 'qemu-' + self.name)
@@ -315,17 +311,25 @@ class Agent(object):
             self.log.info('check-migration', action='inmigration',
                           remote=existing['Address'])
             self.inmigrate()
+            return False
         else:
             self.start()
+            return True
+
+    def cleanup(self):
+        """Removes various run and tmp files."""
+        self.qemu.clean_run_files()
+        for tmp in glob.glob(self.configfile + '?*'):
+            os.unlink(tmp)
 
     def mark_qemu_binary_generation(self):
         self.log.info('mark-qemu-binary-generation',
                       generation=self.binary_generation)
         try:
             self.qemu.write_file('/run/qemu-binary-generation-current',
-                                 str(self.binary_generation))
+                                 str(self.binary_generation) + '\n')
         except socket.timeout:
-            self.log.exception('mark-qemu-binary-generation')
+            self.log.exception('mark-qemu-binary-generation', exc_info=True)
 
     def ensure_online_disk_size(self):
         """Trigger block resize action for the root disk."""
@@ -358,11 +362,16 @@ class Agent(object):
                               target_iops=target, current_iops=current,
                               action='none')
 
+    @property
+    def svc_name(self):
+        """Consul service name."""
+        return 'qemu-{}'.format(self.name)
+
     def consul_register(self):
         """Register running VM with Consul."""
-        self.log.debug('register-consul')
+        self.log.debug('consul-register')
         self.consul.agent.service.register(
-            'qemu-{}'.format(self.name),
+            self.svc_name,
             address=self.this_host,
             interval='5s',
             check=('test -e /proc/$(< /run/qemu.{}.pid )/mem || exit 2'.
@@ -370,8 +379,15 @@ class Agent(object):
 
     def consul_deregister(self):
         """De-register non-running VM with Consul."""
-        self.log.info('deregister-consul')
-        self.consul.agent.service.deregister('qemu-{}'.format(self.name))
+        try:
+            if not self.svc_name in self.consul.agent.services()[0]:
+                return
+            self.log.info('consul-deregister')
+            self.consul.agent.service.deregister('qemu-{}'.format(self.name))
+        except requests.exceptions.ConnectionError:
+            pass
+        except Exception:
+            self.log.exception('consul-deregister-failed', exc_info=True)
 
     @locked
     @running(False)
@@ -379,8 +395,8 @@ class Agent(object):
         self.generate_config()
         self.ceph.start(self.enc, self.binary_generation)
         self.qemu.start()
-        self.ensure_online_disk_throttle()
         self.consul_register()
+        self.ensure_online_disk_throttle()
         # We exit here without releasing the ceph lock in error cases
         # because the start may have failed because of an already running
         # process. Removing the lock in that case is dangerous. OTOH leaving
@@ -464,8 +480,8 @@ class Agent(object):
             if not self.qemu.is_running():
                 self.log.info('vm-offline')
                 self.ceph.stop()
-                self.qemu.clean_run_files()
                 self.consul_deregister()
+                self.cleanup()
                 self.log.info('graceful-shutdown-completed')
                 break
         else:
@@ -488,8 +504,8 @@ class Agent(object):
             if not self.qemu.is_running():
                 self.log.info('killed-vm')
                 self.ceph.stop()
-                self.qemu.clean_run_files()
                 self.consul_deregister()
+                self.cleanup()
                 break
         else:
             self.log.warning('kill-vm-failed', note='Check lock consistency.')
@@ -610,7 +626,7 @@ class Agent(object):
 
         with open(self.vm_config_template) as f:
             tpl = f.read()
-        accelerator = (' accel = "{}"'.format(self.accelerator)
+        accelerator = ('  accel = "{}"'.format(self.accelerator)
                        if self.accelerator else '')
         machine_type = detect_current_machine_type(self.machine_type)
         self.qemu.config = tpl.format(
