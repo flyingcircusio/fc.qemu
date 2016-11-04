@@ -165,7 +165,7 @@ def main():
     except (VMConfigNotFound, InvalidCommand):
         # Those exceptions are properly logged and don't have to be shown
         # with their traceback.
-        log.debug('unexpected-exception', exc_info=True)
+        log.debug('unexpected-exception')
         sys.exit(69)  # EX_UNAVAILABLE
     except Exception:
         log.exception("unexpected-exception", exc_info=True)

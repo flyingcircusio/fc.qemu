@@ -45,3 +45,20 @@ def test_authentication_mismatch(server):
     api.cookie = 'cookie1'
     with pytest.raises(MigrationError):
         assert api.ping('cookie-does-not-match') is None
+
+
+def test_screen_config(mock_agent):
+    s = IncomingServer(mock_agent)
+    assert s.screen_config("""\
+[machine]
+  type = "pc-i440fx-2.5"
+  iommu = "off"
+  accel = "kvm"
+
+""") == """\
+[machine]
+  type = "pc-i440fx-2.5"
+
+  accel = "kvm"
+
+"""

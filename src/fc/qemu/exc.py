@@ -14,3 +14,11 @@ class DestructionError(RuntimeError):
 class QemuNotRunning(Exception):
     """Something happened and we're sure Qemu isn't running."""
     pass
+
+
+class InvalidCommand(RuntimeError):
+    pass
+
+
+class VMConfigNotFound(RuntimeError):
+    pass

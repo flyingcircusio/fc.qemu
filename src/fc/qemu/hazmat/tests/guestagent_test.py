@@ -7,7 +7,7 @@ import StringIO
 
 @pytest.fixture
 def ga(monkeypatch):
-    ga = GuestAgent('testvm')
+    ga = GuestAgent('testvm', .1)
     ga.file = StringIO.StringIO()
     ga.client = mock.MagicMock()
     randint = mock.Mock(return_value=87643)

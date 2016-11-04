@@ -46,6 +46,7 @@ class Qemu(object):
     require_kvm = True
     migration_address = None
     max_downtime = 1.0
+    guestagent_timeout = 3.0
 
     # The non-hosts-specific config configuration of this Qemu instance.
     args = ()
@@ -79,7 +80,8 @@ class Qemu(object):
         self.migration_address = ':'.join(a)
         self.name = self.cfg['name']
         self.monitor_port = self.cfg['id'] + self.MONITOR_OFFSET
-        self.guestagent = GuestAgent(self.name, timeout=1)
+        self.guestagent = GuestAgent(
+            self.name, timeout=self.guestagent_timeout)
 
         self.log = log.bind(machine=self.name, subsystem='qemu')
 
@@ -148,11 +150,15 @@ class Qemu(object):
             self.log.debug(self.executable,
                            local_args=self.local_args,
                            additional_args=additional_args)
-            subprocess.check_call(cmd, shell=True, close_fds=True)
-        except subprocess.CalledProcessError:
+            p = subprocess.Popen(cmd, shell=True, close_fds=True,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = p.communicate()
+            if p.returncode != 0:
+                raise QemuNotRunning(p.returncode, stdout, stderr)
+        except QemuNotRunning:
             # Did not start. Not running.
-            self.log.exception('qemu-failed', exc_info=True)
-            raise QemuNotRunning()
+            self.log.exception('qemu-failed')
+            raise
 
     def start(self):
         self._start()
@@ -285,8 +291,8 @@ class Qemu(object):
         # result. :/
         raise RuntimeError(
             'Can not determine whether Qemu is running. '
-            'Process exists: {} QMP socket reliable: {} '
-            'Status is running: {} Status detail: {}'.format(
+            'Process exists: {}, QMP socket reliable: {}, '
+            'Status is running: {}, Status detail: {}'.format(
                 expected_process_exists, qmp_available, monitor_says_running,
                 status))
 

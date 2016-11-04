@@ -111,9 +111,10 @@ def test_volume_locking(volume):
     volume.rbdimage.lock_exclusive('someotherhost')
     with pytest.raises(rbd.ImageBusy):
         volume.lock()
-    with pytest.raises(rbd.ImageBusy):
-        # Can not unlock locks that someone else holds.
-        volume.unlock()
+
+    # Can not unlock locks that someone else holds.
+    volume.unlock()
+    assert volume.lock_status()[1] == 'someotherhost'
 
 
 def test_force_unlock(volume):
