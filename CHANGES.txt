@@ -5,7 +5,12 @@ Release notes
 0.8.6 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Break inconsistent Ceph locks if the host holding an old lock is sure that a
+  VM is not running anymore (#23695).
+- Migration compatibility between Qemu 2.5 and 2.7 (#23695).
+- Always clean up unused resources like Consul service registrations and run
+  files.
+- Improve error reporting and logging.
 
 
 0.8.5 (2016-10-31)
