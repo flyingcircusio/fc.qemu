@@ -36,8 +36,8 @@ Release notes
 - Limit the number of parallel processed consul events to avoid
   overloading the host. Can be configured in the fc-qemu config file through::
 
-  [consul]
-  event-threads = <INT>
+    [consul]
+    event-threads = <INT>
 
   The default is 10 threads.
 
