@@ -270,7 +270,6 @@ class Volume(Image):
     def unlock(self, force=False):
         locked_by = self.lock_status()
         if not locked_by:
-            self.log.debug('already-unlocked')
             return
         client_id, lock_id = locked_by
         if self.locked_by_me:

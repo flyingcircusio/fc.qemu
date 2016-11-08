@@ -42,7 +42,6 @@ class Ceph(object):
             name='client.' + self.CEPH_CLIENT)
         self.rados.connect()
 
-        self.log.debug('open-pool', pool=self.pool)
         self.ioctx = self.rados.open_ioctx(self.pool)
 
         volume_prefix = self.cfg['name'].encode('ascii')
@@ -53,7 +52,6 @@ class Ceph(object):
         self.volumes = [self.root, self.swap, self.tmp]
 
     def __exit__(self, exc_value, exc_type, exc_tb):
-        self.log.debug('close-pool', pool=self.pool)
         self.ioctx.close()
         self.rados.shutdown()
 

@@ -254,34 +254,47 @@ class Agent(object):
 
     @locked
     def ensure(self):
-        booting = False
+        booting = self.start_stop_if_necesssary()
+        try:
+            if not self.state_is_consistent():
+                raise RuntimeError
+            if not self.qemu.is_running():  # may raise RuntimeError
+                return
+        except RuntimeError:
+            self.log.error('inconsistent-state', action='destroy')
+            self.qemu.destroy()
+            return
+
+        self.ensure_online_disk_size()
+        self.ensure_online_disk_throttle()
+        if not booting:  # guest agent usually isn't up yet
+            self.mark_qemu_binary_generation()
+
+    def start_stop_if_necesssary(self):
+        """Ensures that the running state matches the desired state.
+
+        Triggers start, stop or migration as necessary. Returns True if
+        the VM has just been started and is currently booting.
+        """
         if not self.cfg['online'] or not self.cfg['kvm_host']:
             self.ensure_offline()
-        elif not self.belongs_to_this_host():
-            if self.qemu.is_running():
-                self.outmigrate()
-            else:
-                self.ceph.stop()
-                self.consul_deregister()
-                self.cleanup()
-        else:
-            booting = self.ensure_online()
-
-        if self.state_is_consistent():
-            if self.qemu.is_running():
-                # We moved this from running directly after ensure_online().
-                # But the result of ensure online is not guanteed to be
-                # consistent nor running and running the online disk size
-                # has caused spurious errors previously.
-                self.ensure_online_disk_size()
-                self.ensure_online_disk_throttle()
-                if not booting:  # guest agent usually isn't up yet
-                    self.mark_qemu_binary_generation()
-            else:
-                self.cleanup()
-        else:
-            self.log.warning('inconsistent-state')
-            self.qemu.destroy()
+            return False
+        if not self.belongs_to_this_host():
+            try:
+                if self.qemu.is_running():
+                    self.outmigrate()
+                    return False
+            except RuntimeError as e:
+                self.log.error('is-running-failed', error=str(e),
+                               action='destroy')
+                self.qemu.destroy()
+            # Ceph locks, Consul services or run files may have been left
+            # over from past crashes.
+            self.ceph.stop()
+            self.consul_deregister()
+            self.cleanup()
+            return False
+        return self.ensure_online()
 
     def ensure_offline(self):
         if not self.qemu.is_running():
@@ -567,11 +580,11 @@ class Agent(object):
             bool(self.qemu.proc()),
             self.ceph.locked_by_me()]
         result = any(substates) == all(substates)
-        self.log.info('check-state-consistency',
-                      is_consistent=result,
-                      qemu=substates[0],
-                      proc=substates[1],
-                      ceph_lock=substates[2])
+        self.log.debug('check-state-consistency',
+                       is_consistent=result,
+                       qemu=substates[0],
+                       proc=substates[1],
+                       ceph_lock=substates[2])
         return result
 
     # CAREFUL: changing anything in this config files will cause maintenance w/
