@@ -135,8 +135,6 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     vm.status()
     assert get_log() == Ellipsis("""\
 ...
-ceph_lock=False event=check-state-consistency is_consistent=True machine=simplevm proc=False qemu=False
-event=purge-run-files machine=simplevm subsystem=qemu
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
@@ -208,7 +206,7 @@ event=unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 event=unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 event=unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 event=consul-deregister machine=simplevm
-event=purge-run-files machine=simplevm subsystem=qemu
+event=clean-run-files machine=simplevm subsystem=qemu
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap

@@ -30,7 +30,6 @@ class GuestAgent(object):
 
     def cmd(self, cmd, **args):
         """Issues GA command and returns the result."""
-        self.log.debug('ga-send', cmd=cmd, args=str(args))
         self.client.send(json.dumps({"execute": cmd, "arguments": args}))
         return self.read()
 
@@ -50,7 +49,6 @@ class GuestAgent(object):
 
     def __enter__(self):
         self.client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.log.debug('set-socket-timeout', timeout=self.timeout)
         self.client.settimeout(self.timeout)
         self.client.connect('/run/qemu.{}.gqa.sock'.format(self.machine))
         self.file = self.client.makefile()

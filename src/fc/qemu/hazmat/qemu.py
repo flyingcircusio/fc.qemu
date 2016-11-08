@@ -252,7 +252,7 @@ class Qemu(object):
         # there is no reason to think that any remainder of a Qemu process is
         # still running
 
-        timeout = TimeOut(10, 0.2, raise_on_timeout=False)
+        timeout = TimeOut(10, raise_on_timeout=False)
         while timeout.tick():
             # Try to find a stable result within a few seconds - ignore
             # unstable results in between. Qemu might just be starting
@@ -266,7 +266,7 @@ class Qemu(object):
 
             # c) is the monitor available and talks to us?
             monitor_says_running = False
-            status = ''
+            status = {}
 
             if qmp_available:
                 try:
@@ -292,9 +292,9 @@ class Qemu(object):
         raise RuntimeError(
             'Can not determine whether Qemu is running. '
             'Process exists: {}, QMP socket reliable: {}, '
-            'Status is running: {}, Status detail: {}'.format(
-                expected_process_exists, qmp_available, monitor_says_running,
-                status))
+            'Status is running: {}'.format(
+                expected_process_exists, qmp_available, monitor_says_running),
+                status)
 
     def rescue(self):
         """Recover from potentially inconsistent state.
@@ -356,8 +356,11 @@ class Qemu(object):
                          bps=0, bps_wr=0, bps_rd=0)
 
     def clean_run_files(self):
-        self.log.debug('purge-run-files')
-        for runfile in glob.glob('/run/qemu.{}.*'.format(self.cfg['name'])):
+        runfiles = glob.glob('/run/qemu.{}.*'.format(self.cfg['name']))
+        if not runfiles:
+            return
+        self.log.debug('clean-run-files')
+        for runfile in runfiles:
             os.unlink(runfile)
 
     def prepare_config(self):

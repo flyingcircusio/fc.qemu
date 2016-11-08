@@ -88,14 +88,12 @@ def test_qemu_config_change(clean_config_test22):
         'event=handle-key key=node/test22',
         'consul_event=node event=processing-consul-event machine=test22',
         'event=connect-rados machine=test22 subsystem=ceph',
-        'event=open-pool machine=test22 pool=rbd.ssd subsystem=ceph',
         'action=none event=ensure-state found=offline machine=test22 '
         'wanted=offline',
         'ceph_lock=False event=check-state-consistency is_consistent=True '
         'machine=test22 proc=False qemu=False',
-        'event=purge-run-files machine=test22 subsystem=qemu',
-        'event=close-pool machine=test22 pool=rbd.ssd subsystem=ceph',
-        'event=finish-consul-events']
+        'event=finish-consul-events',
+    ]
 
     # Applying the same config again doesn't
     stdin.seek(0)
@@ -123,14 +121,12 @@ def test_qemu_config_change(clean_config_test22):
         'event=handle-key key=node/test22',
         'consul_event=node event=processing-consul-event machine=test22',
         'event=connect-rados machine=test22 subsystem=ceph',
-        'event=open-pool machine=test22 pool=rbd.ssd subsystem=ceph',
         'action=none event=ensure-state found=offline machine=test22 '
         'wanted=offline',
         'ceph_lock=False event=check-state-consistency is_consistent=True '
         'machine=test22 proc=False qemu=False',
-        'event=purge-run-files machine=test22 subsystem=qemu',
-        'event=close-pool machine=test22 pool=rbd.ssd subsystem=ceph',
-        'event=finish-consul-events']
+        'event=finish-consul-events',
+    ]
 
 
 def test_qemu_config_change_physical():
@@ -195,11 +191,9 @@ def test_snapshot(vm):
 count=1 event=start-consul-events
 event=handle-key key=snapshot/7468743
 event=connect-rados machine=simplevm subsystem=ceph
-event=open-pool machine=simplevm pool=rbd.ssd subsystem=ceph
 event=snapshot machine=simplevm snapshot=backy-1234
 event=create-snapshot machine=simplevm snapshot=backy-1234 subsystem=ceph \
 volume=rbd.ssd/simplevm.root
-event=close-pool machine=simplevm pool=rbd.ssd subsystem=ceph
 event=finish-consul-events"""
 
     # A second time the snapshot is ignored but the request doesn't fail.
@@ -209,10 +203,8 @@ event=finish-consul-events"""
 count=1 event=start-consul-events
 event=handle-key key=snapshot/7468743
 event=connect-rados machine=simplevm subsystem=ceph
-event=open-pool machine=simplevm pool=rbd.ssd subsystem=ceph
 event=snapshot machine=simplevm snapshot=backy-1234
 event=snapshot-exists machine=simplevm snapshot=backy-1234
-event=close-pool machine=simplevm pool=rbd.ssd subsystem=ceph
 event=finish-consul-events"""
 
 
@@ -251,9 +243,7 @@ def test_snapshot_foreign_vm(vm):
 count=1 event=start-consul-events
 event=handle-key key=snapshot/7468743
 event=connect-rados machine=simplevm subsystem=ceph
-event=open-pool machine=simplevm pool=rbd.ssd subsystem=ceph
 event=snapshot-ignore machine=simplevm reason=foreign host snapshot=backy-1234
-event=close-pool machine=simplevm pool=rbd.ssd subsystem=ceph
 event=finish-consul-events"""
 
 

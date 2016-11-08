@@ -151,7 +151,6 @@ class IncomingAPI(object):
     @authenticated
     def ping(self):
         """Check connectivity and extend timeout."""
-        self.log.debug('received-ping')
         self.server.extend_cutoff_time()
 
     @authenticated
