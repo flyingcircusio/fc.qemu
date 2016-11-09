@@ -22,3 +22,7 @@ class InvalidCommand(RuntimeError):
 
 class VMConfigNotFound(RuntimeError):
     pass
+
+
+class VMStateInconsistent(RuntimeError):
+    pass
