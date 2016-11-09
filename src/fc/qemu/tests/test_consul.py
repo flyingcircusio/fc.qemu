@@ -176,8 +176,8 @@ def test_qemu_config_change_physical():
         'event=finish-consul-events']
 
 
-def test_snapshot(vm):
-    vm.ceph.ensure_root_volume()
+def test_snapshot_online_vm(vm):
+    vm.ensure_online_local()
     get_log()
 
     snapshot = json.dumps({'vm': 'simplevm', 'snapshot': 'backy-1234'})
@@ -192,6 +192,7 @@ count=1 event=start-consul-events
 event=handle-key key=snapshot/7468743
 event=connect-rados machine=simplevm subsystem=ceph
 event=snapshot machine=simplevm snapshot=backy-1234
+event=snapshot-ignore machine=simplevm reason=not frozen
 event=create-snapshot machine=simplevm snapshot=backy-1234 subsystem=ceph \
 volume=rbd.ssd/simplevm.root
 event=finish-consul-events"""
@@ -227,9 +228,11 @@ snapshot=backy-1234
 event=finish-consul-events"""
 
 
-def test_snapshot_foreign_vm(vm):
+def test_snapshot_offline_vm(vm):
     vm.enc['parameters']['kvm_host'] = 'foobar'
     vm.save_enc()
+    vm.ceph.ensure_root_volume()
+    vm.ensure_offline()
     get_log()
 
     snapshot = json.dumps({'vm': 'simplevm', 'snapshot': 'backy-1234'})
@@ -243,7 +246,8 @@ def test_snapshot_foreign_vm(vm):
 count=1 event=start-consul-events
 event=handle-key key=snapshot/7468743
 event=connect-rados machine=simplevm subsystem=ceph
-event=snapshot-ignore machine=simplevm reason=foreign host snapshot=backy-1234
+event=snapshot machine=simplevm snapshot=backy-1234
+event=snapshot-ignore machine=simplevm reason=not frozen
 event=finish-consul-events"""
 
 

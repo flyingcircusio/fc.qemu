@@ -1,6 +1,6 @@
 """Low-level interface to Qemu commands."""
 
-from ..exc import QemuNotRunning
+from ..exc import QemuNotRunning, VMStateInconsistent
 from ..sysconfig import sysconfig
 from ..timeout import TimeOut
 from ..util import log
@@ -289,7 +289,7 @@ class Qemu(object):
 
         # The timeout passed and we were not able to determine a consistent
         # result. :/
-        raise RuntimeError(
+        raise VMStateInconsistent(
             'Can not determine whether Qemu is running. '
             'Process exists: {}, QMP socket reliable: {}, '
             'Status is running: {}'.format(

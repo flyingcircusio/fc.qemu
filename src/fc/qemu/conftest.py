@@ -23,13 +23,21 @@ def setup_structlog():
 
     def test_logger(logger, method_name, event):
         result = []
+
+        stack = event.pop("stack", None)
+        exc = event.pop("exception", None)
         for key in sorted(event):
             result.append('{}={}'.format(key, event[key]))
         util.log_data.append(' '.join(result))
+        if stack:
+            util.log_data.extend(stack.splitlines())
+        if exc:
+            util.log_data.extend(exc.splitlines())
         raise structlog.DropEvent
 
     structlog.configure(
-        processors=[test_logger])
+        processors=[structlog.processors.format_exc_info,
+                    test_logger])
 
 
 @pytest.fixture(autouse=True)

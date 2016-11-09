@@ -1,4 +1,4 @@
-from .exc import InvalidCommand, VMConfigNotFound
+from .exc import InvalidCommand, VMConfigNotFound, VMStateInconsistent
 from .hazmat.ceph import Ceph
 from .hazmat.qemu import Qemu, detect_current_machine_type
 from .incoming import IncomingServer
@@ -72,9 +72,6 @@ class ConsulEventHandler(object):
             log_.warning('snapshot-ignore', reason='failed loading config')
             return
         with agent:
-            if not agent.belongs_to_this_host():
-                log_.debug('snapshot-ignore', reason='foreign host')
-                return
             log_.info('snapshot')
             agent.snapshot(snapshot)
 
@@ -249,85 +246,84 @@ class Agent(object):
             except Exception:
                 self.log.exception('leave-subsystems', exc_info=True)
 
-    def belongs_to_this_host(self):
-        return self.cfg['kvm_host'] == self.this_host
-
     @locked
     def ensure(self):
-        booting = self.start_stop_if_necesssary()
+        # Host assignment is a bit tricky: we decided to not interpret
+        # an *empty* cfg['kvm_host'] as "should not be running here" for the
+        # sake of not accidentally causing downtime.
         try:
+            if not self.cfg['online']:
+                # Wanted offline.
+                self.ensure_offline()
+
+            elif (self.cfg['kvm_host'] and
+                  self.cfg['kvm_host'] != self.this_host):
+                # Wanted online, but explicitly on a different host.
+                self.ensure_online_remote()
+
+            else:
+                # Wanted online, and it's OK if it's running here, but I'll
+                # only start it if it really is wanted here.
+                self.ensure_online_local()
+
             if not self.state_is_consistent():
-                raise RuntimeError
-            if not self.qemu.is_running():  # may raise RuntimeError
-                return
-        except RuntimeError:
+                raise VMStateInconsistent()
+        except VMStateInconsistent:
+            # Last-resort seat-belt to verify that we ended up in a consistent
+            # state. Inconsistent states result in the VM being forcefully
+            # terminated.
             self.log.error('inconsistent-state', action='destroy')
             self.qemu.destroy()
-            return
-
-        self.ensure_online_disk_size()
-        self.ensure_online_disk_throttle()
-        if not booting:  # guest agent usually isn't up yet
-            self.mark_qemu_binary_generation()
-
-    def start_stop_if_necesssary(self):
-        """Ensures that the running state matches the desired state.
-
-        Triggers start, stop or migration as necessary. Returns True if
-        the VM has just been started and is currently booting.
-        """
-        if not self.cfg['online'] or not self.cfg['kvm_host']:
-            self.ensure_offline()
-            return False
-        if not self.belongs_to_this_host():
-            try:
-                if self.qemu.is_running():
-                    self.outmigrate()
-                    return False
-            except RuntimeError as e:
-                self.log.error('is-running-failed', error=str(e),
-                               action='destroy')
-                self.qemu.destroy()
-            # Ceph locks, Consul services or run files may have been left
-            # over from past crashes.
-            self.ceph.stop()
-            self.consul_deregister()
-            self.cleanup()
-            return False
-        return self.ensure_online()
 
     def ensure_offline(self):
-        if not self.qemu.is_running():
-            self.log.info('ensure-state', wanted='offline', found='offline',
-                          action='none')
-            return
-        self.log.info('ensure-state', wanted='offline', found='online',
-                      action='stop')
-        self.stop()
-
-    def ensure_online(self):
-        """Ensures that a VM is running here.
-
-        Triggers in-migation or starts a VM if necessary. Returns True
-        if the VM is currently booting (i.e., after a cold start).
-        """
         if self.qemu.is_running():
-            self.log.info('ensure-state', wanted='online', found='online',
-                          action='')
-            # re-register in case services got lost during Consul restart
-            self.consul_register()
-            return False
-        self.log.info('ensure-state', wanted='online', found='offline',
-                      action='start')
-        existing = locate_live_service(self.consul, 'qemu-' + self.name)
-        if existing and existing['Address'] != self.this_host:
-            self.log.info('check-migration', action='inmigration',
-                          remote=existing['Address'])
-            self.inmigrate()
-            return False
+            self.log.info(
+                'ensure-state', wanted='offline', found='online', action='stop')
+            self.stop()
         else:
-            self.start()
-            return True
+            self.log.info(
+                'ensure-state', wanted='offline', found='offline',
+                action='none')
+
+    def ensure_online_remote(self):
+        # Ensure state
+        if self.qemu.is_running():
+            self.outmigrate()
+        # Ensure ongoing maintenance for a VM that was potentially outmigrated.
+        # But where the outmigration may have left bits and pieces.
+        self.ceph.stop()
+        self.consul_deregister()
+        self.cleanup()
+
+    def ensure_online_local(self):
+        # Ensure state
+        agent_ready = True
+        if not self.qemu.is_running():
+            existing = locate_live_service(self.consul, 'qemu-' + self.name)
+            if existing and existing['Address'] != self.this_host:
+                self.log.info(
+                    'ensure-state', wanted='online', found='offline',
+                    action='inmigrate', remote=existing['Address'])
+                self.inmigrate()
+            else:
+                self.log.info(
+                    'ensure-state', wanted='online', found='offline', action='start')
+                self.start()
+                agent_ready = False
+        else:
+            self.log.info(
+                'ensure-state', wanted='online', found='online', action='')
+
+        # Perform ongoing adjustments of the operational parameters of the
+        # running VM.
+        self.consul_register()
+        self.ensure_online_disk_size()
+        self.ensure_online_disk_throttle()
+        if agent_ready:
+            # This requires guest agent interaction and we should only
+            # perform this when we haven't recently booted the machine.
+            self.mark_qemu_binary_generation()
+
 
     def cleanup(self):
         """Removes various run and tmp files."""
@@ -393,7 +389,7 @@ class Agent(object):
     def consul_deregister(self):
         """De-register non-running VM with Consul."""
         try:
-            if not self.svc_name in self.consul.agent.services()[0]:
+            if self.svc_name not in self.consul.agent.services()[0]:
                 return
             self.log.info('consul-deregister')
             self.consul.agent.service.deregister('qemu-{}'.format(self.name))
@@ -417,22 +413,30 @@ class Agent(object):
 
     @contextlib.contextmanager
     def frozen_vm(self):
-        """Ensure a VM isn't making changes to its root disk.
+        """Ensure a VM has a non-changing filesystem, that is clean enough
+        to be mounted with a straight-forward journal replay.
 
-        If the VM is running then freeze it (and thaw it upon exit).
-        If a VM isn't running, this is a noop.
+        This is implemented using the 'fs-freeze' API through the Qemu guest
+        agent.
+
+        As we can't indicate the cleanliness of a non-running
+        (potentially crashed) VM we do only signal a successful freeze iff
+        the freeze happened and succeeded.
 
         """
+        frozen = False
         try:
+            import pdb; pdb.set_trace()
             if self.qemu.is_running():
+                self.log.info('freeze', volume='root')
                 try:
-                    self.log.info('freeze', volume='root')
                     self.qemu.freeze()
+                    frozen = True
                 except socket.error as e:
                     self.log.error('freeze-failed',
                                    reason=str(e), action='continue',
                                    machine=self.name)
-            yield
+            yield frozen
         finally:
             if self.qemu.is_running():
                 try:
@@ -450,11 +454,20 @@ class Agent(object):
 
     @locked
     def snapshot(self, snapshot):
+        """Guarantees a _consistent_ snapshot to be created.
+
+        If we can't properly freeze the VM then whoever needs a (consistent)
+        snapshot needs to figure out whether to go forward with an
+        inconsistent snapshot.
+        """
         if snapshot in [x.snapname for x in self.ceph.root.snapshots]:
             self.log.info('snapshot-exists', snapshot=snapshot)
             return
-        with self.frozen_vm():
-            self.ceph.root.snapshots.create(snapshot)
+        with self.frozen_vm() as frozen:
+            if frozen:
+                self.ceph.root.snapshots.create(snapshot)
+            else:
+                self.log.debug('snapshot-ignore', reason='not frozen')
 
     def status(self):
         """Determine status of the VM."""
@@ -571,9 +584,18 @@ class Agent(object):
 
     # Helper methods
     def state_is_consistent(self):
-        """Returns True if all relevant components agree about VM state.
+        """Returns True if all relevant components agree about VM state:
 
-        If False, results from Qemu monitor, pidfile or Ceph differ.
+        Either all of the following or none of the following must be true:
+
+        - The process belonging to the PID we know exists.
+        - The QMP monitor reliably tells us that the Qemu status of the
+          VM/CPUs is "running"
+        - We have locked the volumes in Ceph.
+
+        If they are not the same, then the state is considered inconsistent
+        and this method will return False.
+
         """
         substates = [
             self.qemu.is_running(),
