@@ -34,7 +34,7 @@ event=sgdisk machine=simplevm output=Creating new GPT entries.
 The operation has completed successfully. subsystem=ceph volume=rbd.ssd/simplevm.tmp
 args=-a 8192 -n 1:8192:0 -c "1:tmp" -t 1:8300 "/dev/rbd/rbd.ssd/simplevm.tmp" event=sgdisk machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 event=sgdisk machine=simplevm output=The operation has completed successfully. subsystem=ceph volume=rbd.ssd/simplevm.tmp
-args= event=partprobe machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+args=/dev/rbd/rbd.ssd/simplevm.tmp event=partprobe machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 args=-q -f -L "tmp" "/dev/rbd/rbd.ssd/simplevm.tmp-part1" event=mkfs.xfs machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 event=mkfs.xfs machine=simplevm output=log stripe unit (4194304 bytes) is too large (maximum is 256KiB)
 log stripe unit adjusted to 32KiB subsystem=ceph volume=rbd.ssd/simplevm.tmp
