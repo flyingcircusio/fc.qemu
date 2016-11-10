@@ -47,6 +47,7 @@ class Qemu(object):
     migration_address = None
     max_downtime = 1.0
     guestagent_timeout = 3.0
+    qmp_timeout = 5.0
 
     # The non-hosts-specific config configuration of this Qemu instance.
     args = ()
@@ -91,7 +92,7 @@ class Qemu(object):
     def qmp(self):
         if self.__qmp is None:
             qmp = Qmp(self.qmp_socket, self.log)
-            qmp.settimeout(5)
+            qmp.settimeout(self.qmp_timeout)
             try:
                 qmp.connect()
             except socket.error:

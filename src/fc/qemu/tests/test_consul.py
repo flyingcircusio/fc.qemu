@@ -1,11 +1,16 @@
 from ..conftest import get_log
-from fc.qemu import util
 from fc.qemu.agent import Agent
+from fc.qemu.hazmat.qemu import Qemu
+from fc.qemu import util
 from StringIO import StringIO
 import json
 import os.path
 import pytest
 
+# globally overriding timeouts since _handle_consul_event creates new
+# Agent/Qemu/... instances itself.
+Qemu.guestagent_timeout = .1
+Qemu.qmp_timeout = .1
 
 def test_no_events():
     stdin = StringIO("[]")
@@ -177,35 +182,31 @@ def test_qemu_config_change_physical():
 
 
 def test_snapshot_online_vm(vm):
+
     vm.ensure_online_local()
+    vm.qemu.qmp.close()
     get_log()
 
     snapshot = json.dumps({'vm': 'simplevm', 'snapshot': 'backy-1234'})
-    snapshot = snapshot.encode('base64').replace('\n', '')
-
     stdin = StringIO(
         '[{"ModifyIndex": 123, "Value": "%s", '
-        '"Key": "snapshot/7468743"}]' % snapshot)
+        '"Key": "snapshot/7468743"}]' % snapshot.encode('base64').strip())
     Agent.handle_consul_event(stdin)
     assert get_log() == """\
 count=1 event=start-consul-events
 event=handle-key key=snapshot/7468743
 event=connect-rados machine=simplevm subsystem=ceph
 event=snapshot machine=simplevm snapshot=backy-1234
+arguments={} event=qmp_capabilities id=None machine=simplevm subsystem=qemu/qmp
+arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
+event=freeze machine=simplevm volume=root
+action=continue event=freeze-failed machine=simplevm reason=timed out
 event=snapshot-ignore machine=simplevm reason=not frozen
-event=create-snapshot machine=simplevm snapshot=backy-1234 subsystem=ceph \
-volume=rbd.ssd/simplevm.root
-event=finish-consul-events"""
-
-    # A second time the snapshot is ignored but the request doesn't fail.
-    stdin.seek(0)
-    Agent.handle_consul_event(stdin)
-    assert get_log() == """\
-count=1 event=start-consul-events
-event=handle-key key=snapshot/7468743
-event=connect-rados machine=simplevm subsystem=ceph
-event=snapshot machine=simplevm snapshot=backy-1234
-event=snapshot-exists machine=simplevm snapshot=backy-1234
+arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
+event=thaw machine=simplevm volume=root
+action=retry event=thaw-failed machine=simplevm reason=timed out
+action=continue event=thaw-failed machine=simplevm reason=timed out
+event=consul-handle-event exc_info=True
 event=finish-consul-events"""
 
 

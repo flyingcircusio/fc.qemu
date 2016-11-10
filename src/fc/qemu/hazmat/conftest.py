@@ -9,7 +9,7 @@ def ceph_inst():
            'name': 'simplevm', 'disk': 10}
     ceph = Ceph(cfg)
     ceph.CREATE_VM = 'echo {name}'
-    ceph.MKFS_XFS = '-q -f'
+    ceph.MKFS_XFS = '-q -f -K'
     ceph.__enter__()
     try:
         yield ceph

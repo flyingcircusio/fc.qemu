@@ -20,24 +20,27 @@ def pytest_collectstart(collector):
 def setup_structlog():
     from . import util
     util.log_data = []
+    log_exceptions = False  # set to True to get detailed tracebacks
 
     def test_logger(logger, method_name, event):
         result = []
 
-        stack = event.pop("stack", None)
-        exc = event.pop("exception", None)
+        if log_exceptions:
+            stack = event.pop("stack", None)
+            exc = event.pop("exception", None)
         for key in sorted(event):
             result.append('{}={}'.format(key, event[key]))
         util.log_data.append(' '.join(result))
-        if stack:
-            util.log_data.extend(stack.splitlines())
-        if exc:
-            util.log_data.extend(exc.splitlines())
+        if log_exceptions:
+          if stack:
+              util.log_data.extend(stack.splitlines())
+          if exc:
+              util.log_data.extend(exc.splitlines())
         raise structlog.DropEvent
 
-    structlog.configure(
-        processors=[structlog.processors.format_exc_info,
-                    test_logger])
+    structlog.configure(processors=(
+        [structlog.processors.format_exc_info] if log_exceptions else [] +
+        [test_logger]))
 
 
 @pytest.fixture(autouse=True)
@@ -72,7 +75,8 @@ def vm(clean_environment):
     shutil.copy(fixtures + '/simplevm.yaml', '/etc/qemu/vm/simplevm.cfg')
     vm = Agent('simplevm')
     vm.timeout_graceful = 1
-    vm.qemu.guestagent.timeout = .1
+    vm.qemu.guestagent_timeout = .1
+    vm.qemu.qmp_timeout = .1
     vm.__enter__()
     for snapshot in vm.ceph.root.snapshots:
         snapshot.remove()

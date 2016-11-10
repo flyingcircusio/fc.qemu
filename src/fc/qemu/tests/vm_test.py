@@ -225,12 +225,11 @@ def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
     assert vm.ceph.locked_by_me() is True
 
 
-def test_simple_vm_snapshot(vm):
+def test_vm_snapshot_only_if_running(vm):
     assert list(x.fullname for x in vm.ceph.root.snapshots) == []
     vm.ceph.root.ensure_presence()
     vm.snapshot('asdf')
-    assert list(x.fullname for x in vm.ceph.root.snapshots) == [
-        'rbd.ssd/simplevm.root@asdf']
+    assert list(x.fullname for x in vm.ceph.root.snapshots) == []
 
 
 def test_vm_throttle_iops(vm):
