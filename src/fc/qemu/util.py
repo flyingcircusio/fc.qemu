@@ -1,12 +1,14 @@
 """Global helper functions and utilites for fc.qemu."""
 
 from __future__ import print_function
+from structlog import get_logger
 import contextlib
 import filecmp
 import os
 import subprocess
+import sys
 import tempfile
-from structlog import get_logger
+import time
 
 MiB = 2 ** 20
 GiB = 2 ** 30
@@ -93,3 +95,11 @@ def cmd(cmdline, log):
     if output:
         log.debug(prefix, output=output)
     return output
+
+
+@contextlib.contextmanager
+def timeit(label):
+    start = time.time()
+    yield
+    print('run time for {}: {}'.format(label, time.time() - start),
+          file=sys.stderr)

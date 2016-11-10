@@ -307,7 +307,8 @@ class Agent(object):
                 self.inmigrate()
             else:
                 self.log.info(
-                    'ensure-state', wanted='online', found='offline', action='start')
+                    'ensure-state', wanted='online', found='offline',
+                    action='start')
                 self.start()
                 agent_ready = False
         else:
@@ -426,7 +427,6 @@ class Agent(object):
         """
         frozen = False
         try:
-            import pdb; pdb.set_trace()
             if self.qemu.is_running():
                 self.log.info('freeze', volume='root')
                 try:
