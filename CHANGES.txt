@@ -5,7 +5,13 @@ Release notes
 0.8.7 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Don't change anything if a VM is marked online but no KVM host is assigned
+  (#23965).
+- Refactor Agent.ensure() for improved reliability and readability.
+- Decline to create a consistent snapshot if a VM is offline.
+- Speed up tests a bit.
+- Don't spawn unqualified partprobe invocations in parallel.
+- Make debug level logging a bit less verbose.
 
 
 0.8.6 (2016-11-04)
