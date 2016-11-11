@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.8.7 (unreleased)
+0.8.7 (2016-11-11)
 ------------------
 
 - Don't change anything if a VM is marked online but no KVM host is assigned
