@@ -256,15 +256,14 @@ class Agent(object):
                 # Wanted offline.
                 self.ensure_offline()
 
-            elif (self.cfg['kvm_host'] and
-                  self.cfg['kvm_host'] != self.this_host):
-                # Wanted online, but explicitly on a different host.
-                self.ensure_online_remote()
-
-            else:
-                # Wanted online, and it's OK if it's running here, but I'll
-                # only start it if it really is wanted here.
-                self.ensure_online_local()
+            elif self.cfg['kvm_host']:
+                if self.cfg['kvm_host'] != self.this_host:
+                    # Wanted online, but explicitly on a different host.
+                    self.ensure_online_remote()
+                else:
+                    # Wanted online, and it's OK if it's running here, but I'll
+                    # only start it if it really is wanted here.
+                    self.ensure_online_local()
 
             if not self.state_is_consistent():
                 raise VMStateInconsistent()
@@ -324,7 +323,6 @@ class Agent(object):
             # This requires guest agent interaction and we should only
             # perform this when we haven't recently booted the machine.
             self.mark_qemu_binary_generation()
-
 
     def cleanup(self):
         """Removes various run and tmp files."""
