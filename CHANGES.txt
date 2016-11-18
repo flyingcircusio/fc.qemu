@@ -5,8 +5,9 @@ Release notes
 0.8.8 (unreleased)
 ------------------
 
-- Nothing changed yet.
-
+- Bugfix: migrations that ran into a timeout because the remote side
+  did not respond accidentally unlocked and cleaned up without shutting
+  the VM down properly. This resulted in multiple instances of a single VM.
 
 0.8.7 (2016-11-11)
 ------------------
