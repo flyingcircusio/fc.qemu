@@ -285,9 +285,19 @@ class Agent(object):
                 action='none')
 
     def ensure_online_remote(self):
-        # Ensure state
-        if self.qemu.is_running():
-            self.outmigrate()
+        if not self.qemu.is_running():
+            # This cleans up potential left-overs from a previous migration.
+            self.ceph.stop()
+            self.consul_deregister()
+            self.cleanup()
+            return
+
+        migration_errors = self.outmigrate()
+        if migration_errors:
+            # Stop here, do not clean up. This is fine as we may not have
+            # made contact with our destination host. We keep trying later.
+            return
+
         # Ensure ongoing maintenance for a VM that was potentially outmigrated.
         # But where the outmigration may have left bits and pieces.
         self.ceph.stop()

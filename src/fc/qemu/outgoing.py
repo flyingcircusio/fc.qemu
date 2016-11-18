@@ -9,6 +9,7 @@ class Outgoing(object):
     migration_exitcode = None
     target = None
     cookie = None
+    connect_timeout = 330
 
     def __init__(self, agent):
         self.agent = agent
@@ -48,7 +49,9 @@ class Outgoing(object):
                     'rescue-failed', exc_info=True, action='destroy')
                 self.destroy()
 
-    def locate_inmigrate_service(self, timeout=330):
+    def locate_inmigrate_service(self, timeout=None):
+        if timeout is None:
+            timeout = self.connect_timeout
         service_name = 'vm-inmigrate-' + self.name
         timeout = TimeOut(timeout, interval=3, raise_on_timeout=True)
         self.log.info('locate-inmigration-service')

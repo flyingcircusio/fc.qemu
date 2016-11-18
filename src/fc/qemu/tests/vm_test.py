@@ -2,6 +2,7 @@ from ..agent import swap_size, tmp_size
 from ..conftest import get_log
 from ..ellipsis import Ellipsis
 from ..util import MiB, GiB
+import os.path
 import subprocess
 
 
@@ -302,3 +303,16 @@ def test_tmp_size():
 
 def test_vm_migration(vm):
     subprocess.check_call('./test-migration.sh', shell=True)
+
+
+def test_simple_cancelled_migration_doesnt_clean_up(vm, monkeypatch):
+    import fc.qemu.outgoing
+    monkeypatch.setattr(fc.qemu.outgoing.Outgoing, 'connect_timeout', 2)
+
+    vm.start()
+    assert os.path.exists('/run/qemu.simplevm.pid')
+    assert vm.ceph.locked_by_me()
+
+    vm.ensure_online_remote()
+    assert vm.ceph.locked_by_me()
+    assert os.path.exists('/run/qemu.simplevm.pid')
