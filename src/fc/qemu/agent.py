@@ -265,13 +265,12 @@ class Agent(object):
                     # only start it if it really is wanted here.
                     self.ensure_online_local()
 
-            if not self.state_is_consistent():
-                raise VMStateInconsistent()
+            self.raise_if_inconsistent()
         except VMStateInconsistent:
             # Last-resort seat-belt to verify that we ended up in a consistent
             # state. Inconsistent states result in the VM being forcefully
             # terminated.
-            self.log.error('inconsistent-state', action='destroy')
+            self.log.error('inconsistent-state', action='destroy', exc_info=True)
             self.qemu.destroy()
 
     def ensure_offline(self):
@@ -591,8 +590,9 @@ class Agent(object):
         self.ceph.force_unlock()
 
     # Helper methods
-    def state_is_consistent(self):
-        """Returns True if all relevant components agree about VM state:
+    def raise_if_inconsistent(self):
+        """Raise an VMStateInconsistent error if the VM state is not
+        consistent.
 
         Either all of the following or none of the following must be true:
 
@@ -605,17 +605,17 @@ class Agent(object):
         and this method will return False.
 
         """
-        substates = [
-            self.qemu.is_running(),
-            bool(self.qemu.proc()),
-            self.ceph.locked_by_me()]
-        result = any(substates) == all(substates)
+        state = VMStateInconsistent()
+        state.qemu = self.qemu.is_running()
+        state.proc = bool(self.qemu.proc())
+        state.ceph_lock = self.ceph.locked_by_me()
         self.log.debug('check-state-consistency',
-                       is_consistent=result,
-                       qemu=substates[0],
-                       proc=substates[1],
-                       ceph_lock=substates[2])
-        return result
+                       is_consistent=state.is_consistent(),
+                       qemu=state.qemu,
+                       proc=state.proc,
+                       ceph_lock=state.ceph_lock)
+        if not state.is_consistent():
+            raise state
 
     # CAREFUL: changing anything in this config files will cause maintenance w/
     # reboot of all VMs in the infrastructure.
