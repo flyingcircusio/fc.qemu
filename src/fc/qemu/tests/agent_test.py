@@ -1,4 +1,5 @@
 from ..agent import Agent
+from ..exc import VMStateInconsistent
 import mock
 import os
 import pkg_resources
@@ -38,7 +39,7 @@ def test_consistency_vm_running(simplevm_cfg):
     a.qemu.is_running = mock.Mock(return_value=True)
     a.qemu.proc = mock.Mock(return_value=psutil.Process(1))
     a.ceph.locked_by_me = mock.Mock(return_value=True)
-    assert a.state_is_consistent() is True
+    a.raise_if_inconsistent()
 
 
 def test_consistency_vm_not_running(simplevm_cfg):
@@ -46,7 +47,7 @@ def test_consistency_vm_not_running(simplevm_cfg):
     a.qemu.is_running = mock.Mock(return_value=False)
     a.qemu.proc = mock.Mock(return_value=None)
     a.ceph.locked_by_me = mock.Mock(return_value=False)
-    assert a.state_is_consistent() is True
+    a.raise_if_inconsistent()
 
 
 def test_consistency_process_dead(simplevm_cfg):
@@ -54,7 +55,8 @@ def test_consistency_process_dead(simplevm_cfg):
     a.qemu.is_running = mock.Mock(return_value=True)
     a.qemu.proc = mock.Mock(return_value=None)
     a.ceph.locked_by_me = mock.Mock(return_value=True)
-    assert a.state_is_consistent() is False
+    with pytest.raises(VMStateInconsistent):
+        a.raise_if_inconsistent()
 
 
 def test_consistency_pidfile_missing(simplevm_cfg):
@@ -62,7 +64,8 @@ def test_consistency_pidfile_missing(simplevm_cfg):
     a.qemu.is_running = mock.Mock(return_value=True)
     a.qemu.proc = mock.Mock(return_value=None)
     a.ceph.locked_by_me = mock.Mock(return_value=True)
-    assert a.state_is_consistent() is False
+    with pytest.raises(VMStateInconsistent):
+        a.raise_if_inconsistent()
 
 
 def test_consistency_ceph_lock_missing(simplevm_cfg):
@@ -70,7 +73,8 @@ def test_consistency_ceph_lock_missing(simplevm_cfg):
     a.qemu.is_running = mock.Mock(return_value=True)
     a.qemu.proc = mock.Mock(return_value=psutil.Process(1))
     a.ceph.locked_by_me = mock.Mock(return_value=False)
-    assert a.state_is_consistent() is False
+    with pytest.raises(VMStateInconsistent):
+        a.raise_if_inconsistent()
 
 
 def test_ensure_resize(simplevm_cfg):
@@ -78,4 +82,5 @@ def test_ensure_resize(simplevm_cfg):
     a.qemu.is_running = mock.Mock(return_value=True)
     a.qemu.proc = mock.Mock(return_value=psutil.Process(1))
     a.ceph.locked_by_me = mock.Mock(return_value=False)
-    assert a.state_is_consistent() is False
+    with pytest.raises(VMStateInconsistent):
+        a.raise_if_inconsistent()

@@ -5,7 +5,8 @@ Release notes
 0.8.9 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Improve logging output when destroying a VM because of an inconsistent
+  state. (#25158)
 
 
 0.8.8 (2016-11-18)

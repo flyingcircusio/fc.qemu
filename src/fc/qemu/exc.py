@@ -25,4 +25,11 @@ class VMConfigNotFound(RuntimeError):
 
 
 class VMStateInconsistent(RuntimeError):
-    pass
+
+    qemu = None
+    proc = None
+    ceph_lock = None
+
+    def is_consistent(self):
+        states = [self.qemu, self.proc, self.ceph_lock]
+        return any(states) == all(states)
