@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.8.9 (unreleased)
+0.8.9 (2017-04-07)
 ------------------
 
 - Improve guest agent communication. The guest agent may be in an
