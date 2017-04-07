@@ -5,6 +5,14 @@ Release notes
 0.8.9 (unreleased)
 ------------------
 
+- Improve guest agent communication. The guest agent may be in an
+  inconsistent state that causes it to hang. We've seen this happening
+  where we froze machines and then have the agent be inconsistent.
+
+  This now properly resets the agent connection upon a sync by sending
+  the recommend "wrong" UTF-8 byte that guarantees to interrupt the
+  guest agent's JSON parser.
+
 - Improve logging output when destroying a VM because of an inconsistent
   state. (#25158)
 

@@ -170,7 +170,7 @@ class Qemu(object):
             try:
                 guest.cmd('guest-fsfreeze-freeze')
             except ClientError:
-                self.log.debug('guset-fsfreeze-freeze-failed', exc_info=True)
+                self.log.debug('guest-fsfreeze-freeze-failed', exc_info=True)
             assert guest.cmd('guest-fsfreeze-status') == 'frozen'
 
     def thaw(self):
