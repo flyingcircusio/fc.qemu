@@ -68,9 +68,11 @@ def test_ga_sync_too_often(ga):
         ga.sync()
 
 
-def test_ga_contextmgr(ga, monkeypatch):
+def test_ga_contextmgr(ga, monkeypatch, tmpdir):
     monkeypatch.setattr(socket, 'socket', mock.MagicMock(socket.socket))
-    socket.socket().makefile.return_value = \
-        StringIO.StringIO('{"return": 87643}\n')
+    with open(str(tmpdir / 'socket'), 'w') as f:
+        f.write('{"return": 87643}\n')
+    f = open(str(tmpdir / 'socket'), 'r')
+    socket.socket().makefile.return_value = f
     with ga as g:
         assert g.machine == 'testvm'

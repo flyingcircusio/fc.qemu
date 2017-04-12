@@ -1,7 +1,8 @@
+from ..util import log
+import fcntl
 import json
 import random
 import socket
-from ..util import log
 
 
 class ClientError(RuntimeError):
@@ -74,6 +75,7 @@ class GuestAgent(object):
         self.client.settimeout(self.timeout)
         self.client.connect('/run/qemu.{}.gqa.sock'.format(self.machine))
         self.file = self.client.makefile()
+        fcntl.flock(self.file.fileno(), fcntl.LOCK_EX)
         self.sync()
         return self
 

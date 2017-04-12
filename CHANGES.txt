@@ -11,6 +11,9 @@ Release notes
 - Try harder to catch errors and retry correctly when resetting communication
   with an agent.
 
+- Add another layer to protect the guest agent by acquiring an exclusive lock
+  on the guest agent socket file.
+
 - Keep trying to ensure a VM is unfrozen during regular `ensure` calls.
 
 
