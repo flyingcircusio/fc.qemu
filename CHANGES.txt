@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.8.10 (unreleased)
+0.8.10 (2017-04-12)
 -------------------
 
 - Improve logging: include PID of the running process to help detect and
