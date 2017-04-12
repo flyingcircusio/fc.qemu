@@ -43,6 +43,25 @@ def test_ga_sync_too_often(ga):
 {"return": 2}
 {"return": 3}
 {"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
+{"return": 4}
 {"return": 87643}
 """)
     with pytest.raises(ClientError):

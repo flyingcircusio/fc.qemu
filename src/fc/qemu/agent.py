@@ -6,10 +6,12 @@ from .outgoing import Outgoing
 from .sysconfig import sysconfig
 from .timeout import TimeOut
 from .util import rewrite, locate_live_service, MiB, GiB, log
+from . import util
 from multiprocessing.pool import ThreadPool
 import consulate
 import contextlib
 import copy
+import datetime
 import distutils.spawn
 import fcntl
 import glob
@@ -73,7 +75,7 @@ class ConsulEventHandler(object):
             return
         with agent:
             log_.info('snapshot')
-            agent.snapshot(snapshot)
+            agent.snapshot(snapshot, keep=0)
 
 
 def running(expected=True):
@@ -270,13 +272,15 @@ class Agent(object):
             # Last-resort seat-belt to verify that we ended up in a consistent
             # state. Inconsistent states result in the VM being forcefully
             # terminated.
-            self.log.error('inconsistent-state', action='destroy', exc_info=True)
+            self.log.error('inconsistent-state', action='destroy',
+                           exc_info=True)
             self.qemu.destroy()
 
     def ensure_offline(self):
         if self.qemu.is_running():
             self.log.info(
-                'ensure-state', wanted='offline', found='online', action='stop')
+                'ensure-state', wanted='offline', found='online',
+                action='stop')
             self.stop()
         else:
             self.log.info(
@@ -331,6 +335,11 @@ class Agent(object):
         if agent_ready:
             # This requires guest agent interaction and we should only
             # perform this when we haven't recently booted the machine.
+            try:
+                self.log.info('ensure-thawed', volume='root')
+                self.qemu.thaw()
+            except Exception as e:
+                self.log.error('ensure-thawed-failed', reason=str(e))
             self.mark_qemu_binary_generation()
 
     def cleanup(self):
@@ -439,7 +448,7 @@ class Agent(object):
                 try:
                     self.qemu.freeze()
                     frozen = True
-                except socket.error as e:
+                except Exception as e:
                     self.log.error('freeze-failed',
                                    reason=str(e), action='continue',
                                    machine=self.name)
@@ -449,27 +458,31 @@ class Agent(object):
                 try:
                     self.log.info('thaw', volume='root')
                     self.qemu.thaw()
-                except socket.error as e:
+                except Exception as e:
                     self.log.error('thaw-failed', reason=str(e),
                                    action='retry')
                     try:
                         self.qemu.thaw()
-                    except socket.error as e:
+                    except Exception as e:
                         self.log.error('thaw-failed', reason=str(e),
                                        action='continue')
                         raise
 
     @locked
-    def snapshot(self, snapshot):
+    def snapshot(self, snapshot, keep=0):
         """Guarantees a _consistent_ snapshot to be created.
 
         If we can't properly freeze the VM then whoever needs a (consistent)
         snapshot needs to figure out whether to go forward with an
         inconsistent snapshot.
         """
+        if keep:
+            until = util.today() + datetime.timedelta(days=keep)
+            snapshot = snapshot + '-keep-until-' + until.strftime('%Y%m%d')
         if snapshot in [x.snapname for x in self.ceph.root.snapshots]:
             self.log.info('snapshot-exists', snapshot=snapshot)
             return
+        self.log.debug('snapshot-create', name=snapshot)
         with self.frozen_vm() as frozen:
             if frozen:
                 self.ceph.root.snapshots.create(snapshot)

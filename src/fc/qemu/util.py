@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import datetime
 
 MiB = 2 ** 20
 GiB = 2 ** 30
@@ -103,3 +104,10 @@ def timeit(label):
     yield
     print('run time for {}: {}'.format(label, time.time() - start),
           file=sys.stderr)
+
+
+def today():
+    return datetime.date.today()
+
+
+

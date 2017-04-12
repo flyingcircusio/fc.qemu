@@ -1,7 +1,8 @@
 from ..conftest import get_log
+from ..ellipsis import Ellipsis
+from fc.qemu import util
 from fc.qemu.agent import Agent
 from fc.qemu.hazmat.qemu import Qemu
-from fc.qemu import util
 from StringIO import StringIO
 import json
 import os.path
@@ -9,8 +10,10 @@ import pytest
 
 # globally overriding timeouts since _handle_consul_event creates new
 # Agent/Qemu/... instances itself.
-Qemu.guestagent_timeout = .1
-Qemu.qmp_timeout = .1
+Qemu.guestagent_timeout = .01
+Qemu.qmp_timeout = .01
+Qemu.thaw_retry_timeout = .1
+
 
 def test_no_events():
     stdin = StringIO("[]")
@@ -192,22 +195,86 @@ def test_snapshot_online_vm(vm):
         '[{"ModifyIndex": 123, "Value": "%s", '
         '"Key": "snapshot/7468743"}]' % snapshot.encode('base64').strip())
     Agent.handle_consul_event(stdin)
-    assert get_log() == """\
+    assert Ellipsis("""\
 count=1 event=start-consul-events
 event=handle-key key=snapshot/7468743
 event=connect-rados machine=simplevm subsystem=ceph
 event=snapshot machine=simplevm snapshot=backy-1234
+event=snapshot-create machine=simplevm name=backy-1234
 arguments={} event=qmp_capabilities id=None machine=simplevm subsystem=qemu/qmp
 arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=freeze machine=simplevm volume=root
-action=continue event=freeze-failed machine=simplevm reason=timed out
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=0
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=1
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=2
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=3
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=4
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=5
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=6
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=7
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=8
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=9
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=10
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=11
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=12
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=13
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=14
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=15
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=16
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=17
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=18
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=19
+action=continue event=freeze-failed machine=simplevm reason=Unable to sync \
+with guest agent after 20 tries.
 event=snapshot-ignore machine=simplevm reason=not frozen
 arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=thaw machine=simplevm volume=root
-action=retry event=thaw-failed machine=simplevm reason=timed out
-action=continue event=thaw-failed machine=simplevm reason=timed out
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=0
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=1
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=2
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=3
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=4
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=5
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=6
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=7
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=8
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=9
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=10
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=11
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=12
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=13
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=14
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=15
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=16
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=17
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=18
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=19
+action=retry event=thaw-failed machine=simplevm reason=Unable to sync with \
+guest agent after 20 tries.
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=0
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=1
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=2
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=3
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=4
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=5
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=6
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=7
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=8
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=9
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=10
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=11
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=12
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=13
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=14
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=15
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=16
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=17
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=18
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=19
+action=continue event=thaw-failed machine=simplevm reason=Unable to sync with \
+guest agent after 20 tries.
 event=consul-handle-event exc_info=True
-event=finish-consul-events"""
+event=finish-consul-events""") == get_log()
 
 
 def test_snapshot_nonexisting_vm():
@@ -248,6 +315,7 @@ count=1 event=start-consul-events
 event=handle-key key=snapshot/7468743
 event=connect-rados machine=simplevm subsystem=ceph
 event=snapshot machine=simplevm snapshot=backy-1234
+event=snapshot-create machine=simplevm name=backy-1234
 event=snapshot-ignore machine=simplevm reason=not frozen
 event=finish-consul-events"""
 
