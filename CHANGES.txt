@@ -5,7 +5,13 @@ Release notes
 0.8.10 (unreleased)
 -------------------
 
-- Nothing changed yet.
+- Improve logging: include PID of the running process to help detect and
+  understand potential conflicts in parallel runs.
+
+- Try harder to catch errors and retry correctly when resetting communication
+  with an agent.
+
+- Keep trying to ensure a VM is unfrozen during regular `ensure` calls.
 
 
 0.8.9 (2017-04-07)

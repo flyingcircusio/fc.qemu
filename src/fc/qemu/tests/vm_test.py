@@ -2,7 +2,9 @@ from ..agent import swap_size, tmp_size
 from ..conftest import get_log
 from ..ellipsis import Ellipsis
 from ..util import MiB, GiB
+import datetime
 import os.path
+import pytest
 import subprocess
 
 
@@ -231,6 +233,106 @@ def test_vm_snapshot_only_if_running(vm):
     vm.ceph.root.ensure_presence()
     vm.snapshot('asdf')
     assert list(x.fullname for x in vm.ceph.root.snapshots) == []
+
+
+def test_vm_snapshot_with_missing_guest_agent(vm, monkeypatch):
+    import fc.qemu.util
+    monkeypatch.setattr(
+        fc.qemu.util, 'today', lambda: datetime.date(2010, 1, 1))
+
+    assert list(x.fullname for x in vm.ceph.root.snapshots) == []
+    vm.ensure()
+    get_log()
+
+    with pytest.raises(Exception):
+        vm.snapshot('asdf', 7)
+    assert Ellipsis("""\
+event=snapshot-create machine=simplevm name=asdf-keep-until-20100108
+arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
+event=freeze machine=simplevm volume=root
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=0
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=1
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=2
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=3
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=4
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=5
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=6
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=7
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=8
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=9
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=10
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=11
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=12
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=13
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=14
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=15
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=16
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=17
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=18
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=19
+action=continue event=freeze-failed machine=simplevm reason=Unable to sync \
+with guest agent after 20 tries.
+event=snapshot-ignore machine=simplevm reason=not frozen
+arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
+event=thaw machine=simplevm volume=root
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=0
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=1
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=2
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=3
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=4
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=5
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=6
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=7
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=8
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=9
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=10
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=11
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=12
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=13
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=14
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=15
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=16
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=17
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=18
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=19
+action=retry event=thaw-failed machine=simplevm reason=Unable to sync with \
+guest agent after 20 tries.
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=0
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=1
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=2
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=3
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=4
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=5
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=6
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=7
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=8
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=9
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=10
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=11
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=12
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=13
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=14
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=15
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=16
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=17
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=18
+event=incorrect-sync-id expected=... got=None machine=simplevm tries=19
+action=continue event=thaw-failed machine=simplevm reason=Unable to sync \
+with guest agent after 20 tries.""") == get_log()
+
+    with pytest.raises(Exception):
+        vm.snapshot('asdf', 0)
+    assert """\
+event=snapshot-create machine=simplevm name=asdf
+arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
+event=freeze machine=simplevm volume=root
+action=continue event=freeze-failed machine=simplevm reason=[Errno 11] Resource temporarily unavailable
+event=snapshot-ignore machine=simplevm reason=not frozen
+arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
+event=thaw machine=simplevm volume=root
+action=retry event=thaw-failed machine=simplevm reason=[Errno 11] Resource temporarily unavailable
+action=continue event=thaw-failed machine=simplevm reason=[Errno 11] Resource temporarily unavailable\
+""" == get_log()
 
 
 def test_vm_throttle_iops(vm):

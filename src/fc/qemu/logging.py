@@ -9,7 +9,7 @@ import structlog
 import structlog.dev
 import structlog.processors
 import sys
-
+import os
 
 try:
     import colorama
@@ -112,6 +112,12 @@ class ConsoleRenderer(object):
             write(
                 # can be a number if timestamp is UNIXy
                 DIM + str(ts) + RESET_ALL + " ")
+
+        pid = event_dict.pop("pid", None)
+        if pid is not None:
+            write(
+                DIM + str(pid) + RESET_ALL + " ")
+
         level = event_dict.pop("level", None)
         if level is not None:
             write(self._level_to_color[level] + level[0].upper() +
@@ -174,10 +180,16 @@ def method_to_level(logger, method_name, event_dict):
     return event_dict
 
 
+def add_pid(logger, method_name, event_dict):
+    event_dict['pid'] = os.getpid()
+    return event_dict
+
+
 def init_logging(verbose=True):
     structlog.configure(
         processors=[
             method_to_level,
+            add_pid,
             structlog.processors.format_exc_info,
             structlog.processors.TimeStamper(fmt='iso'),
             ConsoleRenderer(min_level='debug' if verbose else 'info')

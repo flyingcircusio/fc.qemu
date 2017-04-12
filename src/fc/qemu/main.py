@@ -98,7 +98,11 @@ def main():
 
     p = sub.add_parser('snapshot',
                        help='Take a clean snapshot of this VM\'s root volume.')
+    p.add_argument('-k', '--keep', default=7, type=int,
+                   help='How many days to keep the snapshot. '
+                   '(default=7, forever=0) to keep')
     p.add_argument('vm', metavar='VM', help='name of the VM')
+
     p.add_argument('snapshot', help='name of the snapshot')
     p.set_defaults(func='snapshot')
 

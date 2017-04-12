@@ -48,6 +48,7 @@ class Qemu(object):
     max_downtime = 1.0
     guestagent_timeout = 3.0
     qmp_timeout = 5.0
+    thaw_retry_timeout = 2
 
     # The non-hosts-specific config configuration of this Qemu instance.
     args = ()
@@ -174,12 +175,21 @@ class Qemu(object):
             assert guest.cmd('guest-fsfreeze-status') == 'frozen'
 
     def thaw(self):
-        with self.guestagent as guest:
-            try:
-                guest.cmd('guest-fsfreeze-thaw')
-            except ClientError:
-                self.log.debug('guest-fsfreeze-freeze-thaw', exc_info=True)
-            assert guest.cmd('guest-fsfreeze-status') == 'thawed'
+        tries = 10
+        while tries:
+            # Try _really_ _really_ hard to get the VM to thaw. Otherwise
+            # it will just sit there and do nothing, causing the application
+            # to crash and us to have to get up.
+            with self.guestagent as guest:
+                try:
+                    guest.cmd('guest-fsfreeze-thaw')
+                except ClientError:
+                    self.log.debug('guest-fsfreeze-freeze-thaw', exc_info=True)
+                if guest.cmd('guest-fsfreeze-status') == 'thawed':
+                    break
+                time.sleep(self.thaw_retry_timeout)
+        else:
+            self.log.error('guest-fsfreeze-thaw', result='failed')
 
     def write_file(self, path, content):
         with self.guestagent as guest:
