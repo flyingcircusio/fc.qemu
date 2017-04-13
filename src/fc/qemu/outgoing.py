@@ -101,7 +101,7 @@ class Outgoing(object):
             mbps = stat['ram']['mbps'] if 'ram' in stat else '-'
             self.log.info('migration-status',
                           status=stat['status'],
-                          remaining=remaining,
+                          remaining='{0:,}'.format(remaining),
                           mbps=mbps,
                           output=pprint.pformat(stat))
             self.target.ping(self.cookie)
