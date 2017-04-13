@@ -5,7 +5,8 @@ Release notes
 0.8.11 (unreleased)
 -------------------
 
-- Nothing changed yet.
+- Add thousands separator in logging to live migration log to allow easier
+  optical inspection.
 
 
 0.8.10 (2017-04-12)
