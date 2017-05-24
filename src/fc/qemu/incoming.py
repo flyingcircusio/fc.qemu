@@ -59,6 +59,7 @@ class IncomingServer(object):
         url = 'http://{}:{}/'.format(*self.bind_address)
         self.log.info('start-server', type='incoming', url=url)
         s.timeout = 1
+        s._send_traceback_header = True
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()
         with self.inmigrate_service_registered():

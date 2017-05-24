@@ -29,7 +29,7 @@ class GuestAgent(object):
                 raise ClientError(result)
         return result['return']
 
-    def cmd(self, cmd, flush_ga_parser=False, **args):
+    def cmd(self, cmd, flush_ga_parser=False, timeout=None, **args):
         """Issues GA command and returns the result."""
         message = json.dumps({"execute": cmd, "arguments": args})
         if flush_ga_parser:
@@ -38,6 +38,10 @@ class GuestAgent(object):
             # is reset to a known state. This is recommended for sync.
             # http://wiki.qemu-project.org/index.php/Features/GuestAgent#guest-sync
             message = b'\xff' + message
+        timeout = timeout or self.timeout
+        # Allow setting temporary timeouts for operations that are known to be
+        # slow.
+        self.client.settimeout(self.timeout)
         self.client.send(message)
         return self.read()
 
