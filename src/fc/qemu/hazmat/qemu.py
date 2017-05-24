@@ -169,7 +169,12 @@ class Qemu(object):
     def freeze(self):
         with self.guestagent as guest:
             try:
-                guest.cmd('guest-fsfreeze-freeze')
+                # This request may take a _long_ _long_ time and the default
+                # timeout of 3 seconds will cause everything to explode when
+                # the guest takes too long. We've seen 16 seconds as a regular
+                # period in some busy and large machines. I'm being _very_
+                # generous using a 120s timeout here.
+                guest.cmd('guest-fsfreeze-freeze', timeout=120)
             except ClientError:
                 self.log.debug('guest-fsfreeze-freeze-failed', exc_info=True)
             assert guest.cmd('guest-fsfreeze-status') == 'frozen'
@@ -218,6 +223,8 @@ class Qemu(object):
             {'capability': 'auto-converge', 'state': True}])
         self.qmp.command('migrate_set_downtime', value=self.max_downtime)
         self.qmp.command('migrate', uri=address)
+        self.log.debug('migrate-parameters',
+                       **self.qmp.command('query-migrate-parameters'))
 
     def poll_migration_status(self, timeout=30):
         """Monitor ongoing migration.

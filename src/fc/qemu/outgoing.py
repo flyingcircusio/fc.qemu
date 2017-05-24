@@ -97,11 +97,11 @@ class Outgoing(object):
         self.log.info('start-migration', target=migration_address)
         self.agent.qemu.migrate(migration_address)
         for stat in self.agent.qemu.poll_migration_status():
-            remaining = stat['ram']['remaining'] if 'ram' in stat else '-'
+            remaining = stat['ram']['remaining'] if 'ram' in stat else 0
             mbps = stat['ram']['mbps'] if 'ram' in stat else '-'
             self.log.info('migration-status',
                           status=stat['status'],
-                          remaining='{0:,}'.format(remaining),
+                          remaining='{0:,d}'.format(remaining),
                           mbps=mbps,
                           output=pprint.pformat(stat))
             self.target.ping(self.cookie)
@@ -136,15 +136,16 @@ class Outgoing(object):
                 except Exception:
                     self.log.exception('destroy-remote-failed', exc_info=True)
         try:
-            self.log.info('acquire-local-locks')
+            self.log.info('continue-locally')
             self.agent.ceph.lock()
+            assert self.agent.qemu.is_running()
         except Exception:
-            self.log.exception('acquire-local-locks-failed', exc_info=True,
-                               action='destroy local')
+            self.log.exception('continue-locally', exc_info=True,
+                               result='failed', action='destroy local')
             self.destroy()
         else:
-            self.log.info('acquire-local-locks-succeeded',
-                          result='continuing locally')
+            self.log.info('continue-locally',
+                          result='success')
 
     def destroy(self):
         self.agent.qemu.destroy()

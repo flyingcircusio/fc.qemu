@@ -8,6 +8,13 @@ Release notes
 - Add thousands separator in logging to live migration log to allow easier
   optical inspection.
 
+- Improve fsfreeze timeout handling: this can take quite a while and if we
+  are too eager then we end up quickly in unstable states.
+
+- Improve error and debug logging.
+
+- Improve resilience of continuing locally after a failed migration.
+
 
 0.8.10 (2017-04-12)
 -------------------
