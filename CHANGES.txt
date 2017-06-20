@@ -2,7 +2,13 @@ Release notes
 =============
 
 
-0.8.11 (unreleased)
+0.8.12 (unreleased)
+-------------------
+
+- Nothing changed yet.
+
+
+0.8.11 (2017-05-29)
 -------------------
 
 - Add thousands separator in logging to live migration log to allow easier
