@@ -38,7 +38,7 @@ def test_no_key_event():
     Agent.handle_consul_event(stdin)
     assert util.log_data == [
         'count=1 event=start-consul-events',
-        'event=consul-handle-event exc_info=True',
+        'event=handle-key-failed exc_info=True key=None',
         'event=finish-consul-events']
 
 
@@ -273,7 +273,7 @@ event=incorrect-sync-id expected=... got=None machine=simplevm tries=18
 event=incorrect-sync-id expected=... got=None machine=simplevm tries=19
 action=continue event=thaw-failed machine=simplevm reason=Unable to sync with \
 guest agent after 20 tries.
-event=consul-handle-event exc_info=True
+event=handle-key-failed exc_info=True key=snapshot/7468743
 event=finish-consul-events""") == get_log()
 
 
