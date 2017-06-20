@@ -56,6 +56,10 @@ class IncomingServer(object):
     def run(self):
         s = SimpleXMLRPCServer.SimpleXMLRPCServer(
             self.bind_address, logRequests=False, allow_none=True)
+        # Support ephemeral ports (specifying 0 as the bind port)
+        # so we avoid running into recently used ports if migrations need
+        # to be retried.
+        self.bind_address = self.bind_address[0], s.socket.getsockname()[1]
         url = 'http://{}:{}/'.format(*self.bind_address)
         self.log.info('start-server', type='incoming', url=url)
         s.timeout = 1
@@ -69,6 +73,7 @@ class IncomingServer(object):
                 s.handle_request()
                 if self.finished:
                     break
+        s.server_close()
         self.log.info('stop-server', type='incoming', result=self.finished)
         if self.finished == 'success':
             return 0

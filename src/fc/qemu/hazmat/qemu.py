@@ -219,9 +219,13 @@ class Qemu(object):
         """Initiate actual (out-)migration"""
         self.log.debug('migrate')
         self.qmp.command('migrate-set-capabilities', capabilities=[
-            {'capability': 'xbzrle', 'state': True},
+            {'capability': 'xbzrle', 'state': False},
             {'capability': 'auto-converge', 'state': True}])
+        self.qmp.command('migrate-set-parameters',
+                         **{'compress-level': 0})
+
         self.qmp.command('migrate_set_downtime', value=self.max_downtime)
+        self.qmp.command('migrate_set_speed', value=0)
         self.qmp.command('migrate', uri=address)
         self.log.debug('migrate-parameters',
                        **self.qmp.command('query-migrate-parameters'))

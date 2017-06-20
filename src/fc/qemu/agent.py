@@ -44,7 +44,9 @@ class ConsulEventHandler(object):
                 return
             getattr(self, prefix)(event)
         except Exception:
-            log.exception('consul-handle-event', exc_info=True)
+            log.exception('handle-key-failed',
+                          key=event.get('Key', None),
+                          exc_info=True)
 
     def node(self, event):
         config = json.loads(event['Value'].decode('base64'))
@@ -221,9 +223,9 @@ class Agent(object):
                 agent = Agent(name)
                 with agent:
                     running = agent.qemu.process_exists()
-                    log.info('vm-status', name=name, online=running)
+                    log.info('online' if running else 'offline', machine=name)
             except:
-                log.exception('query-vm-status', name=name, exc_info=True)
+                log.exception('vm-status', machine=name, exc_info=True)
 
     def save_enc(self):
         """Save the current config on the agent into the local persistent file.
@@ -316,7 +318,13 @@ class Agent(object):
                 self.log.info(
                     'ensure-state', wanted='online', found='offline',
                     action='inmigrate', remote=existing['Address'])
-                self.inmigrate()
+                success = self.inmigrate()
+                if not success:
+                    # This is suboptimal: I hate error returns,
+                    # but the main method is also a command. If we did
+                    # not succeed in migrating, then I also don't want the
+                    # consul registration to happen.
+                    return
             else:
                 self.log.info(
                     'ensure-state', wanted='online', found='offline',
