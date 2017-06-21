@@ -6,8 +6,6 @@
 from __future__ import absolute_import, division, print_function
 from six import StringIO
 import structlog
-import structlog.dev
-import structlog.processors
 import sys
 import os
 
@@ -56,7 +54,46 @@ else:
     GREEN = ''
 
 
-class ConsoleRenderer(object):
+class MultiOptimisticLoggerFactory(object):
+
+    def __init__(self, **factories):
+        self.factories = factories
+
+    def __call__(self, *args):
+        loggers = {k: f() for k, f in self.factories.items()}
+        return MultiOptimisticLogger(loggers)
+
+
+class MultiOptimisticLogger(object):
+
+    def __init__(self, loggers):
+        self.loggers = loggers
+
+    def __repr__(self):
+        return '<MultiOptimisticLogger {}>'.format(
+            [repr(l) for l in self.loggers])
+
+    def msg(self, **event_dict):
+        for name, logger in self.loggers.items():
+            try:
+                line = event_dict.get(name)
+                if line:
+                    logger.msg(line)
+            except Exception:
+                # We're being really optimistic: we want the calling program
+                # to continue even if we face huge troubles logging stuff.
+                pass
+
+    def __getattr__(self, name):
+        return self.msg
+
+
+def prefix(prefix, line):
+    return '{}>\t'.format(prefix) + line.replace(
+        '\n', '\n{}>\t'.format(prefix))
+
+
+class MultiConsoleRenderer(object):
     """
     Render `event_dict` nicely aligned, in colors, and ordered with
     specific knowledge about fc.qemu structures.
@@ -96,16 +133,16 @@ class ConsoleRenderer(object):
         ))
 
     def __call__(self, logger, method_name, event_dict):
-        sio = StringIO()
-        logio = StringIO()
+        console_io = StringIO()
+        log_io = StringIO()
 
         def write(line):
-            sio.write(line)
+            console_io.write(line)
             if RESET_ALL:
                 for SYMB in [RESET_ALL, BRIGHT, DIM, RED, BACKRED,
                              BLUE, CYAN, MAGENTA, YELLOW, GREEN]:
                     line = line.replace(SYMB, '')
-            logio.write(line)
+            log_io.write(line)
 
         ts = event_dict.pop("timestamp", None)
         if ts is not None:
@@ -149,30 +186,26 @@ class ConsoleRenderer(object):
                        for key in sorted(event_dict.keys())))
 
         if args is not None:
-            write(DIM + '\n{}>\t'.format(machine) +
-                  event + ' ' + ''.join(args) + RESET_ALL)
+            write(DIM +
+                  prefix(machine, event + ' ' + ''.join(args)) +
+                  RESET_ALL)
         if output is not None:
-            output = '{}>\t'.format(machine) + output.replace(
-                '\n', '\n{}>\t'.format(machine))
-            write('\n' + DIM + output + RESET_ALL)
+            write('\n' + DIM + prefix(machine, output) + RESET_ALL)
 
         if stack is not None:
-            write("\n" + stack)
+            write("\n" + prefix(machine, stack))
             if exc is not None:
-                write("\n\n" + "=" * 79 + "\n")
+                write("\n\n" + prefix(machine, "=" * 79 + "\n"))
         if exc is not None:
-            write("\n" + exc)
-
-        # Log everything to the persistent log.
-        with open('/var/log/fc-qemu.log', 'a') as l:
-            l.write(logio.getvalue() + '\n')
+            write("\n" + prefix(machine, exc))
 
         # Filter according to the -v switch when outputting to the
         # console.
         if self.LEVELS.index(method_name.lower()) > self.min_level:
-            raise structlog.DropEvent
+            console_io.seek(0)
+            console_io.truncate()
 
-        return sio.getvalue()
+        return {'console': console_io.getvalue(), 'file': log_io.getvalue()}
 
 
 def method_to_level(logger, method_name, event_dict):
@@ -186,12 +219,16 @@ def add_pid(logger, method_name, event_dict):
 
 
 def init_logging(verbose=True):
+    log_file = open('/var/log/fc-qemu.log', 'a')
     structlog.configure(
         processors=[
             method_to_level,
             add_pid,
             structlog.processors.format_exc_info,
-            structlog.processors.TimeStamper(fmt='iso'),
-            ConsoleRenderer(min_level='debug' if verbose else 'info')
+            structlog.processors.TimeStamper(fmt='iso', utc=False),
+            MultiConsoleRenderer(min_level='debug' if verbose else 'info')
         ],
+        logger_factory=MultiOptimisticLoggerFactory(
+            console=structlog.PrintLoggerFactory(),
+            file=structlog.PrintLoggerFactory(log_file))
     )

@@ -5,8 +5,17 @@ Release notes
 0.8.12 (unreleased)
 -------------------
 
-- Nothing changed yet.
+- Switch logging from UTC to local server time. This has proven much more
+  confusing as our other on-disk logs are in server time.
 
+- Do not crash on broken logging (i.e. disk full or STDIO missing) to avoid
+  accidentally crashing a VM just because the controlling script runs into issues.
+
+- Improve live migration: skip compression, enable unlimited bandwidth, and
+  use ephemeral ports to avoid running into TCP timing issues when retrying
+  live migrations quickly.
+
+- Add VM name prefixes also for stack dumps and tracebacks.
 
 0.8.11 (2017-05-29)
 -------------------
