@@ -662,6 +662,9 @@ class Agent(object):
             '-display vnc={{vnc}}',
             '-pidfile {{pidfile}}',
             '-vga std',
+            # We use this '-m' flag to find what a running VM is actually
+            # using at the moment. If this flag is changed then that code must
+            # be adapted as well. This is used in incoming.py and qemu.py.
             '-m {memory}',
             '-watchdog i6300esb',
             '-watchdog-action reset',

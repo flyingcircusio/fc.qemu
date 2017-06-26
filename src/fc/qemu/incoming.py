@@ -94,6 +94,13 @@ class IncomingServer(object):
 
     def prepare_incoming(self, args, config):
         self.qemu.args = args
+        # Adapt actual VM memory size: we will start with the proper parameter
+        # but the memory verification needs to find the real value.
+        # XXX This is a nasty code path.
+        for arg in args:
+            if arg.startswith('-m '):
+                memory = int(arg.split(' ')[1])
+                self.qemu.cfg['memory'] = memory
         self.qemu.config = self.screen_config(config)
         try:
             return self.qemu.inmigrate()

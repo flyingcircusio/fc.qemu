@@ -3,9 +3,11 @@
 from ..exc import QemuNotRunning, VMStateInconsistent
 from ..sysconfig import sysconfig
 from ..timeout import TimeOut
-from ..util import log
+from ..util import log, ControlledRuntimeException
 from .guestagent import GuestAgent, ClientError
 from .qmp import QEMUMonitorProtocol as Qmp, QMPConnectError
+import datetime
+import fcntl
 import glob
 import os.path
 import psutil
@@ -13,7 +15,6 @@ import socket
 import subprocess
 import time
 import yaml
-import datetime
 
 
 class InvalidMigrationStatus(Exception):
@@ -34,6 +35,20 @@ def detect_current_machine_type(prefix):
     raise KeyError("No machine type found for prefix `{}`".format(prefix))
 
 
+def locked_global(f):
+    # This is thread-safe *AS LONG* as every thread uses a separate instance
+    # of the agent. Using multiple file descriptors will guarantee that the
+    # lock can only be held once even within a single process.
+    def locked(self, *args, **kw):
+        fd = os.open('/etc/qemu/fc-qemu.conf', os.O_RDONLY)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            return f(self, *args, **kw)
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    return locked
+
+
 class Qemu(object):
 
     executable = 'qemu-system-x86_64'
@@ -49,6 +64,7 @@ class Qemu(object):
     guestagent_timeout = 3.0
     qmp_timeout = 5.0
     thaw_retry_timeout = 2
+    vm_max_total_memory = 0
 
     # The non-hosts-specific config configuration of this Qemu instance.
     args = ()
@@ -134,9 +150,61 @@ class Qemu(object):
         if os.path.exists(logfile):
             os.rename(logfile, alternate)
 
+    def _verify_memory(self):
+        """Verify that we do not accidentally run more VMs than we can
+        physically bear.
+
+        This is a protection to avoid starting new VMs while some old VMs
+        that the directory assumes have been migrated or stopped already
+        are still running. This can cause severe performance penalties and may
+        also kill VMs under some circumstances.
+
+        If no limit is configured then we start VMs without that check.
+        """
+        if not self.vm_max_total_memory:
+            return
+        free = self.vm_max_total_memory
+        for proc in psutil.process_iter():
+            try:
+                pinfo = proc.as_dict(attrs=['pid', 'name', 'cmdline'])
+            except psutil.NoSuchProcess:
+                continue
+
+            if not pinfo['name'].startswith('kvm.'):
+                continue
+            if not (pinfo['cmdline'] and
+                    pinfo['cmdline'][0] == 'qemu-system-x86_64'):
+                continue
+            try:
+                m_flag = pinfo['cmdline'].index('-m')
+                memory = int(pinfo['cmdline'][m_flag + 1])
+            except (ValueError, KeyError):
+                self.log.debug('unexpected-cmdline',
+                               cmdline=format(' '.join(pinfo['cmdline'])))
+                raise ControlledRuntimeException(
+                    "Can not determine used memory for {}".
+                    format(' '.join(pinfo['cmdline'])))
+            free -= memory
+        required = self.cfg['memory']
+        if free < required:
+            self.log.error('insufficient-host-memory',
+                           free=free, required=required)
+            raise ControlledRuntimeException(
+                'Insufficient memory to start VM.')
+        self.log.debug('sufficient-host-memory', free=free, required=required)
+
+    # This lock protects checking the amount of available memory and actually
+    # starting the VM. This ensure that no other process checks at the same
+    # time and we end up using the free memory twice.
+    @locked_global
     def _start(self, additional_args=()):
         if self.require_kvm and not os.path.exists('/dev/kvm'):
-            raise RuntimeError('Refusing to start without /dev/kvm support.')
+            self.log.error('missing-kvm-support')
+            raise ControlledRuntimeException(
+                'Refusing to start without /dev/kvm support.')
+
+        self._verify_memory()
+
         self.prepare_config()
         self.prepare_log()
         with open('/proc/sys/vm/compact_memory', 'w') as f:
@@ -153,7 +221,8 @@ class Qemu(object):
                            local_args=self.local_args,
                            additional_args=additional_args)
             p = subprocess.Popen(cmd, shell=True, close_fds=True,
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
             stdout, stderr = p.communicate()
             if p.returncode != 0:
                 raise QemuNotRunning(p.returncode, stdout, stderr)

@@ -1,5 +1,6 @@
 import sys
 import os.path
+from .util import ControlledRuntimeException
 
 
 def daemonize():
@@ -166,6 +167,10 @@ def main():
             agent = Agent(vm)
             with agent:
                 sys.exit(getattr(agent, func)(**kwargs) or 0)
+    except (ControlledRuntimeException):
+        # Those exceptions are properly logged and indicate an error with a
+        # proper shutdown.
+        sys.exit(1)
     except (VMConfigNotFound, InvalidCommand):
         # Those exceptions are properly logged and don't have to be shown
         # with their traceback.

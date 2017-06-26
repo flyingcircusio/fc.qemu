@@ -18,6 +18,12 @@ GiB = 2 ** 30
 log = get_logger()
 
 
+class ControlledRuntimeException(RuntimeError):
+    """An exception that is used for flow control but doesn't have to be logged
+    as it is handled properly inside.
+    """
+
+
 @contextlib.contextmanager
 def rewrite(filename):
     """Rewrite an existing file atomically.

@@ -186,7 +186,7 @@ class MultiConsoleRenderer(object):
                        for key in sorted(event_dict.keys())))
 
         if args is not None:
-            write(DIM +
+            write('\n' + DIM +
                   prefix(machine, event + ' ' + ''.join(args)) +
                   RESET_ALL)
         if output is not None:
