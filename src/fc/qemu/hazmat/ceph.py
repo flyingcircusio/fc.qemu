@@ -85,7 +85,6 @@ class Ceph(object):
         self.tmp.ensure_size(self.cfg['tmp_size'])
         with self.tmp.mapped():
             self.tmp.mkfs()
-            log.debug('seed', volume=self.tmp.name)
             self.tmp.seed(enc_data, generation)
 
     def locks(self):

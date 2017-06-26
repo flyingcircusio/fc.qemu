@@ -5,6 +5,18 @@ Release notes
 0.8.12 (unreleased)
 -------------------
 
+- Clean up default-option handling for some config options: we used two
+  different styles of defaults. They have been unified into a single
+  "default.conf" that gets loaded first.
+
+- Allow managing host memory with a "maximum total" of memory that can be
+  configured on VMs (-m switch). This is not based on actual RAM usage or
+  availability but planned and configured values of currently running VMs!
+
+  If a VM shall be inmigrated or started and the host would go beyond the
+  'vm_max_total_memory' setting with that VM then the action will fail.
+
+
 - Switch logging from UTC to local server time. This has proven much more
   confusing as our other on-disk logs are in server time.
 
@@ -16,6 +28,7 @@ Release notes
   live migrations quickly.
 
 - Add VM name prefixes also for stack dumps and tracebacks.
+
 
 0.8.11 (2017-05-29)
 -------------------

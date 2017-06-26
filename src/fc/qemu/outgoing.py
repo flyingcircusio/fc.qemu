@@ -38,8 +38,8 @@ class Outgoing(object):
         else:
             self.migration_exitcode = 1
             try:
-                self.log.debug('migration-failed',
-                               action='rescue', exc_info=True)
+                self.log.exception(
+                    'migration-failed', action='rescue', exc_info=True)
                 self.rescue()
                 return True  # swallow exception
             except:
@@ -118,9 +118,9 @@ class Outgoing(object):
 
     def rescue(self):
         """Outgoing rescue: try to rescue the remote side first."""
-        self.log.exception('rescue', exc_info=True)
         if self.target is not None:
             try:
+                self.log.info('rescue-remote')
                 self.target.rescue(self.cookie)
                 self.target.finish_incoming(self.cookie)
                 self.log.info('rescue-remote-success', action='destroy local')

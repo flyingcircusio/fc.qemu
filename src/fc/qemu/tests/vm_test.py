@@ -41,7 +41,6 @@ args=/dev/rbd/rbd.ssd/simplevm.tmp event=partprobe machine=simplevm subsystem=ce
 args=-q -f -L "tmp" "/dev/rbd/rbd.ssd/simplevm.tmp-part1" event=mkfs.xfs machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 event=mkfs.xfs machine=simplevm output=log stripe unit (4194304 bytes) is too large (maximum is 256KiB)
 log stripe unit adjusted to 32KiB subsystem=ceph volume=rbd.ssd/simplevm.tmp
-event=seed volume=simplevm.tmp
 event=seed machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 args="/dev/rbd/rbd.ssd/simplevm.tmp-part1" "/mnt/rbd/rbd.ssd/simplevm.tmp" event=mount machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 args="/mnt/rbd/rbd.ssd/simplevm.tmp" event=umount machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -53,6 +52,7 @@ args=-f -L "swap" "/dev/rbd/rbd.ssd/simplevm.swap" event=mkswap machine=simplevm
 event=mkswap machine=simplevm output=Setting up swapspace version 1, size = 1048572 KiB
 LABEL=swap, UUID=...-...-...-...-... subsystem=ceph volume=rbd.ssd/simplevm.swap
 args=-c "/etc/ceph/ceph.conf" --id "admin" unmap "/dev/rbd/rbd.ssd/simplevm.swap" event=rbd machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+event=sufficient-host-memory free=768 machine=simplevm required=256 subsystem=qemu
 event=start-qemu machine=simplevm subsystem=qemu
 additional_args=() event=qemu-system-x86_64 local_args=[\'-daemonize\', \'-nodefaults\', \'-name simplevm,process=kvm.simplevm\', \'-chroot /srv/vm/simplevm\', \'-runas nobody\', \'-serial file:/var/log/vm/simplevm.log\', \'-display vnc=host1:2345\', \'-pidfile /run/qemu.simplevm.pid\', \'-vga std\', \'-m 256\', \'-watchdog i6300esb\', \'-watchdog-action reset\', \'-readconfig /run/qemu.simplevm.cfg\'] machine=simplevm subsystem=qemu
 ...
