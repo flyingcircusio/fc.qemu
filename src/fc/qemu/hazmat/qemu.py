@@ -62,7 +62,7 @@ class Qemu(object):
     migration_address = None
     max_downtime = 1.0
     guestagent_timeout = 3.0
-    qmp_timeout = 5.0
+    qmp_timeout = 15.0
     thaw_retry_timeout = 2
     vm_max_total_memory = 0
 
