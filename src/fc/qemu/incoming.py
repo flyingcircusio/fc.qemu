@@ -62,7 +62,7 @@ class IncomingServer(object):
         self.bind_address = self.bind_address[0], s.socket.getsockname()[1]
         url = 'http://{}:{}/'.format(*self.bind_address)
         self.log.info('start-server', type='incoming', url=url)
-        s.timeout = 1
+        s.timeout = 15
         s._send_traceback_header = True
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()
