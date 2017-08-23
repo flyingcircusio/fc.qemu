@@ -318,8 +318,8 @@ class Agent(object):
                 self.log.info(
                     'ensure-state', wanted='online', found='offline',
                     action='inmigrate', remote=existing['Address'])
-                success = self.inmigrate()
-                if not success:
+                exitcode = self.inmigrate()
+                if exitcode:
                     # This is suboptimal: I hate error returns,
                     # but the main method is also a command. If we did
                     # not succeed in migrating, then I also don't want the
