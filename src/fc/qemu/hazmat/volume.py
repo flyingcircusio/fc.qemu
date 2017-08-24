@@ -193,10 +193,13 @@ class Volume(Image):
         self.cmd = lambda cmdline: cmd(cmdline, log=self.log)
         self.snapshots = Snapshots(self)
         self.locked_by_me = False
+        self._image = None
 
     @property
     def rbdimage(self):
-        return rbd.Image(self.ioctx, self.name)
+        if not self._image:
+            self._image = rbd.Image(self.ioctx, self.name)
+        return self._image
 
     @property
     def fullname(self):

@@ -43,10 +43,14 @@ class ConsulEventHandler(object):
                 log.debug("ignore-key", key=event['Key'], reason='empty value')
                 return
             getattr(self, prefix)(event)
-        except Exception:
+        except:
+            # This must be a bare-except as it protects threads and the main
+            # loop from dying. It could be that I'm wrong, but I'm leaving this
+            # in for good measure.
             log.exception('handle-key-failed',
                           key=event.get('Key', None),
                           exc_info=True)
+        log.debug('finish-handle-key', key=event.get('Key', None))
 
     def node(self, event):
         config = json.loads(event['Value'].decode('base64'))
@@ -100,13 +104,35 @@ def locked(f):
     # of the agent. Using multiple file descriptors will guarantee that the
     # lock can only be held once even within a single process.
     def locked(self, *args, **kw):
+        # New lockfile behaviour: lock with a global file that is really only
+        # used for this purpose and is never replaced.
+        if not self._lockfile_fd:
+            if not os.path.exists(self.lockfile):
+                open(self.lockfile, 'a+').close()
+            self._lockfile_fd = os.open(self.lockfile, os.O_RDONLY)
+        fcntl.flock(self._lockfile_fd, fcntl.LOCK_EX)
+
+        # Old lockfile behaviour: lock the config file that might get replaced.
+        # Can be phased out in a future version but is kept for upgrading
+        # compatibility to not have completely broken locking in between.
         if not self._configfile_fd:
             self._configfile_fd = os.open(self.configfile, os.O_RDONLY)
         fcntl.flock(self._configfile_fd, fcntl.LOCK_EX)
+
         try:
             return f(self, *args, **kw)
         finally:
-            fcntl.flock(self._configfile_fd, fcntl.LOCK_UN)
+            # Old
+            try:
+                fcntl.flock(self._configfile_fd, fcntl.LOCK_UN)
+            except:
+                pass
+            # New
+            try:
+                fcntl.flock(self._lockfile_fd, fcntl.LOCK_UN)
+            except:
+                pass
+
     return locked
 
 
@@ -151,6 +177,14 @@ class Agent(object):
     # this may change independently from fc.qemu releases.
     binary_generation = 0
 
+    # For upgrade-purposes we're running an old and a new locking mechanism
+    # in step-lock. We used to lock the configfile but we're using rename to
+    # update it atomically. That's not compatible and will result in a consul
+    # event replacing the file and then getting a lock on the new file while
+    # there still is another process running. This will result in problems
+    # accessing the QMP socket as that only accepts a single connection and
+    # will then time out.
+    _lockfile_fd = None
     _configfile_fd = None
 
     def __init__(self, name, enc=None):
@@ -186,6 +220,10 @@ class Agent(object):
     def configfile(self):
         return '/etc/qemu/vm/{}.cfg'.format(self.name)
 
+    @property
+    def lockfile(self):
+        return '/run/qemu.{}.lock'.format(self.name)
+
     def _load_enc(self):
         try:
             with open(self.configfile) as f:
@@ -200,7 +238,7 @@ class Agent(object):
         if not events:
             return
         log.info('start-consul-events', count=len(events))
-        pool = ThreadPool(sysconfig.agent.get('consul_event_threads', 10))
+        pool = ThreadPool(sysconfig.agent.get('consul_event_threads', 3))
         for event in events:
             pool.apply_async(_handle_consul_event, (event,))
         pool.close()
@@ -227,6 +265,7 @@ class Agent(object):
             except:
                 log.exception('vm-status', machine=name, exc_info=True)
 
+    @locked
     def save_enc(self):
         """Save the current config on the agent into the local persistent file.
 

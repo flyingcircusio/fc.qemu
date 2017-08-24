@@ -52,6 +52,9 @@ class Ceph(object):
         self.volumes = [self.root, self.swap, self.tmp]
 
     def __exit__(self, exc_value, exc_type, exc_tb):
+        for vol in self.volumes:
+            if vol._image:
+                vol._image.close()
         self.ioctx.close()
         self.rados.shutdown()
 

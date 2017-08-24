@@ -149,6 +149,7 @@ def main():
     from .util import log
     try:
         init_logging(args.verbose)
+        log.debug(' '.join(sys.argv))
         log.debug('load-system-config')
 
         from .sysconfig import sysconfig
