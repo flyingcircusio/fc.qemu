@@ -62,7 +62,10 @@ class Qemu(object):
     migration_address = None
     max_downtime = 1.0
     guestagent_timeout = 3.0
-    qmp_timeout = 15.0
+    # QMP runs in the main thread and can block. Our original 15s timeout
+    # is definitely too short. Many discussions mention that 5 minutes have
+    # stabilized the situation even under adverse situations.
+    qmp_timeout = 5 * 60
     thaw_retry_timeout = 2
     vm_max_total_memory = 0
 

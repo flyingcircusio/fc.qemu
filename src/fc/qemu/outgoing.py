@@ -1,6 +1,5 @@
 from .timeout import TimeOut
 import pprint
-import socket
 import xmlrpclib
 
 
@@ -69,20 +68,11 @@ class Outgoing(object):
                 return url
         raise RuntimeError('failed to locate inmigrate service', service_name)
 
-    def connect(self, timeout=330):
-        timeout = TimeOut(timeout, interval=3, raise_on_timeout=True)
-        while timeout.tick():
-            try:
-                address = self.locate_inmigrate_service()
-                self.log.debug('connect', address=address)
-                self.target = xmlrpclib.ServerProxy(address, allow_none=True)
-                self.target.ping(self.cookie)
-                break
-            # XXX the default socket timeout is quite high. we might wanna
-            # lower it on this side via socket.settimeout()
-            except socket.error:
-                self.log.debug('failed-connect', retrying=timeout.remaining,
-                               exce_info=True)
+    def connect(self):
+        address = self.locate_inmigrate_service()
+        self.log.debug('connect', address=address)
+        self.target = xmlrpclib.ServerProxy(address, allow_none=True)
+        self.target.ping(self.cookie)
 
     def transfer_locks(self):
         self.agent.ceph.unlock()
@@ -96,15 +86,19 @@ class Outgoing(object):
             self.cookie, args, config)
         self.log.info('start-migration', target=migration_address)
         self.agent.qemu.migrate(migration_address)
-        for stat in self.agent.qemu.poll_migration_status():
-            remaining = stat['ram']['remaining'] if 'ram' in stat else 0
-            mbps = stat['ram']['mbps'] if 'ram' in stat else '-'
-            self.log.info('migration-status',
-                          status=stat['status'],
-                          remaining='{0:,d}'.format(remaining),
-                          mbps=mbps,
-                          output=pprint.pformat(stat))
-            self.target.ping(self.cookie)
+        try:
+            for stat in self.agent.qemu.poll_migration_status():
+                remaining = stat['ram']['remaining'] if 'ram' in stat else 0
+                mbps = stat['ram']['mbps'] if 'ram' in stat else '-'
+                self.log.info('migration-status',
+                              status=stat['status'],
+                              remaining='{0:,d}'.format(remaining),
+                              mbps=mbps,
+                              output=pprint.pformat(stat))
+                self.target.ping(self.cookie)
+        except Exception:
+            self.log.exception('error-waiting-for-migration', exc_info=True)
+            raise
 
         status = self.agent.qemu.qmp.command('query-status')
         assert not status['running'], status

@@ -82,6 +82,11 @@ class IncomingServer(object):
             return 1
 
     def extend_cutoff_time(self, timeout=60):
+        # We start with a relatively high timeout but once we get a first
+        # request we switch to always giving a new cutoff time starting from
+        # now. This may cause sudden drops in remaining timeout but is
+        # intentional: once we made contact we don't want to wait for many
+        # minutes but expect communication to move fast.
         self.timeout.cutoff = self._now() + timeout
 
     def screen_config(self, config):
