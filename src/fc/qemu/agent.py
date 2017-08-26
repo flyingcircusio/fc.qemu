@@ -1,3 +1,4 @@
+from . import util
 from .exc import InvalidCommand, VMConfigNotFound, VMStateInconsistent
 from .hazmat.ceph import Ceph
 from .hazmat.qemu import Qemu, detect_current_machine_type
@@ -6,7 +7,6 @@ from .outgoing import Outgoing
 from .sysconfig import sysconfig
 from .timeout import TimeOut
 from .util import rewrite, locate_live_service, MiB, GiB, log
-from . import util
 from multiprocessing.pool import ThreadPool
 import consulate
 import contextlib
@@ -23,6 +23,7 @@ import pkg_resources
 import requests
 import socket
 import sys
+import time
 import yaml
 
 
@@ -103,35 +104,61 @@ def locked(f):
     # This is thread-safe *AS LONG* as every thread uses a separate instance
     # of the agent. Using multiple file descriptors will guarantee that the
     # lock can only be held once even within a single process.
+    #
+    # However, we ensure locking status even for re-entrant / recursive usage.
+    # For that we keep a counter how often we successfully acquired the lock
+    # and then unlock when we're back to zero.
     def locked(self, *args, **kw):
         # New lockfile behaviour: lock with a global file that is really only
         # used for this purpose and is never replaced.
+        self.log.debug('acquire-lock', target=self.lockfile)
         if not self._lockfile_fd:
             if not os.path.exists(self.lockfile):
                 open(self.lockfile, 'a+').close()
             self._lockfile_fd = os.open(self.lockfile, os.O_RDONLY)
         fcntl.flock(self._lockfile_fd, fcntl.LOCK_EX)
+        self.log.debug('acquire-lock', target=self.lockfile, result='locked')
 
         # Old lockfile behaviour: lock the config file that might get replaced.
         # Can be phased out in a future version but is kept for upgrading
         # compatibility to not have completely broken locking in between.
+        self.log.debug('acquire-lock', target=self.configfile)
         if not self._configfile_fd:
             self._configfile_fd = os.open(self.configfile, os.O_RDONLY)
         fcntl.flock(self._configfile_fd, fcntl.LOCK_EX)
+        self.log.debug('acquire-lock', target=self.configfile, result='locked')
 
+        self._lock_count += 1
+        self.log.debug('lock-status', count=self._lock_count)
         try:
             return f(self, *args, **kw)
         finally:
-            # Old
-            try:
-                fcntl.flock(self._configfile_fd, fcntl.LOCK_UN)
-            except:
-                pass
-            # New
-            try:
-                fcntl.flock(self._lockfile_fd, fcntl.LOCK_UN)
-            except:
-                pass
+            self._lock_count -= 1
+            self.log.debug('lock-status', count=self._lock_count)
+
+            if self._lock_count == 0:
+                # Old
+                try:
+                    self.log.debug('release-lock', target=self.configfile)
+                    fcntl.flock(self._configfile_fd, fcntl.LOCK_UN)
+                    self.log.debug('release-lock', target=self.configfile,
+                                   result='unlocked')
+
+                except:
+                    self.log.debug('release-lock', exc_info=True,
+                                   target=self.configfile, result='error')
+                    pass
+
+                # New
+                try:
+                    self.log.debug('release-lock', target=self.lockfile)
+                    fcntl.flock(self._lockfile_fd, fcntl.LOCK_UN)
+                    self.log.debug('release-lock', target=self.lockfile,
+                                   result='unlocked')
+                except:
+                    self.log.debug('release-lock', exc_info=True,
+                                   target=self.lockfile, result='error')
+                    pass
 
     return locked
 
@@ -184,6 +211,7 @@ class Agent(object):
     # there still is another process running. This will result in problems
     # accessing the QMP socket as that only accepts a single connection and
     # will then time out.
+    _lock_count = 0
     _lockfile_fd = None
     _configfile_fd = None
 
@@ -239,8 +267,9 @@ class Agent(object):
             return
         log.info('start-consul-events', count=len(events))
         pool = ThreadPool(sysconfig.agent.get('consul_event_threads', 3))
-        for event in events:
+        for event in sorted(events, key=lambda e: e.get('Key')):
             pool.apply_async(_handle_consul_event, (event,))
+            time.sleep(0.05)
         pool.close()
         pool.join()
         log.info('finish-consul-events')
@@ -271,11 +300,13 @@ class Agent(object):
 
         This method is safe to call outside of the agent's context manager.
         """
+        self.log.debug('save-enc')
         if not p.isdir(p.dirname(self.configfile)):
             os.makedirs(p.dirname(self.configfile))
         with rewrite(self.configfile) as f:
             yaml.safe_dump(self.enc, f)
         os.chmod(self.configfile, 0o644)
+        self.log.debug('save-enc', changed=str(f.has_changed))
         return f.has_changed
 
     def __enter__(self):
