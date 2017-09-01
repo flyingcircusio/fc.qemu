@@ -2,6 +2,7 @@ from ..agent import swap_size, tmp_size
 from ..conftest import get_log
 from ..ellipsis import Ellipsis
 from ..util import MiB, GiB
+from fc.qemu import util
 import datetime
 import os.path
 import pytest
@@ -9,6 +10,7 @@ import subprocess
 
 
 def test_simple_vm_lifecycle_start_stop(vm):
+    util.test_log_options['show_events'] = ['vm-status', 'rbd-status']
 
     vm.status()
 
@@ -19,10 +21,17 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
 
+    util.test_log_options['show_events'] = []
     vm.start()
 
     out = get_log()
+    # This is 1 end-to-end logging test to see everything.
     assert out == Ellipsis("""\
+event=acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
+event=acquire-lock machine=simplevm result=locked target=/run/qemu.simplevm.lock
+event=acquire-lock machine=simplevm target=/etc/qemu/vm/simplevm.cfg
+event=acquire-lock machine=simplevm result=locked target=/etc/qemu/vm/simplevm.cfg
+count=1 event=lock-status machine=simplevm
 event=generate-config machine=simplevm
 event=ensure-root machine=simplevm subsystem=ceph
 event=create-vm machine=simplevm subsystem=ceph
@@ -52,25 +61,30 @@ args=-f -L "swap" "/dev/rbd/rbd.ssd/simplevm.swap" event=mkswap machine=simplevm
 event=mkswap machine=simplevm output=Setting up swapspace version 1, size = 1048572 KiB
 LABEL=swap, UUID=...-...-...-...-... subsystem=ceph volume=rbd.ssd/simplevm.swap
 args=-c "/etc/ceph/ceph.conf" --id "admin" unmap "/dev/rbd/rbd.ssd/simplevm.swap" event=rbd machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-event=sufficient-host-memory free=768 machine=simplevm required=256 subsystem=qemu
 event=start-qemu machine=simplevm subsystem=qemu
 additional_args=() event=qemu-system-x86_64 local_args=[\'-daemonize\', \'-nodefaults\', \'-name simplevm,process=kvm.simplevm\', \'-chroot /srv/vm/simplevm\', \'-runas nobody\', \'-serial file:/var/log/vm/simplevm.log\', \'-display vnc=host1:2345\', \'-pidfile /run/qemu.simplevm.pid\', \'-vga std\', \'-m 256\', \'-watchdog i6300esb\', \'-watchdog-action reset\', \'-readconfig /run/qemu.simplevm.cfg\'] machine=simplevm subsystem=qemu
-...
+arguments={} event=qmp_capabilities id=None machine=simplevm subsystem=qemu/qmp
+arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=consul-register machine=simplevm
 arguments={} event=query-block id=None machine=simplevm subsystem=qemu/qmp
 action=throttle current_iops=0 device=virtio0 event=ensure-throttle machine=simplevm target_iops=3000
-...
+arguments={\'bps_rd\': 0, \'bps_wr\': 0, \'bps\': 0, \'iops\': 3000, \'iops_rd\': 0, \'device\': u\'virtio0\', \'iops_wr\': 0} event=block_set_io_throttle id=None machine=simplevm subsystem=qemu/qmp
 action=throttle current_iops=0 device=virtio1 event=ensure-throttle machine=simplevm target_iops=3000
-...
+arguments={\'bps_rd\': 0, \'bps_wr\': 0, \'bps\': 0, \'iops\': 3000, \'iops_rd\': 0, \'device\': u\'virtio1\', \'iops_wr\': 0} event=block_set_io_throttle id=None machine=simplevm subsystem=qemu/qmp
 action=throttle current_iops=0 device=virtio2 event=ensure-throttle machine=simplevm target_iops=3000
-...
-""")
+arguments={\'bps_rd\': 0, \'bps_wr\': 0, \'bps\': 0, \'iops\': 3000, \'iops_rd\': 0, \'device\': u\'virtio2\', \'iops_wr\': 0} event=block_set_io_throttle id=None machine=simplevm subsystem=qemu/qmp
+count=0 event=lock-status machine=simplevm
+event=release-lock machine=simplevm target=/etc/qemu/vm/simplevm.cfg
+event=release-lock machine=simplevm result=unlocked target=/etc/qemu/vm/simplevm.cfg
+event=release-lock machine=simplevm target=/run/qemu.simplevm.lock
+event=release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock""")
+
+    util.test_log_options['show_events'] = [
+        'vm-status', 'rbd-status', 'disk-throttle']
 
     vm.status()
     assert get_log() == Ellipsis("""\
-arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=vm-status machine=simplevm result=online
-arguments={} event=query-block id=None machine=simplevm subsystem=qemu/qmp
 device=virtio0 event=disk-throttle iops=3000 machine=simplevm
 device=virtio1 event=disk-throttle iops=3000 machine=simplevm
 device=virtio2 event=disk-throttle iops=3000 machine=simplevm
@@ -90,6 +104,8 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
 
 
 def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys, caplog):
+    util.test_log_options['show_events'] = ['vm-status', 'rbd-status', 'ensure-state', 'disk-throttle']
+
     vm.status()
     assert get_log() == """\
 event=vm-status machine=simplevm result=offline
@@ -103,9 +119,7 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
 
     vm.status()
     assert get_log() == Ellipsis("""\
-arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=vm-status machine=simplevm result=online
-arguments={} event=query-block id=None machine=simplevm subsystem=qemu/qmp
 device=virtio0 event=disk-throttle iops=3000 machine=simplevm
 device=virtio1 event=disk-throttle iops=3000 machine=simplevm
 device=virtio2 event=disk-throttle iops=3000 machine=simplevm
@@ -126,6 +140,9 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
 
 
 def test_vm_not_running_here(vm, capsys):
+    util.test_log_options['show_events'] = [
+        'vm-status', 'rbd-status']
+
     vm.status()
     assert get_log() == """\
 event=vm-status machine=simplevm result=offline
@@ -137,7 +154,6 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     vm.ensure()
     vm.status()
     assert get_log() == Ellipsis("""\
-...
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
@@ -145,6 +161,9 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp""")
 
 
 def test_crashed_vm_clean_restart(vm):
+    util.test_log_options['show_events'] = [
+        'rbd-status', 'vm-status', 'ensure', 'throttle', 'shutdown']
+
     vm.status()
 
     assert get_log() == Ellipsis("""\
@@ -159,7 +178,6 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp""")
 action=start event=ensure-state found=offline machine=simplevm wanted=online
 ...
 event=vm-status machine=simplevm result=online
-arguments={} event=query-block id=None machine=simplevm subsystem=qemu/qmp
 device=virtio0 event=disk-throttle iops=3000 machine=simplevm
 device=virtio1 event=disk-throttle iops=3000 machine=simplevm
 device=virtio2 event=disk-throttle iops=3000 machine=simplevm
@@ -173,7 +191,6 @@ event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/s
 
     vm.status()
     assert get_log() == Ellipsis("""\
-arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
@@ -186,7 +203,6 @@ event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/s
 action=start event=ensure-state found=offline machine=simplevm wanted=online
 ...
 event=vm-status machine=simplevm result=online
-arguments={} event=query-block id=None machine=simplevm subsystem=qemu/qmp
 device=virtio0 event=disk-throttle iops=3000 machine=simplevm
 device=virtio1 event=disk-throttle iops=3000 machine=simplevm
 device=virtio2 event=disk-throttle iops=3000 machine=simplevm
@@ -194,16 +210,14 @@ event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/s
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp""")
 
+    util.test_log_options['show_events'] = [
+        'shutdown', 'kill', 'unlock', 'vm-status', 'consul', 'clean', 'rbd-status']
     vm.stop()
     vm.status()
     assert get_log() == Ellipsis("""\
-arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=graceful-shutdown machine=simplevm
-arguments={'keys': [{'data': 'ctrl', 'type': 'qcode'}, {'data': 'alt', 'type': 'qcode'}, {'data': 'delete', 'type': 'qcode'}]} event=send-key id=None machine=simplevm subsystem=qemu/qmp
 event=graceful-shutdown-failed machine=simplevm reason=timeout
-arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=kill-vm machine=simplevm
-arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=killed-vm machine=simplevm
 event=unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 event=unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
@@ -236,9 +250,11 @@ def test_vm_snapshot_only_if_running(vm):
 
 
 def test_vm_snapshot_with_missing_guest_agent(vm, monkeypatch):
-    import fc.qemu.util
+    util.test_log_options['show_events'] = [
+        'consul', 'snapshot', 'freeze', 'thaw']
+
     monkeypatch.setattr(
-        fc.qemu.util, 'today', lambda: datetime.date(2010, 1, 1))
+        util, 'today', lambda: datetime.date(2010, 1, 1))
 
     assert list(x.fullname for x in vm.ceph.root.snapshots) == []
     vm.ensure()
@@ -248,75 +264,13 @@ def test_vm_snapshot_with_missing_guest_agent(vm, monkeypatch):
         vm.snapshot('asdf', 7)
     assert Ellipsis("""\
 event=snapshot-create machine=simplevm name=asdf-keep-until-20100108
-arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=freeze machine=simplevm volume=root
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=0
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=1
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=2
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=3
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=4
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=5
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=6
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=7
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=8
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=9
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=10
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=11
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=12
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=13
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=14
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=15
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=16
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=17
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=18
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=19
 action=continue event=freeze-failed machine=simplevm reason=Unable to sync \
 with guest agent after 20 tries.
 event=snapshot-ignore machine=simplevm reason=not frozen
-arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=thaw machine=simplevm volume=root
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=0
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=1
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=2
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=3
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=4
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=5
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=6
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=7
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=8
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=9
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=10
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=11
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=12
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=13
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=14
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=15
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=16
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=17
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=18
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=19
 action=retry event=thaw-failed machine=simplevm reason=Unable to sync with \
 guest agent after 20 tries.
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=0
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=1
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=2
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=3
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=4
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=5
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=6
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=7
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=8
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=9
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=10
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=11
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=12
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=13
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=14
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=15
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=16
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=17
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=18
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=19
 action=continue event=thaw-failed machine=simplevm reason=Unable to sync \
 with guest agent after 20 tries.""") == get_log()
 
@@ -324,11 +278,9 @@ with guest agent after 20 tries.""") == get_log()
         vm.snapshot('asdf', 0)
     assert """\
 event=snapshot-create machine=simplevm name=asdf
-arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=freeze machine=simplevm volume=root
 action=continue event=freeze-failed machine=simplevm reason=[Errno 11] Resource temporarily unavailable
 event=snapshot-ignore machine=simplevm reason=not frozen
-arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=thaw machine=simplevm volume=root
 action=retry event=thaw-failed machine=simplevm reason=[Errno 11] Resource temporarily unavailable
 action=continue event=thaw-failed machine=simplevm reason=[Errno 11] Resource temporarily unavailable\

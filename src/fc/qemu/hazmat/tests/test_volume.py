@@ -10,6 +10,8 @@ def volume(ceph_inst):
     volume = Volume(ceph_inst, 'othervolume', 'label')
     volume.snapshots.purge()
     try:
+        if volume._image:
+            volume._image.close()
         rbd.RBD().remove(ceph_inst.ioctx, 'othervolume')
     except rbd.ImageNotFound:
         pass
@@ -22,6 +24,8 @@ def volume(ceph_inst):
         volume.rbdimage.break_lock(*lock)
     volume.snapshots.purge()
     try:
+        if volume._image:
+            volume._image.close()
         rbd.RBD().remove(ceph_inst.ioctx, 'othervolume')
     except rbd.ImageNotFound:
         pass

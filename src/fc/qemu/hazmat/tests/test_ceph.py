@@ -11,6 +11,8 @@ def ceph_with_volumes(ceph_inst):
     for vol in ceph_inst.volumes:
         vol.unlock(force=True)
         vol.snapshots.purge()
+        if vol._image:
+            vol._image.close()
         rbd.RBD().remove(ceph_inst.ioctx, vol.name)
 
 

@@ -67,8 +67,8 @@ class ConsulEventHandler(object):
             with agent:
                 agent.ensure()
         else:
-            log.debug('ignore-consul-event',
-                      machine=vm, reason='config is unchanged')
+            log.info('ignore-consul-event',
+                     machine=vm, reason='config is unchanged')
 
     def snapshot(self, event):
         value = json.loads(event['Value'].decode('base64'))
@@ -124,6 +124,8 @@ def locked(f):
         # compatibility to not have completely broken locking in between.
         self.log.debug('acquire-lock', target=self.configfile)
         if not self._configfile_fd:
+            if not os.path.exists(self.configfile):
+                open(self.configfile, 'a+').close()
             self._configfile_fd = os.open(self.configfile, os.O_RDONLY)
         fcntl.flock(self._configfile_fd, fcntl.LOCK_EX)
         self.log.debug('acquire-lock', target=self.configfile, result='locked')
@@ -567,6 +569,7 @@ class Agent(object):
             else:
                 self.log.debug('snapshot-ignore', reason='not frozen')
 
+    @locked
     def status(self):
         """Determine status of the VM."""
         if self.qemu.is_running():

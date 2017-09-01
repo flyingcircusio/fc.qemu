@@ -5,29 +5,55 @@ Release notes
 0.8.12 (unreleased)
 -------------------
 
-- Clean up default-option handling for some config options: we used two
-  different styles of defaults. They have been unified into a single
-  "default.conf" that gets loaded first.
-
-- Allow managing host memory with a "maximum total" of memory that can be
-  configured on VMs (-m switch). This is not based on actual RAM usage or
-  availability but planned and configured values of currently running VMs!
+- [feature] Allow managing host memory with a "maximum total" of memory that
+  can be configured on VMs (-m switch). This is not based on actual RAM usage or availability but planned and configured values of currently running VMs!
 
   If a VM shall be inmigrated or started and the host would go beyond the
-  'vm_max_total_memory' setting with that VM then the action will fail.
+  'vm-max-total-memory' setting with that VM then the action will fail.
 
+- [locking] Fix locking by moving to a separate lockfile and ensuring that
+  reentrant use of locks is handled correctly. Also, provide upgrade scenario
+  by additionally using the existing lock files.
 
-- Switch logging from UTC to local server time. This has proven much more
-  confusing as our other on-disk logs are in server time.
+- [locking] Ensure we rewrite the config file only when locked to reduce
+  attack surface of the old mechanism while still upgrading.
 
-- Do not crash on broken logging (i.e. disk full or STDIO missing) to avoid
-  accidentally crashing a VM just because the controlling script runs into issues.
+- [logging] Improve logging with more specific debug output.
 
-- Improve live migration: skip compression, enable unlimited bandwidth, and
-  use ephemeral ports to avoid running into TCP timing issues when retrying
-  live migrations quickly.
+- [logging] Log the specific commandline that each Qemu process is started
+  with to aid debugging.
 
-- Add VM name prefixes also for stack dumps and tracebacks.
+- [logging] Switch logging from UTC to local server time. This has proven much
+  more confusing as our other on-disk logs are in server time.
+
+- [logging] Do not crash on broken logging (i.e. disk full or STDIO missing)
+  to avoid accidentally crashing a VM just because the controlling script runs into issues.
+
+- [logging] Add VM name prefixes also for stack dumps and tracebacks.
+
+- [consul] Ensure that consul event handling doesn't fail the process when
+  a thread fails. (Might be snake oil but doesn't hurt.)
+
+- [consul] Reduce consul event handling pool from 10 to 3 to reduce strain on
+  multiple parallel migrations.
+
+- [ceph] Properly close RBD volume references to avoid librbd crash.
+
+- [ceph] Ensure we don't open unnecessary duplicate RBD image handles.
+
+- [qemu] Increase Qemu QMP timeout to 5 minutes to tolerate latency during
+  migration cleanup as the QMP handler runs in the main thread and could be
+  blocked for a long period.
+
+- [migration] Improve outgoing migrations connecting to the incoming server:
+  simplify code and reduce unnecessary waiting periods. Better error output.
+
+- [migration] Improve live migration: skip compression, enable unlimited
+  bandwidth, and use ephemeral ports to avoid running into TCP timing issues when retrying live migrations quickly.
+
+- [config] Clean up default-option handling for some config options: we used
+  two different styles of defaults. They have been unified into a single
+  "default.conf" that gets loaded first.
 
 
 0.8.11 (2017-05-29)
