@@ -2,8 +2,8 @@ Release notes
 =============
 
 
-0.8.12 (unreleased)
--------------------
+0.9 (2017-09-01)
+----------------
 
 - [feature] Allow managing host memory with a "maximum total" of memory that
   can be configured on VMs (-m switch). This is not based on actual RAM usage or availability but planned and configured values of currently running VMs!
