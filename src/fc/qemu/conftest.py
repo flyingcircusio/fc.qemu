@@ -19,11 +19,22 @@ def pytest_collectstart(collector):
 @pytest.fixture(scope='session')
 def setup_structlog():
     from . import util
-    util.log_data = []
-    log_exceptions = False  # set to True to get detailed tracebacks
+    log_exceptions = False  # set to True to temporarily get detailed tracebacks
 
     def test_logger(logger, method_name, event):
         result = []
+
+        show_methods = util.test_log_options['show_methods']
+        if show_methods and method_name not in show_methods:
+            raise structlog.DropEvent
+
+        show_events = util.test_log_options['show_events']
+        if show_events:
+            for show in show_events:
+                if show in event['event']:
+                    break
+            else:
+                raise structlog.DropEvent
 
         if log_exceptions:
             stack = event.pop("stack", None)
@@ -39,7 +50,7 @@ def setup_structlog():
         raise structlog.DropEvent
 
     structlog.configure(processors=(
-        [structlog.processors.format_exc_info] if log_exceptions else [] +
+        ([structlog.processors.format_exc_info] if log_exceptions else []) +
         [test_logger]))
 
 
@@ -47,6 +58,9 @@ def setup_structlog():
 def reset_structlog(setup_structlog):
     from . import util
     util.log_data = []
+    util.test_log_options = {
+        'show_methods': [],
+        'show_events': []}
 
 
 def pytest_assertrepr_compare(op, left, right):

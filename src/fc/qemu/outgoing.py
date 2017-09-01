@@ -37,6 +37,8 @@ class Outgoing(object):
         else:
             self.migration_exitcode = 1
             try:
+                # XXX silence timeout errors here to avoid unnecessary traceback
+                # output
                 self.log.exception(
                     'migration-failed', action='rescue', exc_info=True)
                 self.rescue()

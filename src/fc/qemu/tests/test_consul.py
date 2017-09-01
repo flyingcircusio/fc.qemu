@@ -39,6 +39,7 @@ def test_no_key_event():
     assert util.log_data == [
         'count=1 event=start-consul-events',
         'event=handle-key-failed exc_info=True key=None',
+        'event=finish-handle-key key=None',
         'event=finish-consul-events']
 
 
@@ -53,6 +54,7 @@ def clean_config_test22():
 
 
 def test_qemu_config_change(clean_config_test22):
+    util.test_log_options['show_methods'] = ['info']
     cfg = {u'classes': [u'role::appserver',
                         u'role::backupclient',
                         u'role::generic',
@@ -93,13 +95,16 @@ def test_qemu_config_change(clean_config_test22):
     Agent.handle_consul_event(stdin)
     assert util.log_data == [
         'count=1 event=start-consul-events',
-        'event=handle-key key=node/test22',
         'consul_event=node event=processing-consul-event machine=test22',
-        'event=connect-rados machine=test22 subsystem=ceph',
+        'action=none event=ensure-state found=offline machine=test22 ' +
+        'wanted=offline',
+        'event=finish-consul-events']
+
+    assert util.log_data == [
+        'count=1 event=start-consul-events',
+        'consul_event=node event=processing-consul-event machine=test22',
         'action=none event=ensure-state found=offline machine=test22 '
         'wanted=offline',
-        'ceph_lock=False event=check-state-consistency is_consistent=True '
-        'machine=test22 proc=False qemu=False',
         'event=finish-consul-events',
     ]
 
@@ -110,7 +115,6 @@ def test_qemu_config_change(clean_config_test22):
 
     assert util.log_data == [
         'count=1 event=start-consul-events',
-        'event=handle-key key=node/test22',
         'consul_event=node event=processing-consul-event machine=test22',
         'event=ignore-consul-event machine=test22 reason=config is unchanged',
         'event=finish-consul-events']
@@ -126,18 +130,16 @@ def test_qemu_config_change(clean_config_test22):
     Agent.handle_consul_event(stdin)
     assert util.log_data == [
         'count=1 event=start-consul-events',
-        'event=handle-key key=node/test22',
         'consul_event=node event=processing-consul-event machine=test22',
-        'event=connect-rados machine=test22 subsystem=ceph',
         'action=none event=ensure-state found=offline machine=test22 '
         'wanted=offline',
-        'ceph_lock=False event=check-state-consistency is_consistent=True '
-        'machine=test22 proc=False qemu=False',
         'event=finish-consul-events',
     ]
 
 
 def test_qemu_config_change_physical():
+    util.test_log_options['show_events'] = ['consul']
+
     test22 = json.dumps(
         {u'classes': [u'role::appserver',
                       u'role::backupclient',
@@ -178,13 +180,14 @@ def test_qemu_config_change_physical():
     Agent.handle_consul_event(stdin)
     assert util.log_data == [
         'count=1 event=start-consul-events',
-        'event=handle-key key=node/test22',
         'event=ignore-consul-event machine=test22 reason=is a physical '
         'machine',
         'event=finish-consul-events']
 
 
 def test_snapshot_online_vm(vm):
+    util.test_log_options['show_events'] = [
+        'consul', 'snapshot', 'thaw', 'freeze', 'retry', 'fail']
 
     vm.ensure_online_local()
     vm.qemu.qmp.close()
@@ -197,80 +200,15 @@ def test_snapshot_online_vm(vm):
     Agent.handle_consul_event(stdin)
     assert Ellipsis("""\
 count=1 event=start-consul-events
-event=handle-key key=snapshot/7468743
-event=connect-rados machine=simplevm subsystem=ceph
 event=snapshot machine=simplevm snapshot=backy-1234
 event=snapshot-create machine=simplevm name=backy-1234
-arguments={} event=qmp_capabilities id=None machine=simplevm subsystem=qemu/qmp
-arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=freeze machine=simplevm volume=root
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=0
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=1
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=2
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=3
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=4
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=5
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=6
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=7
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=8
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=9
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=10
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=11
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=12
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=13
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=14
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=15
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=16
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=17
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=18
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=19
 action=continue event=freeze-failed machine=simplevm reason=Unable to sync \
 with guest agent after 20 tries.
 event=snapshot-ignore machine=simplevm reason=not frozen
-arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=thaw machine=simplevm volume=root
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=0
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=1
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=2
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=3
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=4
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=5
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=6
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=7
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=8
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=9
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=10
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=11
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=12
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=13
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=14
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=15
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=16
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=17
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=18
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=19
 action=retry event=thaw-failed machine=simplevm reason=Unable to sync with \
 guest agent after 20 tries.
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=0
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=1
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=2
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=3
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=4
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=5
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=6
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=7
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=8
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=9
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=10
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=11
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=12
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=13
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=14
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=15
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=16
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=17
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=18
-event=incorrect-sync-id expected=... got=None machine=simplevm tries=19
 action=continue event=thaw-failed machine=simplevm reason=Unable to sync with \
 guest agent after 20 tries.
 event=handle-key-failed exc_info=True key=snapshot/7468743
@@ -278,6 +216,9 @@ event=finish-consul-events""") == get_log()
 
 
 def test_snapshot_nonexisting_vm():
+    util.test_log_options['show_events'] = [
+        'consul', 'unknown', 'snapshot']
+
     get_log()
 
     snapshot = json.dumps({'vm': 'test77', 'snapshot': 'backy-1234'})
@@ -289,7 +230,6 @@ def test_snapshot_nonexisting_vm():
     Agent.handle_consul_event(stdin)
     assert get_log() == """\
 count=1 event=start-consul-events
-event=handle-key key=snapshot/7468743
 event=unknown-vm machine=test77
 event=snapshot-ignore machine=test77 reason=failed loading config \
 snapshot=backy-1234
@@ -297,6 +237,9 @@ event=finish-consul-events"""
 
 
 def test_snapshot_offline_vm(vm):
+    util.test_log_options['show_events'] = [
+        'consul', 'snapshot']
+
     vm.enc['parameters']['kvm_host'] = 'foobar'
     vm.save_enc()
     vm.ceph.ensure_root_volume()
@@ -312,8 +255,6 @@ def test_snapshot_offline_vm(vm):
     Agent.handle_consul_event(stdin)
     assert get_log() == """\
 count=1 event=start-consul-events
-event=handle-key key=snapshot/7468743
-event=connect-rados machine=simplevm subsystem=ceph
 event=snapshot machine=simplevm snapshot=backy-1234
 event=snapshot-create machine=simplevm name=backy-1234
 event=snapshot-ignore machine=simplevm reason=not frozen
@@ -321,6 +262,9 @@ event=finish-consul-events"""
 
 
 def test_multiple_events():
+    util.test_log_options['show_events'] = [
+        'consul', 'handle-key']
+
     test22 = json.dumps(
         {u'classes': [u'role::appserver',
                       u'role::backupclient',
@@ -367,10 +311,14 @@ def test_multiple_events():
         'count=4 event=start-consul-events',
         'event=handle-key key=node/test22',
         'event=ignore-consul-event machine=test22 reason=is a physical machine',
+        'event=finish-handle-key key=node/test22',
         'event=handle-key key=node/test22',
         'event=ignore-consul-event machine=test22 reason=is a physical machine',
+        'event=finish-handle-key key=node/test22',
         'event=handle-key key=node/test22',
         'event=ignore-consul-event machine=test22 reason=is a physical machine',
+        'event=finish-handle-key key=node/test22',
         'event=handle-key key=node/test22',
         'event=ignore-consul-event machine=test22 reason=is a physical machine',
+        'event=finish-handle-key key=node/test22',
         'event=finish-consul-events']
