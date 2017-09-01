@@ -1,3 +1,4 @@
 include *.txt
 include fc-qemu.conf
+include src/fc/qemu/default.conf
 recursive-include src *.cfg.in
