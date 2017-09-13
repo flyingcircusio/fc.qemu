@@ -41,7 +41,7 @@ class GuestAgent(object):
         timeout = timeout or self.timeout
         # Allow setting temporary timeouts for operations that are known to be
         # slow.
-        self.client.settimeout(self.timeout)
+        self.client.settimeout(timeout)
         self.client.send(message)
         return self.read()
 
