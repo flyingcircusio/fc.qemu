@@ -5,7 +5,8 @@ Release notes
 0.9.2 (unreleased)
 ------------------
 
-- Fix guest agent timeout handling.
+- Fix guest agent timeout handling so that snapshots get an actual 120s
+  timeout to allow VMs to properly flush their IO.
 
 
 0.9.1 (2017-09-01)
