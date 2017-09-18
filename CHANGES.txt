@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.9.2 (unreleased)
+0.9.2 (2017-09-18)
 ------------------
 
 - Fix guest agent timeout handling so that snapshots get an actual 120s
