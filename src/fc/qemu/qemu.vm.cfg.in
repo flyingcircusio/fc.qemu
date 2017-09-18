@@ -13,32 +13,47 @@
   guest = "{name}"
   process = "kvm.{name}"
 
-[drive]
-  index = "0"
+[drive "drive0"]
   media = "disk"
-  if = "virtio"
+  if = "none"
   format = "rbd"
   file = "rbd:{rbd_pool}/{name}.root:id={{ceph_id}}"
   aio = "threads"
   cache = "writeback"
+  discard = "unmap"
 
-[drive]
-  index = "1"
+[drive "drive1"]
   media = "disk"
-  if = "virtio"
+  if = "none"
   format = "rbd"
   file = "rbd:{rbd_pool}/{name}.swap:id={{ceph_id}}"
   aio = "threads"
   cache = "writeback"
+  discard = "unmap"
 
-[drive]
-  index = "2"
+[drive "drive2"]
   media = "disk"
-  if = "virtio"
+  if = "none"
   format = "rbd"
   file = "rbd:{rbd_pool}/{name}.tmp:id={{ceph_id}}"
   aio = "threads"
   cache = "writeback"
+  discard = "unmap"
+
+[device]
+  driver = "virtio-scsi-pci"
+
+[device]
+  driver = "scsi-hd"
+  drive = "drive0"
+
+[device]
+  driver = "scsi-hd"
+  drive = "drive1"
+
+[device]
+  driver = "scsi-hd"
+  drive = "drive2"
 
 [device]
   driver = "virtio-rng-pci"
