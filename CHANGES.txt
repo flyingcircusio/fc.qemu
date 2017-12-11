@@ -5,7 +5,12 @@ Release notes
 0.9.3 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Disable watchdog: for newly started VMs, remove the device completely.
+  For existing VMs (and future) disable the restart action. This fixes
+  spontaneous reboots if VMs are under memory and IO pressure and fail to 
+  inform the watchdog appropriately. In general, it appears that the situations
+  in which a watchdog will be helpful are very limited and the misbehaviour 
+  has become too much of a burden. 
 
 
 0.9.2 (2017-09-18)

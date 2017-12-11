@@ -449,6 +449,11 @@ class Qemu(object):
                          iops=iops, iops_rd=0, iops_wr=0,
                          bps=0, bps_wr=0, bps_rd=0)
 
+    def watchdog_action(self, action):
+        self.qmp.command(
+            'human-monitor-command',
+            **{'command-line': 'watchdog_action action={}'.format(action)})
+
     def clean_run_files(self):
         runfiles = glob.glob('/run/qemu.{}.*'.format(self.cfg['name']))
         if not runfiles:

@@ -412,6 +412,7 @@ class Agent(object):
         self.consul_register()
         self.ensure_online_disk_size()
         self.ensure_online_disk_throttle()
+        self.ensure_watchdog()
         if agent_ready:
             # This requires guest agent interaction and we should only
             # perform this when we haven't recently booted the machine.
@@ -468,6 +469,11 @@ class Agent(object):
                               target_iops=target, current_iops=current,
                               action='none')
 
+    def ensure_watchdog(self, action='none'):
+        """Ensure watchdog settings."""
+        self.log.info('ensure-watchdog', action=action)
+        self.qemu.watchdog_action(action)
+
     @property
     def svc_name(self):
         """Consul service name."""
@@ -503,6 +509,7 @@ class Agent(object):
         self.qemu.start()
         self.consul_register()
         self.ensure_online_disk_throttle()
+        self.ensure_watchdog()
         # We exit here without releasing the ceph lock in error cases
         # because the start may have failed because of an already running
         # process. Removing the lock in that case is dangerous. OTOH leaving
@@ -711,8 +718,9 @@ class Agent(object):
         if not state.is_consistent():
             raise state
 
-    # CAREFUL: changing anything in this config files will cause maintenance w/
-    # reboot of all VMs in the infrastructure.
+    # CAREFUL: changing anything in this config files will require maintenance
+    # w/ reboot of all VMs in the infrastructure. Need to increase the 
+    # binary generation for that, though.
     def generate_config(self):
         """Generate a new Qemu config (and options) for a freshly
         starting VM.
@@ -739,8 +747,6 @@ class Agent(object):
             # using at the moment. If this flag is changed then that code must
             # be adapted as well. This is used in incoming.py and qemu.py.
             '-m {memory}',
-            '-watchdog i6300esb',
-            '-watchdog-action reset',
             '-readconfig {{configfile}}']
         self.qemu.args = [a.format(**self.cfg)
                           for a in self.qemu.args]
