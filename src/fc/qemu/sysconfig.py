@@ -37,6 +37,8 @@ class SysConfig(object):
         self.qemu['max_downtime'] = self.cp.getfloat('qemu', 'max-downtime')
         self.qemu['vm_max_total_memory'] = self.cp.getint(
             'qemu', 'vm-max-total-memory')
+        self.qemu['vm_expected_overhead'] = self.cp.getint(
+            'qemu', 'vm-expected-overhead')
 
         self.qemu['throttle_by_pool'] = tbp = {}
         for pool, iops in self.cp.items('qemu-throttle-by-pool'):
