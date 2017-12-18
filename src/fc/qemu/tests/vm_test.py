@@ -61,8 +61,15 @@ args=-f -L "swap" "/dev/rbd/rbd.ssd/simplevm.swap" event=mkswap machine=simplevm
 event=mkswap machine=simplevm output=Setting up swapspace version 1, size = 1048572 KiB
 LABEL=swap, UUID=...-...-...-...-... subsystem=ceph volume=rbd.ssd/simplevm.swap
 args=-c "/etc/ceph/ceph.conf" --id "admin" unmap "/dev/rbd/rbd.ssd/simplevm.swap" event=rbd machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+event=acquire-global-lock machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
+event=global-lock-acquire machine=simplevm result=locked subsystem=qemu target=/run/fc-qemu.lock
+count=1 event=global-lock-status machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
+available_real=... bookable=900 event=sufficient-host-memory machine=simplevm required=384 subsystem=qemu
 event=start-qemu machine=simplevm subsystem=qemu
 additional_args=() event=qemu-system-x86_64 local_args=[\'-daemonize\', \'-nodefaults\', \'-name simplevm,process=kvm.simplevm\', \'-chroot /srv/vm/simplevm\', \'-runas nobody\', \'-serial file:/var/log/vm/simplevm.log\', \'-display vnc=host1:2345\', \'-pidfile /run/qemu.simplevm.pid\', \'-vga std\', \'-m 256\', \'-readconfig /run/qemu.simplevm.cfg\'] machine=simplevm subsystem=qemu
+count=0 event=global-lock-status machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
+event=global-lock-release machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
+event=global-lock-release machine=simplevm result=unlocked subsystem=qemu
 arguments={} event=qmp_capabilities id=None machine=simplevm subsystem=qemu/qmp
 arguments={} event=query-status id=None machine=simplevm subsystem=qemu/qmp
 event=consul-register machine=simplevm

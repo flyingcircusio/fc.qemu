@@ -36,16 +36,32 @@ def detect_current_machine_type(prefix):
 
 
 def locked_global(f):
+    LOCK = '/run/fc-qemu.lock'
     # This is thread-safe *AS LONG* as every thread uses a separate instance
     # of the agent. Using multiple file descriptors will guarantee that the
     # lock can only be held once even within a single process.
     def locked(self, *args, **kw):
-        fd = os.open('/etc/qemu/fc-qemu.conf', os.O_RDONLY)
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        self.log.debug('acquire-global-lock', target=LOCK)
+        if not self._global_lock_fd:
+            if not os.path.exists(LOCK):
+                open(LOCK, 'a+').close()
+            self._global_lock_fd = os.open(LOCK, os.O_RDONLY)
+        self.log.debug('global-lock-acquire', target=LOCK, result='locked')
+
+        fcntl.flock(self._global_lock_fd, fcntl.LOCK_EX)
+        self._global_lock_count += 1
+        self.log.debug('global-lock-status', target=LOCK,
+                       count=self._global_lock_count)
         try:
             return f(self, *args, **kw)
         finally:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            self._global_lock_count -= 1
+            self.log.debug('global-lock-status', target=LOCK,
+                           count=self._global_lock_count)
+            if self._global_lock_count == 0:
+                self.log.debug('global-lock-release', target=LOCK)
+                fcntl.flock(self._global_lock_fd, fcntl.LOCK_UN)
+                self.log.debug('global-lock-release', result='unlocked')
     return locked
 
 
@@ -67,7 +83,9 @@ class Qemu(object):
     # stabilized the situation even under adverse situations.
     qmp_timeout = 5 * 60
     thaw_retry_timeout = 2
-    vm_max_total_memory = 0
+    vm_max_total_memory = 0  # MiB: maximum amount of booked memory (-m)
+                             # on this host
+    vm_expected_overhead = 0  # MiB: expected amount of RSS overhead per VM
 
     # The non-hosts-specific config configuration of this Qemu instance.
     args = ()
@@ -83,6 +101,9 @@ class Qemu(object):
     configfile = '/run/qemu.{name}.cfg'
     argfile = '/run/qemu.{name}.args'
     qmp_socket = '/run/qemu.{name}.qmp.sock'
+
+    _global_lock_fd = None
+    _global_lock_count = 0
 
     def __init__(self, vm_cfg):
         # Update configuration values from system or test config.
@@ -153,20 +174,12 @@ class Qemu(object):
         if os.path.exists(logfile):
             os.rename(logfile, alternate)
 
-    def _verify_memory(self):
-        """Verify that we do not accidentally run more VMs than we can
-        physically bear.
 
-        This is a protection to avoid starting new VMs while some old VMs
-        that the directory assumes have been migrated or stopped already
-        are still running. This can cause severe performance penalties and may
-        also kill VMs under some circumstances.
+    def _current_vms_booked_memory(self):
+        """Determine the amount of booked memory (MiB) from the currently running VM processes.
 
-        If no limit is configured then we start VMs without that check.
         """
-        if not self.vm_max_total_memory:
-            return
-        free = self.vm_max_total_memory
+        total = 0
         for proc in psutil.process_iter():
             try:
                 pinfo = proc.as_dict(attrs=['pid', 'name', 'cmdline'])
@@ -187,14 +200,44 @@ class Qemu(object):
                 raise ControlledRuntimeException(
                     "Can not determine used memory for {}".
                     format(' '.join(pinfo['cmdline'])))
-            free -= memory
-        required = self.cfg['memory']
-        if free < required:
+            total += memory + self.vm_expected_overhead
+        return total
+
+    def _verify_memory(self):
+        """Verify that we do not accidentally run more VMs than we can
+        physically bear.
+
+        This is a protection to avoid starting new VMs while some old VMs
+        that the directory assumes have been migrated or stopped already
+        are still running. This can cause severe performance penalties and may
+        also kill VMs under some circumstances.
+
+        Also, if VMs should exhibit extreme overhead, we protect against starting additional VMs even if our inventory says we should be 
+        able to run them.
+
+        If no limit is configured then we start VMs based on actual availability only.
+
+        """
+        current_booked = self._current_vms_booked_memory()  # MiB
+        required = self.cfg['memory'] + self.vm_expected_overhead # MiB
+
+        available_real = psutil.virtual_memory().available / (1024 * 1024)
+        limit_booked = self.vm_max_total_memory
+        available_bookable =  limit_booked - current_booked
+
+        if ((limit_booked and available_bookable < required) or 
+            (available_real < required)):
             self.log.error('insufficient-host-memory',
-                           free=free, required=required)
+                           bookable=available_bookable,
+                           available=available_real,
+                           required=required)
             raise ControlledRuntimeException(
-                'Insufficient memory to start VM.')
-        self.log.debug('sufficient-host-memory', free=free, required=required)
+                'Insufficient bookable memory to start VM.')
+
+        self.log.debug('sufficient-host-memory',
+                       bookable=available_bookable,
+                       available_real=available_real,
+                       required=required)
 
     # This lock protects checking the amount of available memory and actually
     # starting the VM. This ensure that no other process checks at the same

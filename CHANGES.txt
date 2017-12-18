@@ -5,7 +5,12 @@ Release notes
 0.9.4 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Extend the memory limiting feature to also verify whether the host 
+  actually has sufficient memory (in addition to sufficient bookable memory)
+  and also include expected overhead in addition to the guest memory.
+
+- Fix the fc-qemu global lock to use a dedicated lock file instead of 
+  (once again) using a file that might be moved around unexpectedly.
 
 
 0.9.3 (2017-12-11)

@@ -91,6 +91,7 @@ def vm(clean_environment):
     vm.timeout_graceful = 1
     vm.qemu.guestagent_timeout = .1
     vm.qemu.qmp_timeout = .1
+    vm.qemu.vm_expected_overhead = 128
     vm.__enter__()
     for snapshot in vm.ceph.root.snapshots:
         snapshot.remove()
