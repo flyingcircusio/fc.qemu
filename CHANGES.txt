@@ -5,6 +5,9 @@ Release notes
 0.9.4 (unreleased)
 ------------------
 
+- Allow selecting the "disk cache mode" of Qemu so we can start disabling
+  the writeback cache that keeps using way too much memory. #28840
+
 - Extend the memory limiting feature to also verify whether the host 
   actually has sufficient memory (in addition to sufficient bookable memory)
   and also include expected overhead in addition to the guest memory.
