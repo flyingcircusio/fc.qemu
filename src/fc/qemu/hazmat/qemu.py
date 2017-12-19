@@ -85,7 +85,7 @@ class Qemu(object):
     thaw_retry_timeout = 2
     vm_max_total_memory = 0  # MiB: maximum amount of booked memory (-m)
                              # on this host
-    vm_expected_overhead = 0  # MiB: expected amount of RSS overhead per VM
+    vm_expected_overhead = 0  # MiB: expected amount of PSS overhead per VM
 
     # The non-hosts-specific config configuration of this Qemu instance.
     args = ()
