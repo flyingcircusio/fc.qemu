@@ -778,4 +778,5 @@ class Agent(object):
         self.qemu.config = tpl.format(
             accelerator=accelerator,
             machine_type=machine_type,
+            disk_cache_mode=self.qemu.disk_cache_mode,
             network=''.join(netconfig), **self.cfg)
