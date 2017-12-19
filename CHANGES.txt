@@ -5,6 +5,13 @@ Release notes
 0.9.4 (unreleased)
 ------------------
 
+- Introduce a Nagios/Sensu compatible "check" command that performs a
+  couple of checks. At the moment this verifies whether RAM allocations
+  are met, both on a VM level (not exceeding guest memory + 2 times the 
+  expected overhead) and a host level (not exceeding guest memory +
+  total overhead + 10%). This command may be expanded upon in the
+  future to introduce more checks.
+
 - Allow selecting the "disk cache mode" of Qemu so we can start disabling
   the writeback cache that keeps using way too much memory. #28840
 

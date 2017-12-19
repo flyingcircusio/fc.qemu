@@ -69,6 +69,9 @@ def main():
     p = sub.add_parser('ls', help='List VMs on this host.')
     p.set_defaults(func='ls')
 
+    p = sub.add_parser('check', help='Perform health check for this host.')
+    p.set_defaults(func='check')
+
     p = sub.add_parser('status', help='Get the status of a VM.')
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.set_defaults(func='status')

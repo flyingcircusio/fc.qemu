@@ -162,7 +162,7 @@ class MultiConsoleRenderer(object):
 
         machine = event_dict.pop('machine', '')
         if machine:
-            write(machine + ' ')
+            write(machine.ljust(20) + ' ')
 
         event = event_dict.pop("event")
         write(BRIGHT +

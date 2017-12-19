@@ -31,6 +31,7 @@ def _handle_consul_event(event):
     handler = ConsulEventHandler()
     handler.handle(event)
 
+OK, WARNING, CRITICAL, UNKNOWN = 0, 1, 2, 3
 
 class ConsulEventHandler(object):
 
@@ -276,6 +277,18 @@ class Agent(object):
         pool.join()
         log.info('finish-consul-events')
 
+
+    @classmethod
+    def _vm_agents_for_host(cls):
+        for candidate in sorted(glob.glob('/run/qemu.*.pid')):
+            name = candidate.replace('/run/qemu.', '')
+            name = name.replace('.pid', '')
+            try:
+                agent = Agent(name)
+                yield agent
+            except:
+                log.exception('load-agent', machine=name, exc_info=True)
+
     @classmethod
     def ls(cls):
         """List all VMs that this host knows about.
@@ -285,16 +298,102 @@ class Agent(object):
 
         Gives a quick status for each VM.
         """
-        for candidate in sorted(glob.glob('/run/qemu.*.pid')):
-            name = candidate.replace('/run/qemu.', '')
-            name = name.replace('.pid', '')
-            try:
-                agent = Agent(name)
-                with agent:
-                    running = agent.qemu.process_exists()
-                    log.info('online' if running else 'offline', machine=name)
-            except:
-                log.exception('vm-status', machine=name, exc_info=True)
+        for vm in cls._vm_agents_for_host():
+            with vm:
+                running = vm.qemu.process_exists()
+
+                if running:
+                    vm_mem = vm.qemu.proc().memory_full_info()
+
+                    expected_size = (
+                        vm.cfg['memory'] * 1024 * 1024 +
+                        vm.qemu.vm_expected_overhead * 1024 * 1024)
+
+                    log.info('online',
+                             machine=vm.name,
+                             cores=vm.cfg['cores'],
+                             memory_booked='{:,.0f}'.format(vm.cfg['memory']),
+                             memory_pss='{:,.0f}'.format(vm_mem.pss / MiB),
+                             memory_swap='{:,.0f}'.format(vm_mem.swap / MiB))
+
+                else:
+                    log.info('offline', machine=vm.name)
+
+    @classmethod
+    def check(cls):
+        """Perform a health check of this host from a Qemu perspective.
+
+        Checks:
+
+        * no VM exceeds their PSS by guest memory + 2x expected overhead
+        * VMs have very little swap (<1 GiB)
+        * the total of the VMs PSS does not exceed
+          total of guest + expected overhead
+
+        Sets exit code according to the Nagios specification.
+
+        """
+        vms = list(cls._vm_agents_for_host())
+
+        large_overhead_vms = []
+        swapping_vms = []
+        total_guest_and_overhead = 0
+        expected_guest_and_overhead = 0
+
+        # individual VMs ok?
+        for vm in vms:
+            with vm:
+                try:
+                    vm_mem = vm.qemu.proc().memory_full_info()
+                except Exception:
+                    # It's likely that the process went away while we analyzed it.
+                    # Ignore.
+                    continue
+                if vm_mem.swap > 1 * GiB:
+                    swapping_vms.append(vm)
+                expected_size = (
+                    vm.cfg['memory'] * MiB + 
+                    2 * vm.qemu.vm_expected_overhead * MiB)
+                expected_guest_and_overhead += (
+                    vm.cfg['memory'] * MiB +
+                    vm.qemu.vm_expected_overhead * MiB)
+                total_guest_and_overhead += vm_mem.pss 
+                if vm_mem.pss > expected_size:
+                    large_overhead_vms.append(vm)
+
+        output = []
+        result = OK
+        if large_overhead_vms:
+            result = WARNING
+            output.append('VMs with large overhead: ' +
+                          ','.join(x.name for x in large_overhead_vms))
+        if swapping_vms:
+            result = WARNING
+            output.append('VMs swapping:' +
+                          ','.join(x.name for x in swapping_vms))
+        if total_guest_and_overhead > expected_guest_and_overhead:
+            result = CRITICAL
+            output.append('High total overhead')
+
+        if result is OK:
+            output.insert(0, 'OK')
+        elif result is WARNING:
+            output.insert(0, 'WARNING')
+        elif result is CRITICAL:
+            output.insert(0, 'CRITICAL')
+        else:
+            output.insert(0, 'UNKNOWN')
+
+        output.insert(
+            1, '{} VMs'.format(len(vms)))
+        output.insert(
+            2, '{:,.0f} MiB used'.format(total_guest_and_overhead / MiB))
+        output.insert(
+            3, '{:,.0f} MiB expected'.format(expected_guest_and_overhead / MiB))
+                
+        print(' - '.join(output))
+
+        return result
 
     @locked
     def save_enc(self):
