@@ -28,7 +28,7 @@ setup(
     namespace_packages=['fc'],
     install_requires=[
         'colorama',
-        'consulate==0.4',
+        'consulate>=0.4',
         'psutil>=2.1',
         'PyYaml>=3.10',
         'requests',
