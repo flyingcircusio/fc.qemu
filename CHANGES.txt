@@ -5,7 +5,7 @@ Release notes
 0.9.5 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Relax version requirements for consulate (#27695).
 
 
 0.9.4 (2017-12-19)
