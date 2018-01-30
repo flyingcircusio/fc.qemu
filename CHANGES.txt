@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-0.9.6 (unreleased)
+0.9.6 (2018-01-30)
 ------------------
 
 - Fix issue with using the `ls` and `check` commands. They do not perform
