@@ -160,8 +160,8 @@ class Qemu(object):
         pass
 
     def __exit__(self, exc_value, exc_type, exc_tb):
-        if self.qmp:
-            self.qmp.close()
+        if self.__qmp:
+            self.__qmp.close()
 
     def proc(self):
         """Qemu processes as psutil.Process object.
@@ -224,7 +224,7 @@ class Qemu(object):
         are still running. This can cause severe performance penalties and may
         also kill VMs under some circumstances.
 
-        Also, if VMs should exhibit extreme overhead, we protect against starting additional VMs even if our inventory says we should be 
+        Also, if VMs should exhibit extreme overhead, we protect against starting additional VMs even if our inventory says we should be
         able to run them.
 
         If no limit is configured then we start VMs based on actual availability only.
@@ -237,7 +237,7 @@ class Qemu(object):
         limit_booked = self.vm_max_total_memory
         available_bookable =  limit_booked - current_booked
 
-        if ((limit_booked and available_bookable < required) or 
+        if ((limit_booked and available_bookable < required) or
             (available_real < required)):
             self.log.error('insufficient-host-memory',
                            bookable=available_bookable,
