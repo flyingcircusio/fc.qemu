@@ -5,7 +5,8 @@ Release notes
 0.9.7 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- When several vm-inmigrate services are found, select the one with the highest
+  'ModifyIndex' value.
 
 
 0.9.6 (2018-01-30)

@@ -37,13 +37,13 @@ class Outgoing(object):
         else:
             self.migration_exitcode = 1
             try:
-                # XXX silence timeout errors here to avoid unnecessary traceback
-                # output
+                # XXX silence timeout errors here to avoid unnecessary
+                # traceback output
                 self.log.exception(
                     'migration-failed', action='rescue', exc_info=True)
                 self.rescue()
                 return True  # swallow exception
-            except:
+            except Exception:
                 # Purposeful bare except: try really hard to kill
                 # our VM.
                 self.log.exception(
@@ -63,7 +63,7 @@ class Outgoing(object):
                 if len(inmig) > 1:
                     self.log.warning('multiple-services-found',
                                      action='use newest', service=service_name)
-                inmig = inmig[-1]
+                inmig = sorted(inmig, key=lambda i: i['ModifyIndex'])[-1]
                 url = 'http://{}:{}'.format(
                     inmig['ServiceAddress'], inmig['ServicePort'])
                 self.log.info('located-inmigration-service', url=url)

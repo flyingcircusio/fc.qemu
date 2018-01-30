@@ -8,6 +8,7 @@ dist
 .DS_Store
 *.egg
 *.egg-info
+.exclude-sync
 htmlcov
 include
 .installed.cfg
@@ -15,12 +16,13 @@ lib
 lib64
 local
 local
+pip-selfcheck.json
 *.pyc
 .Python
 report.xml
 .ropeproject
+share/python-wheels/
 *.sublime-*
 *.sw[po]
 tags
 .vagrant
-.exclude-sync
