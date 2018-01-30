@@ -43,7 +43,7 @@ class Outgoing(object):
                     'migration-failed', action='rescue', exc_info=True)
                 self.rescue()
                 return True  # swallow exception
-            except Exception:
+            except:  # noqa
                 # Purposeful bare except: try really hard to kill
                 # our VM.
                 self.log.exception(
