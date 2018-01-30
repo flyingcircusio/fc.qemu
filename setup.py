@@ -9,7 +9,7 @@ with open('HACKING.txt') as f:
 
 setup(
     name='fc.qemu',
-    version='0.9.5.dev0',
+    version='0.9.6.dev0',
     author='Christian Kauhaus, Christian Theune',
     author_email='mail@flyingcircus.io',
     url='http://bitbucket.org/flyingcircus/fc.qemu',
@@ -28,7 +28,7 @@ setup(
     namespace_packages=['fc'],
     install_requires=[
         'colorama',
-        'consulate==0.4',
+        'consulate>=0.4',
         'psutil>=2.1',
         'PyYaml>=3.10',
         'requests',
