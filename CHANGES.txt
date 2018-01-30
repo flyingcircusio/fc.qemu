@@ -2,10 +2,10 @@ Release notes
 =============
 
 
-0.9.8 (unreleased)
+0.9.8 (2018-01-30)
 ------------------
 
-- Nothing changed yet.
+- Restore bare except.
 
 
 0.9.7 (2018-01-30)
