@@ -5,7 +5,13 @@ Release notes
 0.9.5 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Fix issue with using the `ls` and `check` commands. They do not perform
+  regular locking as they do not use any of the critical resources and should
+  not block nor be blocked by ongoing operations.
+
+  Nevertheless, the cleanup code for managing Qemu QMP monitor connections
+  accidentally triggered creating a superfluous session upon cleanup and
+  that caused spurious blocks.
 
 
 0.9.4 (2017-12-19)
@@ -13,7 +19,7 @@ Release notes
 
 - Introduce a Nagios/Sensu compatible "check" command that performs a
   couple of checks. At the moment this verifies whether RAM allocations
-  are met, both on a VM level (not exceeding guest memory + 2 times the 
+  are met, both on a VM level (not exceeding guest memory + 2 times the
   expected overhead) and a host level (not exceeding guest memory +
   total overhead + 10%). This command may be expanded upon in the
   future to introduce more checks.
@@ -21,11 +27,11 @@ Release notes
 - Allow selecting the "disk cache mode" of Qemu so we can start disabling
   the writeback cache that keeps using way too much memory. #28840
 
-- Extend the memory limiting feature to also verify whether the host 
+- Extend the memory limiting feature to also verify whether the host
   actually has sufficient memory (in addition to sufficient bookable memory)
   and also include expected overhead in addition to the guest memory.
 
-- Fix the fc-qemu global lock to use a dedicated lock file instead of 
+- Fix the fc-qemu global lock to use a dedicated lock file instead of
   (once again) using a file that might be moved around unexpectedly.
 
 
@@ -34,10 +40,10 @@ Release notes
 
 - Disable watchdog: for newly started VMs, remove the device completely.
   For existing VMs (and future) disable the restart action. This fixes
-  spontaneous reboots if VMs are under memory and IO pressure and fail to 
+  spontaneous reboots if VMs are under memory and IO pressure and fail to
   inform the watchdog appropriately. In general, it appears that the situations
-  in which a watchdog will be helpful are very limited and the misbehaviour 
-  has become too much of a burden. 
+  in which a watchdog will be helpful are very limited and the misbehaviour
+  has become too much of a burden.
 
 
 0.9.2 (2017-09-18)
