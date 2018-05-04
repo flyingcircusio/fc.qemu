@@ -186,7 +186,6 @@ class Qemu(object):
         if os.path.exists(logfile):
             os.rename(logfile, alternate)
 
-
     def _current_vms_booked_memory(self):
         """Determine the amount of booked memory (MiB) from the currently running VM processes.
 
@@ -265,8 +264,6 @@ class Qemu(object):
 
         self.prepare_config()
         self.prepare_log()
-        with open('/proc/sys/vm/compact_memory', 'w') as f:
-            f.write('1\n')
         try:
             cmd = '{} {} {}'.format(
                 self.executable,
