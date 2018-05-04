@@ -21,10 +21,13 @@ import os
 import os.path as p
 import pkg_resources
 import requests
+import shutil
 import socket
+import subprocess
 import sys
 import time
 import yaml
+
 
 
 def _handle_consul_event(event):
@@ -64,9 +67,9 @@ class ConsulEventHandler(object):
             return
         agent = Agent(vm, config)
         log.info('processing-consul-event', consul_event='node', machine=vm)
-        if agent.save_enc():
-            with agent:
-                agent.ensure()
+        if agent.prepare_new_config():
+            log.debug('launch-ensure', machine=vm)
+            subprocess.Popen([sys.argv[0], 'ensure', vm], close_fds=True)
         else:
             log.info('ignore-consul-event',
                      machine=vm, reason='config is unchanged')
@@ -101,7 +104,7 @@ def running(expected=True):
     return wrap
 
 
-def locked(f):
+def locked(blocking=True):
     # This is thread-safe *AS LONG* as every thread uses a separate instance
     # of the agent. Using multiple file descriptors will guarantee that the
     # lock can only be held once even within a single process.
@@ -109,62 +112,70 @@ def locked(f):
     # However, we ensure locking status even for re-entrant / recursive usage.
     # For that we keep a counter how often we successfully acquired the lock
     # and then unlock when we're back to zero.
-    def locked(self, *args, **kw):
-        # New lockfile behaviour: lock with a global file that is really only
-        # used for this purpose and is never replaced.
-        self.log.debug('acquire-lock', target=self.lockfile)
-        if not self._lockfile_fd:
-            if not os.path.exists(self.lockfile):
-                open(self.lockfile, 'a+').close()
-            self._lockfile_fd = os.open(self.lockfile, os.O_RDONLY)
-        fcntl.flock(self._lockfile_fd, fcntl.LOCK_EX)
-        self.log.debug('acquire-lock', target=self.lockfile, result='locked')
+    def lock_decorator(f):
+        def locked_func(self, *args, **kw):
+            # New lockfile behaviour: lock with a global file that is really only
+            # used for this purpose and is never replaced.
+            self.log.debug('acquire-lock', target=self.lockfile)
+            if not self._lockfile_fd:
+                if not os.path.exists(self.lockfile):
+                    open(self.lockfile, 'a+').close()
+                self._lockfile_fd = os.open(self.lockfile, os.O_RDONLY)
+            mode = fcntl.LOCK_EX | (fcntl.LOCK_NB if not blocking else 0)
+            try:
+                fcntl.flock(self._lockfile_fd, mode)
+            except IOError:
+                # This happens in nonblocking mode and we just give up as that's
+                # what's expected to speed up things.
+                self.log.info('acquire-lock', result='failed',
+                               mode='nonblocking')
+                return
+            self.log.debug('acquire-lock', target=self.lockfile, result='locked')
 
-        # Old lockfile behaviour: lock the config file that might get replaced.
-        # Can be phased out in a future version but is kept for upgrading
-        # compatibility to not have completely broken locking in between.
-        self.log.debug('acquire-lock', target=self.configfile)
-        if not self._configfile_fd:
-            if not os.path.exists(self.configfile):
-                open(self.configfile, 'a+').close()
-            self._configfile_fd = os.open(self.configfile, os.O_RDONLY)
-        fcntl.flock(self._configfile_fd, fcntl.LOCK_EX)
-        self.log.debug('acquire-lock', target=self.configfile, result='locked')
+            # Old lockfile behaviour: lock the config file that might get replaced.
+            # Can be phased out in a future version but is kept for upgrading
+            # compatibility to not have completely broken locking in between.
+            self.log.debug('acquire-lock', target=self.configfile)
+            if not self._configfile_fd:
+                if not os.path.exists(self.configfile):
+                    open(self.configfile, 'a+').close()
+                self._configfile_fd = os.open(self.configfile, os.O_RDONLY)
+            fcntl.flock(self._configfile_fd, fcntl.LOCK_EX)
+            self.log.debug('acquire-lock', target=self.configfile, result='locked')
 
-        self._lock_count += 1
-        self.log.debug('lock-status', count=self._lock_count)
-        try:
-            return f(self, *args, **kw)
-        finally:
-            self._lock_count -= 1
+            self._lock_count += 1
             self.log.debug('lock-status', count=self._lock_count)
+            try:
+                return f(self, *args, **kw)
+            finally:
+                self._lock_count -= 1
+                self.log.debug('lock-status', count=self._lock_count)
 
-            if self._lock_count == 0:
-                # Old
-                try:
-                    self.log.debug('release-lock', target=self.configfile)
-                    fcntl.flock(self._configfile_fd, fcntl.LOCK_UN)
-                    self.log.debug('release-lock', target=self.configfile,
-                                   result='unlocked')
+                if self._lock_count == 0:
+                    # Old
+                    try:
+                        self.log.debug('release-lock', target=self.configfile)
+                        fcntl.flock(self._configfile_fd, fcntl.LOCK_UN)
+                        self.log.debug('release-lock', target=self.configfile,
+                                       result='unlocked')
 
-                except:
-                    self.log.debug('release-lock', exc_info=True,
-                                   target=self.configfile, result='error')
-                    pass
+                    except:
+                        self.log.debug('release-lock', exc_info=True,
+                                       target=self.configfile, result='error')
+                        pass
 
-                # New
-                try:
-                    self.log.debug('release-lock', target=self.lockfile)
-                    fcntl.flock(self._lockfile_fd, fcntl.LOCK_UN)
-                    self.log.debug('release-lock', target=self.lockfile,
-                                   result='unlocked')
-                except:
-                    self.log.debug('release-lock', exc_info=True,
-                                   target=self.lockfile, result='error')
-                    pass
-
-    return locked
-
+                    # New
+                    try:
+                        self.log.debug('release-lock', target=self.lockfile)
+                        fcntl.flock(self._lockfile_fd, fcntl.LOCK_UN)
+                        self.log.debug('release-lock', target=self.lockfile,
+                                       result='unlocked')
+                    except:
+                        self.log.debug('release-lock', exc_info=True,
+                                       target=self.lockfile, result='error')
+                        pass
+        return locked_func
+    return lock_decorator
 
 def swap_size(memory):
     """Returns the swap partition size in bytes."""
@@ -230,26 +241,15 @@ class Agent(object):
         else:
             self.enc = self._load_enc()
 
-        self.cfg = copy.copy(self.enc['parameters'])
-        self.name = self.enc['name']
-        self.cfg['name'] = self.enc['name']
-        self.cfg['swap_size'] = swap_size(self.cfg['memory'])
-        self.cfg['tmp_size'] = tmp_size(self.cfg['disk'])
-        self.cfg['ceph_id'] = self.ceph_id
-        self.qemu = Qemu(self.cfg)
-        self.ceph = Ceph(self.cfg)
-        self.contexts = [self.qemu, self.ceph]
-        for attr in ['migration_ctl_address']:
-            setattr(self, attr, getattr(self, attr).format(**self.cfg))
-        for cand in self.vm_config_template_path:
-            if p.exists(cand):
-                self.vm_config_template = cand
-                break
         self.consul = consulate.Consul(token=self.consul_token)
 
     @property
     def configfile(self):
         return '/etc/qemu/vm/{}.cfg'.format(self.name)
+
+    @property
+    def configfile_staging(self):
+        return '/etc/qemu/vm/.{}.cfg.staging'.format(self.name)
 
     @property
     def lockfile(self):
@@ -352,12 +352,12 @@ class Agent(object):
                 if vm_mem.swap > 1 * GiB:
                     swapping_vms.append(vm)
                 expected_size = (
-                    vm.cfg['memory'] * MiB + 
+                    vm.cfg['memory'] * MiB +
                     2 * vm.qemu.vm_expected_overhead * MiB)
                 expected_guest_and_overhead += (
                     vm.cfg['memory'] * MiB +
                     vm.qemu.vm_expected_overhead * MiB)
-                total_guest_and_overhead += vm_mem.pss 
+                total_guest_and_overhead += vm_mem.pss
                 if vm_mem.pss > expected_size:
                     large_overhead_vms.append(vm)
 
@@ -390,27 +390,130 @@ class Agent(object):
             2, '{:,.0f} MiB used'.format(total_guest_and_overhead / MiB))
         output.insert(
             3, '{:,.0f} MiB expected'.format(expected_guest_and_overhead / MiB))
-                
+
         print(' - '.join(output))
 
         return result
 
-    @locked
-    def save_enc(self):
-        """Save the current config on the agent into the local persistent file.
+    def stage_new_config(self):
+        """Save the current config on the agent into a staging config file.
 
         This method is safe to call outside of the agent's context manager.
+
         """
-        self.log.debug('save-enc')
+        # Ensure the config directory exists
         if not p.isdir(p.dirname(self.configfile)):
             os.makedirs(p.dirname(self.configfile))
-        with rewrite(self.configfile) as f:
-            yaml.safe_dump(self.enc, f)
-        os.chmod(self.configfile, 0o644)
-        self.log.debug('save-enc', changed=str(f.has_changed))
-        return f.has_changed
+
+        # Ensure the staging file exists.
+        open(self.configfile_staging, 'a+').close()
+        staging_lock = os.open(self.configfile_staging, os.O_RDONLY)
+        fcntl.flock(staging_lock, fcntl.LOCK_EX)
+        self.log.debug(
+            'acquire-staging-lock', target=self.configfile_staging,
+            result='locked')
+        try:
+            # Verify generation of config to protect against lost updates.
+            with open(self.configfile_staging, 'r') as current_staging:
+                try:
+                    current_staging_config = yaml.safe_load(current_staging)
+                    current_generation = current_staging_config['consul-generation']
+                except Exception:
+                    self.log.debug('inconsistent-staging-config')
+                    pass
+                else:
+                    if current_generation >= self.enc['consul-generation']:
+                        # Stop right here, do not write a new config if the
+                        # existing one is newer (or as new) already.
+                        self.log.debug('ignore-old-update',
+                                       existing=current_generation,
+                                       update=self.enc['consul-generation'])
+                        return False
+
+            # The config is either newer, or there is no staging config, or it
+            # is inconsistent. Let's update it.
+            self.log.debug('save-staging-config')
+            # Update the file in place to avoid lock breaking.
+            with open(self.configfile_staging, 'w') as new_staging:
+                yaml.safe_dump(self.enc, new_staging)
+            os.chmod(self.configfile_staging, 0o644)
+            return True
+        finally:
+            fcntl.flock(staging_lock, fcntl.LOCK_UN)
+            self.log.debug(
+            'release-staging-lock', target=self.configfile_staging,
+            result='released')
+
+    @locked()
+    def activate_new_config(self):
+        """Activate the current staged config (if any)."""
+        if not os.path.exists(self.configfile_staging):
+            self.log.debug('check-staging-config', result='none')
+            return False
+
+        staging_lock = os.open(self.configfile_staging, os.O_RDONLY)
+        fcntl.flock(staging_lock, fcntl.LOCK_EX)
+        self.log.debug(
+            'acquire-staging-lock', target=self.configfile_staging,
+            result='locked')
+        try:
+            # Verify generation of config to protect against lost updates.
+            with open(self.configfile_staging, 'r') as current_staging:
+                try:
+                    current_staging_config = yaml.safe_load(current_staging)
+                    staging_generation = current_staging_config['consul-generation']
+                except Exception:
+                    self.log.debug('update-check', result='inconsistent', action='purge')
+                    os.unlink(self.configfile_staging)
+                    return False
+                else:
+                    if staging_generation <= self.enc['consul-generation']:
+                        # Stop right here, do not write a new config if the
+                        # existing one is newer (or as new) already.
+                        self.log.debug('update-check',
+                            result='stale-update', action='ignore',
+                            update=staging_generation,
+                            current=self.enc['consul-generation'])
+                        # The old staging file needs to stay around so that
+                        # the consul writer knows whether to launch an ensure
+                        # agent or not.
+                        return False
+                self.log.debug('update-check',
+                               result='update-available',
+                               action='update',
+                               update=staging_generation,
+                               current=self.enc['consul-generation'])
+
+            # The config seems consistent and newer, lets update.
+            # We can replace the config file because that one is protected
+            # by the global VM lock.
+            shutil.copy2(self.configfile_staging, self.configfile)
+            self.enc = self._load_enc()
+            return True
+        finally:
+            fcntl.flock(staging_lock, fcntl.LOCK_UN)
+            self.log.debug(
+            'release-staging-lock', target=self.configfile_staging,
+            result='released')
 
     def __enter__(self):
+        # Allow updating our config by exiting/entering after setting new ENC
+        # data.
+        self.cfg = copy.copy(self.enc['parameters'])
+        self.cfg['name'] = self.enc['name']
+        self.cfg['swap_size'] = swap_size(self.cfg['memory'])
+        self.cfg['tmp_size'] = tmp_size(self.cfg['disk'])
+        self.cfg['ceph_id'] = self.ceph_id
+        self.qemu = Qemu(self.cfg)
+        self.ceph = Ceph(self.cfg)
+        self.contexts = [self.qemu, self.ceph]
+        for attr in ['migration_ctl_address']:
+            setattr(self, attr, getattr(self, attr).format(**self.cfg))
+        for cand in self.vm_config_template_path:
+            if p.exists(cand):
+                self.vm_config_template = cand
+                break
+
         for c in self.contexts:
             c.__enter__()
 
@@ -421,8 +524,28 @@ class Agent(object):
             except Exception:
                 self.log.exception('leave-subsystems', exc_info=True)
 
-    @locked
+    @locked(blocking=False)
     def ensure(self):
+        # Run the config activation code at least once, but then only if there
+        # are still config changes around. We do this because multiple updates
+        # may be piling up and we want to catch up as quickly as possible but
+        # we only stage the updates and don't want to spawn an agent for
+        # each update of each VM. So if an agent is already running it checks
+        # again after it did something and then keeps going. OTOH agents that
+        # are spawned after staging a new config will give up immediately when
+        # the notice another agent running.
+        first = True
+        while self.activate_new_config() or first:
+            self.log.info('running-ensure', generation=self.enc['consul-generation'])
+            first = False
+            with self:
+                self.ensure_()
+            sleep = 5
+            self.log.info('waiting-for-config-to-settle', pause=sleep)
+            time.sleep(sleep)
+        self.log.debug('changes-settled')
+
+    def ensure_(self):
         # Host assignment is a bit tricky: we decided to not interpret
         # an *empty* cfg['kvm_host'] as "should not be running here" for the
         # sake of not accidentally causing downtime.
@@ -600,7 +723,7 @@ class Agent(object):
         except Exception:
             self.log.exception('consul-deregister-failed', exc_info=True)
 
-    @locked
+    @locked()
     @running(False)
     def start(self):
         self.generate_config()
@@ -654,7 +777,7 @@ class Agent(object):
                                        action='continue')
                         raise
 
-    @locked
+    @locked()
     def snapshot(self, snapshot, keep=0):
         """Guarantees a _consistent_ snapshot to be created.
 
@@ -675,7 +798,7 @@ class Agent(object):
             else:
                 self.log.debug('snapshot-ignore', reason='not frozen')
 
-    @locked
+    @locked()
     def status(self):
         """Determine status of the VM."""
         if self.qemu.is_running():
@@ -699,7 +822,7 @@ class Agent(object):
         telnet = distutils.spawn.find_executable('telnet')
         os.execv(telnet, ('telnet', 'localhost', str(self.qemu.monitor_port)))
 
-    @locked
+    @locked()
     @running(True)
     def stop(self):
         timeout = TimeOut(self.timeout_graceful, interval=3)
@@ -721,13 +844,13 @@ class Agent(object):
             self.log.warn('graceful-shutdown-failed', reason='timeout')
             self.kill()
 
-    @locked
+    @locked()
     def restart(self):
         self.log.info('restart-vm')
         self.stop()
         self.start()
 
-    @locked
+    @locked()
     @running(True)
     def kill(self):
         self.log.info('kill-vm')
@@ -743,7 +866,7 @@ class Agent(object):
         else:
             self.log.warning('kill-vm-failed', note='Check lock consistency.')
 
-    @locked
+    @locked()
     @running(False)
     def inmigrate(self):
         self.log.info('inmigrate')
@@ -759,7 +882,7 @@ class Agent(object):
         self.log.info('inmigrate-finished', exitcode=exitcode)
         return exitcode
 
-    @locked
+    @locked()
     @running(True)
     def outmigrate(self):
         self.log.info('outmigrate')
@@ -772,13 +895,13 @@ class Agent(object):
         self.log.info('outmigrate-finished', exitcode=exitcode)
         return exitcode
 
-    @locked
+    @locked()
     def lock(self):
         self.log.info('assume-all-locks')
         for vol in self.ceph.volumes:
             vol.lock()
 
-    @locked
+    @locked()
     @running(False)
     def unlock(self):
         self.log.info('release-all-locks')
@@ -818,7 +941,7 @@ class Agent(object):
             raise state
 
     # CAREFUL: changing anything in this config files will require maintenance
-    # w/ reboot of all VMs in the infrastructure. Need to increase the 
+    # w/ reboot of all VMs in the infrastructure. Need to increase the
     # binary generation for that, though.
     def generate_config(self):
         """Generate a new Qemu config (and options) for a freshly

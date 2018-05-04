@@ -241,7 +241,7 @@ def test_snapshot_offline_vm(vm):
         'consul', 'snapshot']
 
     vm.enc['parameters']['kvm_host'] = 'foobar'
-    vm.save_enc()
+    vm.prepare_new_config()
     vm.ceph.ensure_root_volume()
     vm.ensure_offline()
     get_log()

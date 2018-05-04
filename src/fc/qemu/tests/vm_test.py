@@ -137,7 +137,7 @@ event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/s
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp""")
 
     vm.cfg['online'] = False
-    vm.save_enc()
+    vm.prepare_new_config()
     vm.ensure()
     get_log()
     vm.status()
