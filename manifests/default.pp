@@ -244,7 +244,7 @@ exec { 'install consul':
     creates => '/usr/local/bin/consul',
     refreshonly => false,
     command => "\
-wget -ck -O /root/consul.zip https://releases.hashicorp.com/consul/0.5.2/consul_0.5.2_linux_amd64.zip
+wget -ck -O /root/consul.zip https://releases.hashicorp.com/consul/1.0.3/consul_1.0.3_linux_amd64.zip
 cd /usr/local/bin
 unzip /root/consul.zip
     ",
