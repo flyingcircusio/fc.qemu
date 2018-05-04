@@ -13,8 +13,21 @@ def authenticated(f):
     @functools.wraps(f)
     def wrapper(self, cookie, *args):
         if cookie != self.cookie:
+            self.log.debug('authentication-cookie-mismatch',
+                method=f.__name__, received_cookie=cookie)
             raise MigrationError('authentication cookie mismatch')
         return f(self, *args)
+    return wrapper
+
+
+def reset_timeout(f):
+    """Reset the timeout when interacting with the wrapped method."""
+    @functools.wraps(f)
+    def wrapper(self, *args):
+        result = f(self, *args)
+        self.log.debug('reset-timeout')
+        self.server.extend_cutoff_time()
+        return result
     return wrapper
 
 
@@ -62,6 +75,11 @@ class IncomingServer(object):
         self.bind_address = self.bind_address[0], s.socket.getsockname()[1]
         url = 'http://{}:{}/'.format(*self.bind_address)
         self.log.info('start-server', type='incoming', url=url)
+        # This timeout causes the `handle_request` call a few lines down to
+        # not block infinitely so the timeout-based while loop actually does
+        # something useful. This is combined with having our peer call any
+        # method on the API which will cause a reset of the timeout before
+        # it is checked the next time.
         s.timeout = 15
         s._send_traceback_header = True
         s.register_instance(IncomingAPI(self))
@@ -165,18 +183,23 @@ class IncomingAPI(object):
         self.server = server
         self.log = self.server.log
         self.cookie = server.agent.ceph.auth_cookie()
+        self.log.debug('setup-incoming-api', cookie=self.cookie)
 
     @authenticated
+    @reset_timeout
     def ping(self):
         """Check connectivity and extend timeout."""
-        self.server.extend_cutoff_time()
+        # Do nothing, only extend the timeout.
+        self.log.debug('received-ping')
 
     @authenticated
+    @reset_timeout
     def acquire_locks(self):
         self.log.debug('received-acquire-locks')
         return self.server.acquire_locks()
 
     @authenticated
+    @reset_timeout
     def prepare_incoming(self, args, config):
         """Spawn KVM process ready to receive the VM.
 
@@ -187,23 +210,27 @@ class IncomingAPI(object):
         return self.server.prepare_incoming(args, config)
 
     @authenticated
+    @reset_timeout
     def finish_incoming(self):
         self.log.debug('received-finish-incoming')
         self.server.finish_incoming()
 
     @authenticated
+    @reset_timeout
     def rescue(self):
         """Incoming rescue."""
         self.log.debug('received-rescue')
         return self.server.rescue()
 
     @authenticated
+    @reset_timeout
     def destroy(self):
         """Incoming destroy."""
         self.log.debug('received-destroy')
         return self.server.destroy()
 
     @authenticated
+    @reset_timeout
     def cancel(self):
         self.log.debug('received-cancel')
         self.server.cancel()
