@@ -365,7 +365,7 @@ class Qemu(object):
         for communicating status updates.
 
         """
-        timeout = TimeOut(timeout, 0.02, raise_on_timeout=True)
+        timeout = TimeOut(timeout, 1, raise_on_timeout=True)
         while timeout.tick():
             if timeout.interval < 10:
                 timeout.interval *= 1.4142
@@ -515,6 +515,11 @@ class Qemu(object):
             return
         self.log.debug('clean-run-files')
         for runfile in runfiles:
+            if runfile.endsdwith('.lock'):
+                # Never, ever, remove lock files. Those should be on
+                # partitions that get cleaned out during reboot, but
+                # never otherwise.
+                continue
             os.unlink(runfile)
 
     def prepare_config(self):

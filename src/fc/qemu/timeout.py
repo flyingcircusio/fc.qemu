@@ -7,13 +7,18 @@ class TimeoutError(RuntimeError):
 
 class TimeOut(object):
 
-    def __init__(self, timeout, interval=1, raise_on_timeout=False):
-        self.remaining = timeout
+    def __init__(self, timeout, interval=1, raise_on_timeout=False,
+                 log=None):
         self.cutoff = time.time() + timeout
         self.interval = interval
         self.timed_out = False
         self.first = True
         self.raise_on_timeout = raise_on_timeout
+        self.log = log
+
+    @property
+    def remaining(self):
+        return int(self.cutoff - time.time())
 
     def tick(self):
         """Perform a `tick` for this timeout.
@@ -24,8 +29,8 @@ class TimeOut(object):
         if raise_on_timeout is set.
 
         """
-        self.remaining = int(self.cutoff - time.time())
-        self.timed_out = self.remaining <= 0
+        remaining = self.remaining  # make atomic within this function
+        self.timed_out = remaining <= 0
 
         if self.timed_out:
             if self.raise_on_timeout:
@@ -36,6 +41,10 @@ class TimeOut(object):
         if self.first:
             self.first = False
         else:
+            if self.log:
+                self.log.debug(
+                    'waiting', interval=int(self.interval),
+                    remaining=remaining)
             time.sleep(self.interval)
 
         return True

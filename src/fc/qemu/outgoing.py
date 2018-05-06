@@ -81,10 +81,10 @@ class Outgoing(object):
     def locate_inmigrate_service(self):
         service_name = 'vm-inmigrate-' + self.name
         timeout = TimeOut(
-            self.connect_timeout, interval=3, raise_on_timeout=True)
+            self.connect_timeout, interval=3, raise_on_timeout=True,
+            log=self.log)
         self.log.info('locate-inmigration-service')
         while timeout.tick():
-            self.log.debug('waiting', remaining=int(timeout.remaining))
             candidates = self.consul.catalog.service(service_name)
             if self.agent.has_new_config():
                 raise ConfigChanged()
@@ -101,17 +101,21 @@ class Outgoing(object):
                 try:
                     target = xmlrpclib.ServerProxy(url, allow_none=True)
                     target.ping(self.cookie)
-                except Exception:
-                    self.log.info('connect', result='failed', exc_info=True)
+                except Exception as e:
+                    self.log.info('connect', result='failed', reason=str(e))
                     # Not a viable service. Delete it.
-                    try:
-                        self.consul.catalog.deregister(
-                            node=candidate['Node'],
-                            datacenter=candidate['Datacenter'],
-                            service_id=candidate['ServiceID'])
-                        self.log.debug('delete-stale-incoming-service', result='success')
-                    except Exception:
-                        self.log.exception('delete-stale-incoming-service', result='failed', exc_info=True)
+                    # XXX This seems broken in consulate 0.6, waiting
+                    # for the 1.0 release ...
+                    # try:
+                    #     self.consul.catalog.deregister(
+                    #        node=candidate['Node'],
+                    #        datacenter=candidate['Datacenter'],
+                    #        service_id=candidate['ServiceID'])
+                    #     self.log.debug('delete-stale-incoming-service', result='success')
+                    #     pass
+                    # except Exception:
+                    #     self.log.exception('delete-stale-incoming-service', result='failed', exc_info=True)
+                    pass
                 else:
                     break
             else:
@@ -125,21 +129,26 @@ class Outgoing(object):
         self.target = connection
 
     def acquire_migration_locks(self):
+        tries = 0
         self.log.info('acquire-migration-locks')
         timeout = TimeOut(
-            self.migration_lock_timeout, interval=3, raise_on_timeout=True)
+            self.migration_lock_timeout, interval=3, raise_on_timeout=True,
+            log=self.log)
         while timeout.tick():
             # In case that there are multiple processes waiting, randomize to
-            # avoid steplock retries. It is a rather small interval, because
-            # migrations _can_ be fast and then we want the 'happy path' to
-            # also be quick about it.
-            timeout.interval = random.randint(1, 5)
-            self.log.debug('waiting', remaining=int(timeout.remaining))
+            # avoid steplock retries. We us CSMA/CD-based exponential backoff,
+            # timeslot 10ms but with a max of 13 instead of 16.
+            # This means we'll wait up to 80s, 40s on average if everything
+            # becomes really busy and we may experience lock contention.
+            tries = min([tries+1, 13])
+            timeout.interval = random.randint(1, 2**tries) * 0.01
             if self.agent.has_new_config():
+                self.target.cancel(self.cookie)
                 raise ConfigChanged()
             # Keep the remote peer alive by informing it that we're still
-            # alive and working on it.
-            self.target.ping(self.cookie)
+            # alive and working on it. Add additional grace period to our own
+            # interval.
+            self.target.ping(self.cookie, timeout.interval + 60)
 
             # Try to acquire local lock
             if self.agent.qemu.acquire_migration_lock():
@@ -164,6 +173,8 @@ class Outgoing(object):
                     'acquire-remote-migration-lock', result='failure', exc_info=True)
                 self.agent.qemu.release_migration_lock()
                 continue
+            # Reset the hard timeout to regular ping timeouts.
+            self.target.ping(self.cookie)
             break
 
     def transfer_ceph_locks(self):
