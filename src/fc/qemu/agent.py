@@ -67,8 +67,8 @@ class ConsulEventHandler(object):
             return
         agent = Agent(vm, config)
         log.info('processing-consul-event', consul_event='node', machine=vm)
-        if agent.prepare_new_config():
-            log.debug('launch-ensure', machine=vm)
+        if agent.stage_new_config():
+            log.info('launch-ensure', machine=vm)
             subprocess.Popen([sys.argv[0], 'ensure', vm], close_fds=True)
         else:
             log.info('ignore-consul-event',
@@ -127,21 +127,10 @@ def locked(blocking=True):
             except IOError:
                 # This happens in nonblocking mode and we just give up as that's
                 # what's expected to speed up things.
-                self.log.info('acquire-lock', result='failed',
-                               mode='nonblocking')
-                return
+                self.log.info('acquire-lock', result='failed', action='exit'
+                              mode='nonblocking')
+                return 75  # EX_TEMPFAIL
             self.log.debug('acquire-lock', target=self.lockfile, result='locked')
-
-            # Old lockfile behaviour: lock the config file that might get replaced.
-            # Can be phased out in a future version but is kept for upgrading
-            # compatibility to not have completely broken locking in between.
-            self.log.debug('acquire-lock', target=self.configfile)
-            if not self._configfile_fd:
-                if not os.path.exists(self.configfile):
-                    open(self.configfile, 'a+').close()
-                self._configfile_fd = os.open(self.configfile, os.O_RDONLY)
-            fcntl.flock(self._configfile_fd, fcntl.LOCK_EX)
-            self.log.debug('acquire-lock', target=self.configfile, result='locked')
 
             self._lock_count += 1
             self.log.debug('lock-status', count=self._lock_count)
@@ -152,18 +141,6 @@ def locked(blocking=True):
                 self.log.debug('lock-status', count=self._lock_count)
 
                 if self._lock_count == 0:
-                    # Old
-                    try:
-                        self.log.debug('release-lock', target=self.configfile)
-                        fcntl.flock(self._configfile_fd, fcntl.LOCK_UN)
-                        self.log.debug('release-lock', target=self.configfile,
-                                       result='unlocked')
-
-                    except:
-                        self.log.debug('release-lock', exc_info=True,
-                                       target=self.configfile, result='error')
-                        pass
-
                     # New
                     try:
                         self.log.debug('release-lock', target=self.lockfile)
@@ -208,6 +185,7 @@ class Agent(object):
         pkg_resources.resource_filename(__name__, 'qemu.vm.cfg.in')
     ]
     consul_token = None
+    config_settle_sleep = 5
 
     # The binary generation is used to signal into a VM that the host
     # environment has changed in a way that requires a _cold_ reboot, thus
@@ -236,6 +214,12 @@ class Agent(object):
         self.__dict__.update(sysconfig.agent)
 
         self.name = name
+
+        # The ENC data is the parsed configuration from the config file, or
+        # from consul (or from wherever). This is intended to stay true to
+        # the config file format (not adding computed values or manipulating
+        # them) so that we can generate a new config file based on this data
+        # through `stage_new_config()`.
         if enc is not None:
             self.enc = enc
         else:
@@ -499,6 +483,10 @@ class Agent(object):
     def __enter__(self):
         # Allow updating our config by exiting/entering after setting new ENC
         # data.
+        # This copy means we can't manipulate cfg to update ENC data, which is
+        # OK. We did this at some point and we're adding computed data to the
+        # `cfg` structure, that we do not want to accidentally reflect back
+        # into the config file.
         self.cfg = copy.copy(self.enc['parameters'])
         self.cfg['name'] = self.enc['name']
         self.cfg['swap_size'] = swap_size(self.cfg['memory'])
@@ -534,15 +522,25 @@ class Agent(object):
         # again after it did something and then keeps going. OTOH agents that
         # are spawned after staging a new config will give up immediately when
         # the notice another agent running.
-        first = True
-        while self.activate_new_config() or first:
-            self.log.info('running-ensure', generation=self.enc['consul-generation'])
-            first = False
-            with self:
-                self.ensure_()
-            sleep = 5
-            self.log.info('waiting-for-config-to-settle', pause=sleep)
-            time.sleep(sleep)
+
+        # The __exit__/__enter__ dance is to simplify handling this special case
+        # where we have to handle this method different as it keeps
+        # entering/exiting while cycling through the config changes. This keeps
+        # the API and unit tests a bit cleaner even though we enter/exit one
+        # time too many.
+        self.__exit__(None, None, None)
+        try:
+            first = True
+            while self.activate_new_config() or first:
+                self.log.info('running-ensure', generation=self.enc['consul-generation'])
+                first = False
+                with self:
+                    self.ensure_()
+                self.log.info(
+                    'waiting-for-config-to-settle', pause=self.config_settle_sleep)
+                time.sleep(self.config_settle_sleep)
+        finally:
+            self.__enter__()
         self.log.debug('changes-settled')
 
     def ensure_(self):
@@ -605,7 +603,7 @@ class Agent(object):
 
     def ensure_online_local(self):
         # Ensure state
-        agent_ready = True
+        agent_likely_ready = True
         if not self.qemu.is_running():
             existing = locate_live_service(self.consul, 'qemu-' + self.name)
             if existing and existing['Address'] != self.this_host:
@@ -624,7 +622,7 @@ class Agent(object):
                     'ensure-state', wanted='online', found='offline',
                     action='start')
                 self.start()
-                agent_ready = False
+                agent_likely_ready = False
         else:
             self.log.info(
                 'ensure-state', wanted='online', found='online', action='')
@@ -635,14 +633,11 @@ class Agent(object):
         self.ensure_online_disk_size()
         self.ensure_online_disk_throttle()
         self.ensure_watchdog()
-        if agent_ready:
+        if agent_likely_ready:
             # This requires guest agent interaction and we should only
-            # perform this when we haven't recently booted the machine.
-            try:
-                self.log.info('ensure-thawed', volume='root')
-                self.qemu.thaw()
-            except Exception as e:
-                self.log.error('ensure-thawed-failed', reason=str(e))
+            # perform this when we haven't recently booted the machine to
+            # reduce the time we're unnecessarily waiting for timeouts.
+            self.ensure_thawed()
             self.mark_qemu_binary_generation()
 
     def cleanup(self):
@@ -651,14 +646,21 @@ class Agent(object):
         for tmp in glob.glob(self.configfile + '?*'):
             os.unlink(tmp)
 
+    def ensure_thawed(self):
+        self.log.info('ensure-thawed', volume='root')
+        try:
+            self.qemu.thaw()
+        except Exception as e:
+            self.log.error('ensure-thawed-failed', reason=str(e))
+
     def mark_qemu_binary_generation(self):
-        self.log.info('mark-qemu-binary-generation',
-                      generation=self.binary_generation)
+        self.log.info(
+            'mark-qemu-binary-generation', generation=self.binary_generation)
         try:
             self.qemu.write_file('/run/qemu-binary-generation-current',
                                  str(self.binary_generation) + '\n')
-        except socket.timeout:
-            self.log.exception('mark-qemu-binary-generation', exc_info=True)
+        except Exception as e:
+            self.log.error('mark-qemu-binary-generation', reason=str(e))
 
     def ensure_online_disk_size(self):
         """Trigger block resize action for the root disk."""

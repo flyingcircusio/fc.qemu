@@ -64,7 +64,7 @@ args=-c "/etc/ceph/ceph.conf" --id "admin" unmap "/dev/rbd/rbd.ssd/simplevm.swap
 event=acquire-global-lock machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 event=global-lock-acquire machine=simplevm result=locked subsystem=qemu target=/run/fc-qemu.lock
 count=1 event=global-lock-status machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
-available_real=... bookable=900 event=sufficient-host-memory machine=simplevm required=384 subsystem=qemu
+available_real=... bookable=0 event=sufficient-host-memory machine=simplevm required=384 subsystem=qemu
 event=start-qemu machine=simplevm subsystem=qemu
 additional_args=() event=qemu-system-x86_64 local_args=[\'-daemonize\', \'-nodefaults\', \'-name simplevm,process=kvm.simplevm\', \'-chroot /srv/vm/simplevm\', \'-runas nobody\', \'-serial file:/var/log/vm/simplevm.log\', \'-display vnc=host1:2345\', \'-pidfile /run/qemu.simplevm.pid\', \'-vga std\', \'-m 256\', \'-readconfig /run/qemu.simplevm.cfg\'] machine=simplevm subsystem=qemu
 count=0 event=global-lock-status machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
@@ -114,7 +114,6 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
 
 def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys, caplog):
     util.test_log_options['show_events'] = ['vm-status', 'rbd-status', 'ensure-state', 'disk-throttle']
-
     vm.status()
     assert get_log() == """\
 event=vm-status machine=simplevm result=offline
@@ -136,10 +135,16 @@ event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/s
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp""")
 
-    vm.cfg['online'] = False
-    vm.prepare_new_config()
+    vm.enc['parameters']['online'] = False
+    vm.enc['consul-generation'] += 1
+    vm.stage_new_config()
+    # As we're re-using the same agent object, we have to time-travel here,
+    # otherwise ensure will already think we're on the new generation.
+    vm.enc['consul-generation'] -= 1
     vm.ensure()
-    get_log()
+    assert get_log() == """\
+action=stop event=ensure-state found=online machine=simplevm wanted=offline"""
+
     vm.status()
     assert get_log() == """\
 event=vm-status machine=simplevm result=offline
@@ -159,7 +164,10 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
 
-    vm.cfg['kvm_host'] = 'otherhost'
+    vm.enc['parameters']['kvm_host'] = 'otherhost'
+    vm.enc['consul-generation'] += 1
+    vm.stage_new_config()
+    vm.enc['consul-generation'] -= 1
     vm.ensure()
     vm.status()
     assert get_log() == Ellipsis("""\
@@ -184,6 +192,7 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp""")
     vm.ensure()
     vm.status()
     assert get_log() == Ellipsis("""\
+event=running-ensure generation=0 machine=simplevm
 action=start event=ensure-state found=offline machine=simplevm wanted=online
 ...
 event=vm-status machine=simplevm result=online
@@ -209,6 +218,7 @@ event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/s
 
     vm.status()
     assert get_log() == Ellipsis("""\
+event=running-ensure generation=0 machine=simplevm
 action=start event=ensure-state found=offline machine=simplevm wanted=online
 ...
 event=vm-status machine=simplevm result=online
@@ -245,7 +255,10 @@ def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
     vm.qemu.proc().kill()
     vm.qemu.proc().wait(2)
     assert vm.ceph.locked_by_me() is True
-    vm.cfg['online'] = False
+    vm.enc['parameters']['online'] = False
+    vm.enc['consul-generation'] += 1
+    vm.stage_new_config()
+    vm.enc['consul-generation'] -= 1
     vm.ensure()
     # We don't really know what's going on here, so, yeah, don't touch it.
     assert vm.ceph.locked_by_me() is True

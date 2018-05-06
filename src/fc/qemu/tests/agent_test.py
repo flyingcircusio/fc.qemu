@@ -18,7 +18,8 @@ def simplevm_cfg():
 
 def test_builtin_config_template(simplevm_cfg):
     a = Agent(simplevm_cfg)
-    a.generate_config()
+    with a:
+        a.generate_config()
     # machine type must match Qemu version in virtualbox
     assert 'type = "pc-i440fx-2.7"' in a.qemu.config
 
@@ -28,7 +29,8 @@ def test_userdefined_config_template(simplevm_cfg):
         f.write('# user defined config template\n')
     try:
         a = Agent(simplevm_cfg)
-        a.generate_config()
+        with a:
+            a.generate_config()
         assert 'user defined config template' in a.qemu.config
     finally:
         os.unlink('/etc/qemu/qemu.vm.cfg.in')
@@ -36,51 +38,57 @@ def test_userdefined_config_template(simplevm_cfg):
 
 def test_consistency_vm_running(simplevm_cfg):
     a = Agent(simplevm_cfg)
-    a.qemu.is_running = mock.Mock(return_value=True)
-    a.qemu.proc = mock.Mock(return_value=psutil.Process(1))
-    a.ceph.locked_by_me = mock.Mock(return_value=True)
-    a.raise_if_inconsistent()
+    with a:
+        a.qemu.is_running = mock.Mock(return_value=True)
+        a.qemu.proc = mock.Mock(return_value=psutil.Process(1))
+        a.ceph.locked_by_me = mock.Mock(return_value=True)
+        a.raise_if_inconsistent()
 
 
 def test_consistency_vm_not_running(simplevm_cfg):
     a = Agent(simplevm_cfg)
-    a.qemu.is_running = mock.Mock(return_value=False)
-    a.qemu.proc = mock.Mock(return_value=None)
-    a.ceph.locked_by_me = mock.Mock(return_value=False)
-    a.raise_if_inconsistent()
+    with a:
+        a.qemu.is_running = mock.Mock(return_value=False)
+        a.qemu.proc = mock.Mock(return_value=None)
+        a.ceph.locked_by_me = mock.Mock(return_value=False)
+        a.raise_if_inconsistent()
 
 
 def test_consistency_process_dead(simplevm_cfg):
     a = Agent(simplevm_cfg)
-    a.qemu.is_running = mock.Mock(return_value=True)
-    a.qemu.proc = mock.Mock(return_value=None)
-    a.ceph.locked_by_me = mock.Mock(return_value=True)
-    with pytest.raises(VMStateInconsistent):
-        a.raise_if_inconsistent()
+    with a:
+        a.qemu.is_running = mock.Mock(return_value=True)
+        a.qemu.proc = mock.Mock(return_value=None)
+        a.ceph.locked_by_me = mock.Mock(return_value=True)
+        with pytest.raises(VMStateInconsistent):
+            a.raise_if_inconsistent()
 
 
 def test_consistency_pidfile_missing(simplevm_cfg):
     a = Agent(simplevm_cfg)
-    a.qemu.is_running = mock.Mock(return_value=True)
-    a.qemu.proc = mock.Mock(return_value=None)
-    a.ceph.locked_by_me = mock.Mock(return_value=True)
-    with pytest.raises(VMStateInconsistent):
-        a.raise_if_inconsistent()
+    with a:
+        a.qemu.is_running = mock.Mock(return_value=True)
+        a.qemu.proc = mock.Mock(return_value=None)
+        a.ceph.locked_by_me = mock.Mock(return_value=True)
+        with pytest.raises(VMStateInconsistent):
+            a.raise_if_inconsistent()
 
 
 def test_consistency_ceph_lock_missing(simplevm_cfg):
     a = Agent(simplevm_cfg)
-    a.qemu.is_running = mock.Mock(return_value=True)
-    a.qemu.proc = mock.Mock(return_value=psutil.Process(1))
-    a.ceph.locked_by_me = mock.Mock(return_value=False)
-    with pytest.raises(VMStateInconsistent):
-        a.raise_if_inconsistent()
+    with a:
+        a.qemu.is_running = mock.Mock(return_value=True)
+        a.qemu.proc = mock.Mock(return_value=psutil.Process(1))
+        a.ceph.locked_by_me = mock.Mock(return_value=False)
+        with pytest.raises(VMStateInconsistent):
+            a.raise_if_inconsistent()
 
 
 def test_ensure_resize(simplevm_cfg):
     a = Agent(simplevm_cfg)
-    a.qemu.is_running = mock.Mock(return_value=True)
-    a.qemu.proc = mock.Mock(return_value=psutil.Process(1))
-    a.ceph.locked_by_me = mock.Mock(return_value=False)
-    with pytest.raises(VMStateInconsistent):
-        a.raise_if_inconsistent()
+    with a:
+        a.qemu.is_running = mock.Mock(return_value=True)
+        a.qemu.proc = mock.Mock(return_value=psutil.Process(1))
+        a.ceph.locked_by_me = mock.Mock(return_value=False)
+        with pytest.raises(VMStateInconsistent):
+            a.raise_if_inconsistent()

@@ -79,8 +79,6 @@ def main():
     p = sub.add_parser('ensure', help='Ensure proper status of the VM.')
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.set_defaults(func='ensure')
-    p.set_defaults(activate_context_manager=False)
-
 
     p = sub.add_parser('start', help='Start a VM.')
     p.add_argument('vm', metavar='VM', help='name of the VM')
@@ -145,9 +143,6 @@ def main():
         del kwargs['vm']
     del kwargs['daemonize']
     del kwargs['verbose']
-    activate_context_manager = kwargs.get('activate_context_manager', True)
-    if 'activate_context_manager' in kwargs:
-        del kwargs['activate_context_manager']
 
     if args.daemonize:
         daemonize()
@@ -174,10 +169,7 @@ def main():
                 # a bit more explicit.
                 vm = os.path.basename(vm).split('.')[0]
             agent = Agent(vm)
-            if activate_context_manager:
-                with agent:
-                    sys.exit(getattr(agent, func)(**kwargs) or 0)
-            else:
+            with agent:
                 sys.exit(getattr(agent, func)(**kwargs) or 0)
     except (ControlledRuntimeException):
         # Those exceptions are properly logged and indicate an error with a

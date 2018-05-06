@@ -39,8 +39,14 @@ def test_incoming_api():
     api.ping('asdf')
     assert server.extend_cutoff_time.call_args_list == [mock.call()]
 
-    api.acquire_locks('asdf')
-    assert server.acquire_locks.call_args_list == [mock.call()]
+    api.acquire_migration_lock('asdf')
+    assert server.acquire_migration_lock.call_args_list == [mock.call()]
+
+    api.release_migration_lock('asdf')
+    assert server.release_migration_lock.call_args_list == [mock.call()]
+
+    api.acquire_ceph_locks('asdf')
+    assert server.acquire_ceph_locks.call_args_list == [mock.call()]
 
     api.prepare_incoming('asdf', [], {})
     assert server.prepare_incoming.call_args_list == [mock.call([], {})]

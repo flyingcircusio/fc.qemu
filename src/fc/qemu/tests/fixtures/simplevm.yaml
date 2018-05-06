@@ -1,4 +1,5 @@
 name: simplevm
+consul-generation: 0
 parameters:
   cores: 1
   disk: 5
