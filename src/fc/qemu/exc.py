@@ -33,3 +33,12 @@ class VMStateInconsistent(RuntimeError):
     def is_consistent(self):
         states = [self.qemu, self.proc, self.ceph_lock]
         return any(states) == all(states)
+
+
+class ConfigChanged(Exception):
+    """Used to break up flows to signal that the config changed and we
+       may want to retry.
+
+       Useful to break up long waiting periods while data is changing.
+
+    """
