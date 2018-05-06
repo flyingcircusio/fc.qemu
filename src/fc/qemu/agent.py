@@ -1,5 +1,6 @@
 from . import util
 from .exc import InvalidCommand, VMConfigNotFound, VMStateInconsistent
+from .exc import ConfigChanged
 from .hazmat.ceph import Ceph
 from .hazmat.qemu import Qemu, detect_current_machine_type
 from .incoming import IncomingServer
@@ -27,7 +28,6 @@ import subprocess
 import sys
 import time
 import yaml
-
 
 
 def _handle_consul_event(event):
@@ -69,7 +69,7 @@ class ConsulEventHandler(object):
         log.info('processing-consul-event', consul_event='node', machine=vm)
         if agent.stage_new_config():
             log.info('launch-ensure', machine=vm)
-            subprocess.Popen([sys.argv[0], 'ensure', vm], close_fds=True)
+            subprocess.Popen([sys.argv[0], '-D', 'ensure', vm], close_fds=True)
         else:
             log.info('ignore-consul-event',
                      machine=vm, reason='config is unchanged')
@@ -127,7 +127,7 @@ def locked(blocking=True):
             except IOError:
                 # This happens in nonblocking mode and we just give up as that's
                 # what's expected to speed up things.
-                self.log.info('acquire-lock', result='failed', action='exit'
+                self.log.info('acquire-lock', result='failed', action='exit',
                               mode='nonblocking')
                 return 75  # EX_TEMPFAIL
             self.log.debug('acquire-lock', target=self.lockfile, result='locked')
@@ -480,6 +480,51 @@ class Agent(object):
             'release-staging-lock', target=self.configfile_staging,
             result='released')
 
+    @locked()
+    def has_new_config(self):
+        if not os.path.exists(self.configfile_staging):
+            self.log.debug('check-staging-config', result='none')
+            return False
+
+        staging_lock = os.open(self.configfile_staging, os.O_RDONLY)
+        fcntl.flock(staging_lock, fcntl.LOCK_EX)
+        self.log.debug(
+            'acquire-staging-lock', target=self.configfile_staging,
+            result='locked')
+        try:
+            # Verify generation of config to protect against lost updates.
+            with open(self.configfile_staging, 'r') as current_staging:
+                try:
+                    current_staging_config = yaml.safe_load(current_staging)
+                    staging_generation = current_staging_config['consul-generation']
+                except Exception:
+                    self.log.debug('update-check', result='inconsistent', action='purge')
+                    os.unlink(self.configfile_staging)
+                    return False
+                else:
+                    if staging_generation <= self.enc['consul-generation']:
+                        # Stop right here, do not write a new config if the
+                        # existing one is newer (or as new) already.
+                        self.log.debug('update-check',
+                            result='stale-update', action='ignore',
+                            update=staging_generation,
+                            current=self.enc['consul-generation'])
+                        # The old staging file needs to stay around so that
+                        # the consul writer knows whether to launch an ensure
+                        # agent or not.
+                        return False
+                self.log.debug('update-check',
+                               result='update-available',
+                               action='update',
+                               update=staging_generation,
+                               current=self.enc['consul-generation'])
+            return True
+        finally:
+            fcntl.flock(staging_lock, fcntl.LOCK_UN)
+            self.log.debug(
+            'release-staging-lock', target=self.configfile_staging,
+            result='released')
+
     def __enter__(self):
         # Allow updating our config by exiting/entering after setting new ENC
         # data.
@@ -534,8 +579,12 @@ class Agent(object):
             while self.activate_new_config() or first:
                 self.log.info('running-ensure', generation=self.enc['consul-generation'])
                 first = False
-                with self:
-                    self.ensure_()
+                try:
+                    with self:
+                        self.ensure_()
+                except ConfigChanged:
+                    # Well then. Let's try this again.
+                    continue
                 self.log.info(
                     'waiting-for-config-to-settle', pause=self.config_settle_sleep)
                 time.sleep(self.config_settle_sleep)

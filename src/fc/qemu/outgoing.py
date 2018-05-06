@@ -1,4 +1,5 @@
 from .timeout import TimeOut
+from .exc import ConfigChanged
 import pprint
 import random
 import xmlrpclib
@@ -44,17 +45,23 @@ class Outgoing(object):
         return self
 
     def __exit__(self, _exc_type, _exc_value, _traceback):
-        try:
-            self.agent.qemu.release_migration_lock()
-        except Exception:
-            pass
-        try:
-            self.target.release_migration_lock(self.cookie)
-        except Exception:
-            pass
-
         if _exc_type is None:
+            # We're on our happy path. Release the migration lock
+            # optimistically and only in this case. Otherwise the
+            # error reporting for why the migration has failed will
+            # be screwed. And the negative path will exit the process
+            # and eventually give up locks anyway.
+            try:
+                self.agent.qemu.release_migration_lock()
+            except Exception:
+                pass
+            try:
+                self.target.release_migration_lock(self.cookie)
+            except Exception:
+                pass
+
             self.migration_exitcode = 0
+
         else:
             self.migration_exitcode = 1
             try:
@@ -79,6 +86,8 @@ class Outgoing(object):
         while timeout.tick():
             self.log.debug('waiting', remaining=int(timeout.remaining))
             candidates = self.consul.catalog.service(service_name)
+            if self.agent.has_new_config():
+                raise ConfigChanged()
             if len(candidates) > 1:
                 self.log.warning('multiple-services-found',
                                  action='trying newest first',
@@ -126,24 +135,34 @@ class Outgoing(object):
             # also be quick about it.
             timeout.interval = random.randint(1, 5)
             self.log.debug('waiting', remaining=int(timeout.remaining))
+            if self.agent.has_new_config():
+                raise ConfigChanged()
+            # Keep the remote peer alive by informing it that we're still
+            # alive and working on it.
+            self.target.ping(self.cookie)
+
+            # Try to acquire local lock
             if self.agent.qemu.acquire_migration_lock():
                 self.log.debug('acquire-local-migration-lock', result='success')
             else:
                 self.log.debug('acquire-local-migration-lock', result='failure')
                 continue
+
+            # Try to acquire remote lock
             try:
                 self.log.debug('acquire-remote-migration-lock')
                 # We got our lock, now ask the remote side:
                 if not self.target.acquire_migration_lock(self.cookie):
                     self.log.debug(
                         'acquire-remote-migration-lock', result='failure')
+                    self.agent.qemu.release_migration_lock()
                     continue
                 self.log.debug(
                     'acquire-remote-migration-lock', result='success')
             except Exception:
                 self.log.exception(
                     'acquire-remote-migration-lock', result='failure', exc_info=True)
-                self.agent.qemu.release_migration_lock(self.cookie)
+                self.agent.qemu.release_migration_lock()
                 continue
             break
 
