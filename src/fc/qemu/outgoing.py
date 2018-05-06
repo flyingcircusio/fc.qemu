@@ -1,5 +1,6 @@
 from .timeout import TimeOut
 import pprint
+import random
 import xmlrpclib
 
 
@@ -8,7 +9,17 @@ class Outgoing(object):
     migration_exitcode = None
     target = None
     cookie = None
-    connect_timeout = 330
+
+    # How long to wait until we discover an inmigrate service?
+    # This should happen relatively fast, but just in case we'll keep a high
+    # timeout. The agents should be spawned relatively quickly everywhere.
+    connect_timeout = 60 * 60  # 1 hour
+
+    # How long to wait until we get a migration lock?
+    # This can happen quite slowly as during busy times migration may be slow
+    # and some large and busy VMs can take 1-2hours (on Gigabit). If this adds
+    # up over multiple hosts I'm giving a grace period of up to 12 hours here.
+    migration_lock_timeout = 12 * 60 * 60  # 12 hours.
 
     def __init__(self, agent):
         self.agent = agent
@@ -20,7 +31,8 @@ class Outgoing(object):
         self.cookie = self.agent.ceph.auth_cookie()
         with self:
             self.connect()
-            self.transfer_locks()
+            self.acquire_migration_locks()
+            self.transfer_ceph_locks()
             self.migrate()
 
         return self.migration_exitcode
@@ -32,6 +44,15 @@ class Outgoing(object):
         return self
 
     def __exit__(self, _exc_type, _exc_value, _traceback):
+        try:
+            self.agent.qemu.release_migration_lock()
+        except Exception:
+            pass
+        try:
+            self.target.release_migration_lock(self.cookie)
+        except Exception:
+            pass
+
         if _exc_type is None:
             self.migration_exitcode = 0
         else:
@@ -50,35 +71,85 @@ class Outgoing(object):
                     'rescue-failed', exc_info=True, action='destroy')
                 self.destroy()
 
-    def locate_inmigrate_service(self, timeout=None):
-        if timeout is None:
-            timeout = self.connect_timeout
+    def locate_inmigrate_service(self):
         service_name = 'vm-inmigrate-' + self.name
-        timeout = TimeOut(timeout, interval=3, raise_on_timeout=True)
+        timeout = TimeOut(
+            self.connect_timeout, interval=3, raise_on_timeout=True)
         self.log.info('locate-inmigration-service')
         while timeout.tick():
             self.log.debug('waiting', remaining=int(timeout.remaining))
-            inmig = self.consul.catalog.service(service_name)
-            if inmig:
-                if len(inmig) > 1:
-                    self.log.warning('multiple-services-found',
-                                     action='use newest', service=service_name)
-                inmig = sorted(inmig, key=lambda i: i['ModifyIndex'])[-1]
+            candidates = self.consul.catalog.service(service_name)
+            if len(candidates) > 1:
+                self.log.warning('multiple-services-found',
+                                 action='trying newest first',
+                                 service=service_name)
+            candidates = sorted(
+                candidates, key=lambda i: i['ModifyIndex'], reverse=True)
+            for candidate in candidates:
                 url = 'http://{}:{}'.format(
-                    inmig['ServiceAddress'], inmig['ServicePort'])
+                    candidate['ServiceAddress'], candidate['ServicePort'])
                 self.log.info('located-inmigration-service', url=url)
-                return url
+                try:
+                    target = xmlrpclib.ServerProxy(url, allow_none=True)
+                    target.ping(self.cookie)
+                except Exception:
+                    self.log.info('connect', result='failed', exc_info=True)
+                    # Not a viable service. Delete it.
+                    try:
+                        self.consul.catalog.deregister(
+                            node=candidate['Node'],
+                            datacenter=candidate['Datacenter'],
+                            service_id=candidate['ServiceID'])
+                        self.log.debug('delete-stale-incoming-service', result='success')
+                    except Exception:
+                        self.log.exception('delete-stale-incoming-service', result='failed', exc_info=True)
+                else:
+                    break
+            else:
+                # We did not find a viable target - continue waiting
+                continue
+            return target
         raise RuntimeError('failed to locate inmigrate service', service_name)
 
     def connect(self):
-        address = self.locate_inmigrate_service()
-        self.log.debug('connect', address=address)
-        self.target = xmlrpclib.ServerProxy(address, allow_none=True)
-        self.target.ping(self.cookie)
+        connection = self.locate_inmigrate_service()
+        self.target = connection
 
-    def transfer_locks(self):
+    def acquire_migration_locks(self):
+        self.log.info('acquire-migration-locks')
+        timeout = TimeOut(
+            self.migration_lock_timeout, interval=3, raise_on_timeout=True)
+        while timeout.tick():
+            # In case that there are multiple processes waiting, randomize to
+            # avoid steplock retries. It is a rather small interval, because
+            # migrations _can_ be fast and then we want the 'happy path' to
+            # also be quick about it.
+            timeout.interval = random.randint(1, 5)
+            self.log.debug('waiting', remaining=int(timeout.remaining))
+            if self.agent.qemu.acquire_migration_lock():
+                self.log.debug('acquire-local-migration-lock', result='success')
+            else:
+                self.log.debug('acquire-local-migration-lock', result='failure')
+                continue
+            try:
+                self.log.debug('acquire-remote-migration-lock')
+                # We got our lock, now ask the remote side:
+                if not self.target.acquire_migration_lock(self.cookie):
+                    self.log.debug(
+                        'acquire-remote-migration-lock', result='failure')
+                    continue
+                self.log.debug(
+                    'acquire-remote-migration-lock', result='success')
+            except Exception:
+                self.log.exception(
+                    'acquire-remote-migration-lock', result='failure', exc_info=True)
+                self.agent.qemu.release_migration_lock(self.cookie)
+                continue
+            break
+
+    def transfer_ceph_locks(self):
         self.agent.ceph.unlock()
-        self.target.acquire_locks(self.cookie)
+        self.target.acquire_ceph_locks(self.cookie)
 
     def migrate(self):
         """Actually move VM between hosts."""

@@ -87,18 +87,22 @@ def clean_environment():
 def vm(clean_environment):
     fixtures = pkg_resources.resource_filename(__name__, 'tests/fixtures')
     shutil.copy(fixtures + '/simplevm.yaml', '/etc/qemu/vm/simplevm.cfg')
+    if os.path.exists('/etc/qemu/vm/.simplevm.cfg.staging'):
+        os.unlink('/etc/qemu/vm/.simplevm.cfg.staging')
+    Agent.config_settle_sleep = 0
     vm = Agent('simplevm')
     vm.timeout_graceful = 1
+    vm.__enter__()
     vm.qemu.guestagent_timeout = .1
     vm.qemu.qmp_timeout = .1
     vm.qemu.vm_expected_overhead = 128
-    vm.__enter__()
     for snapshot in vm.ceph.root.snapshots:
         snapshot.remove()
     vm.qemu.destroy()
     vm.unlock()
     get_log()
     yield vm
+
     for snapshot in vm.ceph.root.snapshots:
         snapshot.remove()
     exc_info = sys.exc_info()
@@ -106,6 +110,8 @@ def vm(clean_environment):
     if len(exc_info):
         print(traceback.print_tb(exc_info[2]))
     os.unlink('/etc/qemu/vm/simplevm.cfg')
+    if os.path.exists('/etc/qemu/vm/.simplevm.cfg.staging'):
+        os.unlink('/etc/qemu/vm/.simplevm.cfg.staging')
 
 
 def get_log():

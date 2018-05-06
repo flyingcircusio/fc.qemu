@@ -37,14 +37,19 @@ class IncomingServer(object):
     finished = False
     obsolete_config_items = ['iommu']
 
-    def __init__(self, agent, timeout=330):
+    # How long to wait until we get the first connection by an outgoing
+    # migration?
+    # Maybe keep this in sync with the identically named timeout in outgoing.py
+    connect_timeout = 60 * 60  # 1 hour
+
+    def __init__(self, agent):
         self.agent = agent
         self.log = agent.log
         self.name = agent.name
         self.qemu = agent.qemu
         self.ceph = agent.ceph
         self.bind_address = parse_address(self.agent.migration_ctl_address)
-        self.timeout = TimeOut(timeout, raise_on_timeout=False)
+        self.timeout = TimeOut(self.connect_timeout, raise_on_timeout=False)
         self.consul = agent.consul
 
     _now = time.time
@@ -53,8 +58,9 @@ class IncomingServer(object):
     def inmigrate_service_registered(self):
         """Context manager for in-migration.
 
-        Registers an inmigration service which keeps active as long as the
+        Registers an inmigration service which remains active as long as the
         with-block is executing.
+
         """
         svcname = 'vm-inmigrate-' + self.name
         self.log.debug('consul-register-inmigrate')
@@ -64,6 +70,7 @@ class IncomingServer(object):
         try:
             yield
         finally:
+            self.log.debug('consul-deregister-inmigrate')
             self.consul.agent.service.deregister(svcname)
 
     def run(self):
@@ -151,7 +158,13 @@ class IncomingServer(object):
             raise
         log.info('rescue-succeeded', machine=self.name)
 
-    def acquire_locks(self):
+    def acquire_migration_lock(self):
+        return self.qemu.acquire_migration_lock()
+
+    def release_migration_lock(self):
+        self.qemu.release_migration_lock()
+
+    def acquire_ceph_locks(self):
         self.ceph.lock()
 
     def finish_incoming(self):
@@ -194,9 +207,21 @@ class IncomingAPI(object):
 
     @authenticated
     @reset_timeout
-    def acquire_locks(self):
-        self.log.debug('received-acquire-locks')
-        return self.server.acquire_locks()
+    def acquire_migration_lock(self):
+        self.log.debug('received-acquire-migration-lock')
+        return self.server.acquire_migration_lock()
+
+    @authenticated
+    @reset_timeout
+    def release_migration_lock(self):
+        self.log.debug('received-release-migration-lock')
+        return self.server.release_migration_lock()
+
+    @authenticated
+    @reset_timeout
+    def acquire_ceph_locks(self):
+        self.log.debug('received-acquire-ceph-locks')
+        return self.server.acquire_ceph_locks()
 
     @authenticated
     @reset_timeout
@@ -234,3 +259,4 @@ class IncomingAPI(object):
     def cancel(self):
         self.log.debug('received-cancel')
         self.server.cancel()
+

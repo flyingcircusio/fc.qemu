@@ -208,7 +208,8 @@ vhost = false
 vnc = ${hostname}:{id}
 timeout-graceful = 120
 migration-address = tcp:${hostname}:{id}
-migration-ctl-address = ${hostname}:9000
+migration-ctl-address = ${hostname}:0
+vm-expected-overhead = 10
 
 [consul]
 access-token =

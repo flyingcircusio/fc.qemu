@@ -2,10 +2,50 @@ Release notes
 =============
 
 
-0.9.9 (unreleased)
+0.10 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Remove deprecated config file locking mechanism.
+
+- Remove (synchronous and superfluous) memory compaction during VM startup to
+  avoid unexpected delays that caused timeouts and delays VM startup
+  unnecessarily.
+
+- Improve the configuration file update process.
+
+  This adds a staging area so that consul updates become faster and handling
+  change events now has become asynchronous. Also, pay attention to the consul
+  ModifyIndex here to avoid lost updates and use that for actual triggers.
+  Includes a "settling" mechanism so that runs of `ensure` that see changes will
+  look for further changes while holding the lock. This means that for every
+  VM on a KVM host only one agent process will be running even if a flurry
+  of updates is coming in.
+
+- Introduce a host-specific migration lock: we want VMs to run as fast as
+  possible and not overload the host. Having a single migration run at one point
+  in time means there's a single TCP stream that will compete with different
+  other steams that run on the same network (Ceph client in our case). Also,
+  competing streams caused some streams to establish a slow speed that wouldn't
+  increase after being the only one remaining.
+
+  Further optimizations here include that hosts will retry quickly to get those
+  locks and keep pushing migrations forward.
+
+- Improve timeout handling for migrations.
+
+  With the new asynchronous agent we now wait for a long time to discover our
+  peer and have fixed missing timeout resets whenever our peer contacted us.
+  (This was an issue with the now removed memory compaction that took longer
+  than the timeout and would cause 'sudden death' on migrations.)
+
+- Make the guest agent part of the 'ensure' method a bit more robust against
+  missing guest agents.
+
+- Improve cleanup of incoming migration services in consul. We did tend to
+  leave old ones around. We will now try connecting to most recent
+  services first, then try older ones and eliminate those that we can't talk
+  to in the process. This may leave some around for a while but the tendency
+  should be that they will get cleaned up at some point.
 
 
 0.9.8 (2018-01-30)

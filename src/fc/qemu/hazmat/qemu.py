@@ -105,6 +105,9 @@ class Qemu(object):
     _global_lock_fd = None
     _global_lock_count = 0
 
+    migration_lockfile = '/run/qemu.migration.lock'
+    _migration_lock_fd = None
+
     def __init__(self, vm_cfg):
         # Update configuration values from system or test config.
         self.__dict__.update(sysconfig.qemu)
@@ -548,3 +551,29 @@ class Qemu(object):
         with open(self.configfile + '.in') as c:
             config = c.read()
         return args, config
+
+    def acquire_migration_lock(self):
+        assert not self._migration_lock_fd
+        open(self.migration_lockfile, 'a+').close()
+        self._migration_lock_fd = os.open(self.migration_lockfile, os.O_RDONLY)
+        try:
+            fcntl.flock(self._migration_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.log.debug('acquire-migration-lock', result='success')
+            return True
+        except Exception as e:
+            if isinstance(e, IOError):
+                self.log.debug(
+                    'acquire-migration-lock',result='failure',
+                    reason='competing lock')
+            else:
+                self.log.exception(
+                    'acquire-migration-lock',result='failure', exc_info=True)
+            os.close(self._migration_lock_fd)
+            self._migration_lock_fd = None
+            return False
+
+    def release_migration_lock(self):
+        assert self._migration_lock_fd
+        fcntl.flock(self._migration_lock_fd, fcntl.LOCK_UN)
+        os.close(self._migration_lock_fd)
+        self._migration_lock_fd = None

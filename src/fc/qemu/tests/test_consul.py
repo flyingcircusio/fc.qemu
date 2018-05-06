@@ -45,12 +45,14 @@ def test_no_key_event():
 
 @pytest.yield_fixture
 def clean_config_test22():
-    target = '/etc/qemu/vm/test22.cfg'
-    if os.path.exists(target):
-        os.unlink(target)
+    targets = ['/etc/qemu/vm/test22.cfg', '/etc/qemu/vm/.test22.cfg.staging']
+    for target in targets:
+        if os.path.exists(target):
+            os.unlink(target)
     yield
-    if os.path.exists(target):
-        os.unlink(target)
+    for target in targets:
+        if os.path.exists(target):
+            os.unlink(target)
 
 
 def test_qemu_config_change(clean_config_test22):
@@ -61,6 +63,7 @@ def test_qemu_config_change(clean_config_test22):
                         u'role::postgresql90',
                         u'role::pspdf',
                         u'role::webproxy'],
+           u'consul-generation': 128,
            u'name': u'test22',
            u'parameters': {u'ceph_id': u'admin',
                            u'cores': 1,
@@ -91,30 +94,20 @@ def test_qemu_config_change(clean_config_test22):
     test22 = test22.replace('\n', '')
 
     stdin = StringIO(
-        '[{"ModifyIndex": 123, "Value": "%s", "Key": "node/test22"}]' % test22)
+        '[{"ModifyIndex": 128, "Value": "%s", "Key": "node/test22"}]' % test22)
     Agent.handle_consul_event(stdin)
     assert util.log_data == [
         'count=1 event=start-consul-events',
         'consul_event=node event=processing-consul-event machine=test22',
-        'action=none event=ensure-state found=offline machine=test22 ' +
-        'wanted=offline',
+        'event=launch-ensure machine=test22',
         'event=finish-consul-events']
-
-    assert util.log_data == [
-        'count=1 event=start-consul-events',
-        'consul_event=node event=processing-consul-event machine=test22',
-        'action=none event=ensure-state found=offline machine=test22 '
-        'wanted=offline',
-        'event=finish-consul-events',
-    ]
 
     # Applying the same config again doesn't
     stdin.seek(0)
     util.log_data = []
     Agent.handle_consul_event(stdin)
 
-    assert util.log_data == [
-        'count=1 event=start-consul-events',
+    assert util.log_data == ['count=1 event=start-consul-events',
         'consul_event=node event=processing-consul-event machine=test22',
         'event=ignore-consul-event machine=test22 reason=config is unchanged',
         'event=finish-consul-events']
@@ -126,15 +119,12 @@ def test_qemu_config_change(clean_config_test22):
     test22 = test22.replace('\n', '')
 
     stdin = StringIO(
-        '[{"ModifyIndex": 123, "Value": "%s", "Key": "node/test22"}]' % test22)
+        '[{"ModifyIndex": 135, "Value": "%s", "Key": "node/test22"}]' % test22)
     Agent.handle_consul_event(stdin)
-    assert util.log_data == [
-        'count=1 event=start-consul-events',
+    assert util.log_data == ['count=1 event=start-consul-events',
         'consul_event=node event=processing-consul-event machine=test22',
-        'action=none event=ensure-state found=offline machine=test22 '
-        'wanted=offline',
-        'event=finish-consul-events',
-    ]
+        'event=launch-ensure machine=test22',
+        'event=finish-consul-events']
 
 
 def test_qemu_config_change_physical():
@@ -241,7 +231,9 @@ def test_snapshot_offline_vm(vm):
         'consul', 'snapshot']
 
     vm.enc['parameters']['kvm_host'] = 'foobar'
-    vm.prepare_new_config()
+    vm.stage_new_config()
+    vm.activate_new_config()
+
     vm.ceph.ensure_root_volume()
     vm.ensure_offline()
     get_log()
