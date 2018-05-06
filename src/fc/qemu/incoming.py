@@ -26,7 +26,7 @@ def reset_timeout(f):
     def wrapper(self, *args):
         result = f(self, *args)
         self.log.debug('reset-timeout')
-        self.server.extend_cutoff_time()
+        self.server.extend_cutoff_time(soft_timeout=60)
         return result
     return wrapper
 
@@ -50,7 +50,8 @@ class IncomingServer(object):
         self.ceph = agent.ceph
         self.bind_address = parse_address(self.agent.migration_ctl_address)
         self.timeout = TimeOut(
-            self.connect_timeout, interval=0, raise_on_timeout=False)
+            self.connect_timeout, interval=0, raise_on_timeout=False,
+            log=self.log)
         self.consul = agent.consul
 
     _now = time.time
@@ -94,11 +95,13 @@ class IncomingServer(object):
         s.register_introspection_functions()
         with self.inmigrate_service_registered():
             while self.timeout.tick():
-                self.log.debug('waiting',
-                               remaining=int(self.timeout.remaining))
                 s.handle_request()
                 if self.finished:
                     break
+        try:
+            self.release_migration_lock()
+        except Exception:
+            pass
         s.server_close()
         self.log.info('stop-server', type='incoming', result=self.finished)
         if self.finished == 'success':
@@ -107,13 +110,18 @@ class IncomingServer(object):
             self.qemu.destroy()
             return 1
 
-    def extend_cutoff_time(self, timeout=60):
+    def extend_cutoff_time(self, hard_timeout=None, soft_timeout=None):
+        assert not (hard_timeout and soft_timeout)
         # We start with a relatively high timeout but once we get a first
         # request we switch to always giving a new cutoff time starting from
         # now. This may cause sudden drops in remaining timeout but is
         # intentional: once we made contact we don't want to wait for many
         # minutes but expect communication to move fast.
-        self.timeout.cutoff = self._now() + timeout
+        if hard_timeout:
+            self.timeout.cutoff = self._now() + hard_timeout
+        if soft_timeout:
+            if self.timeout.remaining < soft_timeout:
+                self.timeout.cutoff = self._now() + soft_timeout
 
     def screen_config(self, config):
         """Remove obsolete items from transferred Qemu config."""
@@ -200,11 +208,18 @@ class IncomingAPI(object):
         self.log.debug('setup-incoming-api', cookie=self.cookie)
 
     @authenticated
-    @reset_timeout
-    def ping(self):
-        """Check connectivity and extend timeout."""
-        # Do nothing, only extend the timeout.
-        self.log.debug('received-ping')
+    def ping(self, timeout=60):
+        """Check connectivity and extend timeout.
+
+        Allow the remote peer to inform us about ongoing slow
+        processes that have a higher expected timeout.
+
+        This can set a very high explicit timeout that will not
+        get reduced by regular interaction.
+
+        """
+        self.log.debug('received-ping', timeout=timeout)
+        self.server.extend_cutoff_time(hard_timeout=timeout)
 
     @authenticated
     @reset_timeout
