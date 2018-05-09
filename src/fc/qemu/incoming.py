@@ -1,4 +1,4 @@
-from .exc import MigrationError, QemuNotRunning
+from .exc import MigrationError, QemuNotRunning, ConfigChanged
 from .timeout import TimeOut
 from .util import parse_address, log
 import contextlib
@@ -53,6 +53,7 @@ class IncomingServer(object):
             self.connect_timeout, interval=0, raise_on_timeout=False,
             log=self.log)
         self.consul = agent.consul
+        self.had_contact = False
 
     _now = time.time
 
@@ -96,6 +97,9 @@ class IncomingServer(object):
         with self.inmigrate_service_registered():
             while self.timeout.tick():
                 s.handle_request()
+                if not self.had_contact and self.agent.has_new_config():
+                    s.server_close()
+                    raise ConfigChanged()
                 if self.finished:
                     break
         try:
@@ -220,6 +224,7 @@ class IncomingAPI(object):
         """
         self.log.debug('received-ping', timeout=timeout)
         self.server.extend_cutoff_time(hard_timeout=timeout)
+        self.server.had_contact = True
 
     @authenticated
     @reset_timeout

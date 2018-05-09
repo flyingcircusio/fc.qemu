@@ -424,6 +424,7 @@ class Agent(object):
             return True
         finally:
             fcntl.flock(staging_lock, fcntl.LOCK_UN)
+            os.close(staging_lock)
             self.log.debug(
             'release-staging-lock', target=self.configfile_staging,
             result='released')
@@ -476,6 +477,7 @@ class Agent(object):
             return True
         finally:
             fcntl.flock(staging_lock, fcntl.LOCK_UN)
+            os.close(staging_lock)
             self.log.debug(
             'release-staging-lock', target=self.configfile_staging,
             result='released')
@@ -521,6 +523,7 @@ class Agent(object):
             return True
         finally:
             fcntl.flock(staging_lock, fcntl.LOCK_UN)
+            os.close(staging_lock)
             self.log.debug(
             'release-staging-lock', target=self.configfile_staging,
             result='released')
