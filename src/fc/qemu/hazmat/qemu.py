@@ -515,7 +515,7 @@ class Qemu(object):
             return
         self.log.debug('clean-run-files')
         for runfile in runfiles:
-            if runfile.endsdwith('.lock'):
+            if runfile.endswith('.lock'):
                 # Never, ever, remove lock files. Those should be on
                 # partitions that get cleaned out during reboot, but
                 # never otherwise.
