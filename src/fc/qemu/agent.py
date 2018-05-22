@@ -34,7 +34,9 @@ def _handle_consul_event(event):
     handler = ConsulEventHandler()
     handler.handle(event)
 
+
 OK, WARNING, CRITICAL, UNKNOWN = 0, 1, 2, 3
+
 
 class ConsulEventHandler(object):
 
@@ -48,7 +50,7 @@ class ConsulEventHandler(object):
                 log.debug("ignore-key", key=event['Key'], reason='empty value')
                 return
             getattr(self, prefix)(event)
-        except:
+        except:  # noqa
             # This must be a bare-except as it protects threads and the main
             # loop from dying. It could be that I'm wrong, but I'm leaving this
             # in for good measure.
@@ -114,8 +116,8 @@ def locked(blocking=True):
     # and then unlock when we're back to zero.
     def lock_decorator(f):
         def locked_func(self, *args, **kw):
-            # New lockfile behaviour: lock with a global file that is really only
-            # used for this purpose and is never replaced.
+            # New lockfile behaviour: lock with a global file that is really
+            # only used for this purpose and is never replaced.
             self.log.debug('acquire-lock', target=self.lockfile)
             if not self._lockfile_fd:
                 if not os.path.exists(self.lockfile):
@@ -125,12 +127,13 @@ def locked(blocking=True):
             try:
                 fcntl.flock(self._lockfile_fd, mode)
             except IOError:
-                # This happens in nonblocking mode and we just give up as that's
-                # what's expected to speed up things.
+                # This happens in nonblocking mode and we just give up as
+                # that's what's expected to speed up things.
                 self.log.info('acquire-lock', result='failed', action='exit',
                               mode='nonblocking')
-                return 75  # EX_TEMPFAIL
-            self.log.debug('acquire-lock', target=self.lockfile, result='locked')
+                return os.EX_TEMPFAIL
+            self.log.debug('acquire-lock',
+                           target=self.lockfile, result='locked')
 
             self._lock_count += 1
             self.log.debug('lock-status', count=self._lock_count)
@@ -147,12 +150,13 @@ def locked(blocking=True):
                         fcntl.flock(self._lockfile_fd, fcntl.LOCK_UN)
                         self.log.debug('release-lock', target=self.lockfile,
                                        result='unlocked')
-                    except:
+                    except:  # noqa
                         self.log.debug('release-lock', exc_info=True,
                                        target=self.lockfile, result='error')
                         pass
         return locked_func
     return lock_decorator
+
 
 def swap_size(memory):
     """Returns the swap partition size in bytes."""
@@ -185,7 +189,6 @@ class Agent(object):
         pkg_resources.resource_filename(__name__, 'qemu.vm.cfg.in')
     ]
     consul_token = None
-    config_settle_sleep = 5
 
     # The binary generation is used to signal into a VM that the host
     # environment has changed in a way that requires a _cold_ reboot, thus
@@ -261,7 +264,6 @@ class Agent(object):
         pool.join()
         log.info('finish-consul-events')
 
-
     @classmethod
     def _vm_agents_for_host(cls):
         for candidate in sorted(glob.glob('/run/qemu.*.pid')):
@@ -270,7 +272,7 @@ class Agent(object):
             try:
                 agent = Agent(name)
                 yield agent
-            except:
+            except Exception:
                 log.exception('load-agent', machine=name, exc_info=True)
 
     @classmethod
@@ -330,8 +332,8 @@ class Agent(object):
                 try:
                     vm_mem = vm.qemu.proc().memory_full_info()
                 except Exception:
-                    # It's likely that the process went away while we analyzed it.
-                    # Ignore.
+                    # It's likely that the process went away while we analyzed
+                    # it. Ignore.
                     continue
                 if vm_mem.swap > 1 * GiB:
                     swapping_vms.append(vm)
@@ -401,7 +403,8 @@ class Agent(object):
             with open(self.configfile_staging, 'r') as current_staging:
                 try:
                     current_staging_config = yaml.safe_load(current_staging)
-                    current_generation = current_staging_config['consul-generation']
+                    current_generation = current_staging_config[
+                        'consul-generation']
                 except Exception:
                     self.log.debug('inconsistent-staging-config')
                     pass
@@ -426,12 +429,17 @@ class Agent(object):
             fcntl.flock(staging_lock, fcntl.LOCK_UN)
             os.close(staging_lock)
             self.log.debug(
-            'release-staging-lock', target=self.configfile_staging,
-            result='released')
+                'release-staging-lock',
+                target=self.configfile_staging, result='released')
 
     @locked()
     def activate_new_config(self):
-        """Activate the current staged config (if any)."""
+        """Activate the current staged config (if any).
+
+        After calling this method, the agent's context manager must be
+        re-entered to activate the changed configuration.
+
+        """
         if not os.path.exists(self.configfile_staging):
             self.log.debug('check-staging-config', result='none')
             return False
@@ -446,16 +454,19 @@ class Agent(object):
             with open(self.configfile_staging, 'r') as current_staging:
                 try:
                     current_staging_config = yaml.safe_load(current_staging)
-                    staging_generation = current_staging_config['consul-generation']
+                    staging_generation = current_staging_config[
+                        'consul-generation']
                 except Exception:
-                    self.log.debug('update-check', result='inconsistent', action='purge')
+                    self.log.debug('update-check',
+                                   result='inconsistent', action='purge')
                     os.unlink(self.configfile_staging)
                     return False
                 else:
                     if staging_generation <= self.enc['consul-generation']:
                         # Stop right here, do not write a new config if the
                         # existing one is newer (or as new) already.
-                        self.log.debug('update-check',
+                        self.log.debug(
+                            'update-check',
                             result='stale-update', action='ignore',
                             update=staging_generation,
                             current=self.enc['consul-generation'])
@@ -479,10 +490,9 @@ class Agent(object):
             fcntl.flock(staging_lock, fcntl.LOCK_UN)
             os.close(staging_lock)
             self.log.debug(
-            'release-staging-lock', target=self.configfile_staging,
-            result='released')
+                'release-staging-lock', target=self.configfile_staging,
+                result='released')
 
-    @locked()
     def has_new_config(self):
         if not os.path.exists(self.configfile_staging):
             self.log.debug('check-staging-config', result='none')
@@ -498,9 +508,11 @@ class Agent(object):
             with open(self.configfile_staging, 'r') as current_staging:
                 try:
                     current_staging_config = yaml.safe_load(current_staging)
-                    staging_generation = current_staging_config['consul-generation']
+                    staging_generation = current_staging_config[
+                        'consul-generation']
                 except Exception:
-                    self.log.debug('update-check', result='inconsistent', action='purge')
+                    self.log.debug('update-check',
+                                   result='inconsistent', action='purge')
                     os.unlink(self.configfile_staging)
                     return False
                 else:
@@ -508,9 +520,10 @@ class Agent(object):
                         # Stop right here, do not write a new config if the
                         # existing one is newer (or as new) already.
                         self.log.debug('update-check',
-                            result='stale-update', action='ignore',
-                            update=staging_generation,
-                            current=self.enc['consul-generation'])
+                                       result='stale-update',
+                                       action='ignore',
+                                       update=staging_generation,
+                                       current=self.enc['consul-generation'])
                         # The old staging file needs to stay around so that
                         # the consul writer knows whether to launch an ensure
                         # agent or not.
@@ -525,8 +538,8 @@ class Agent(object):
             fcntl.flock(staging_lock, fcntl.LOCK_UN)
             os.close(staging_lock)
             self.log.debug(
-            'release-staging-lock', target=self.configfile_staging,
-            result='released')
+                'release-staging-lock', target=self.configfile_staging,
+                result='released')
 
     def __enter__(self):
         # Allow updating our config by exiting/entering after setting new ENC
@@ -560,67 +573,71 @@ class Agent(object):
             except Exception:
                 self.log.exception('leave-subsystems', exc_info=True)
 
-    @locked(blocking=False)
     def ensure(self):
         # Run the config activation code at least once, but then only if there
         # are still config changes around. We do this because multiple updates
         # may be piling up and we want to catch up as quickly as possible but
-        # we only stage the updates and don't want to spawn an agent for
-        # each update of each VM. So if an agent is already running it checks
-        # again after it did something and then keeps going. OTOH agents that
-        # are spawned after staging a new config will give up immediately when
-        # the notice another agent running.
+        # we only stage the updates and don't want to spawn an agent for each
+        # update of each VM. So if an agent is already running it checks again
+        # after it did something and then keeps going. OTOH agents that are
+        # spawned after staging a new config will give up immediately when the
+        # notice another agent running.
 
-        # The __exit__/__enter__ dance is to simplify handling this special case
-        # where we have to handle this method different as it keeps
+        # The __exit__/__enter__ dance is to simplify handling this special
+        # case where we have to handle this method differently as it keeps
         # entering/exiting while cycling through the config changes. This keeps
         # the API and unit tests a bit cleaner even though we enter/exit one
         # time too many.
         self.__exit__(None, None, None)
         try:
             first = True
-            while self.activate_new_config() or first:
-                self.log.info('running-ensure', generation=self.enc['consul-generation'])
+            while self.has_new_config() or first:
+                self.log.info('running-ensure',
+                              generation=self.enc['consul-generation'])
                 first = False
                 try:
-                    with self:
-                        self.ensure_()
+                    locking_code = self.ensure_()
+                    if locking_code == os.EX_TEMPFAIL:
+                        # We didn't get the lock, so someone else is
+                        # already around who will pick up the (additional)
+                        # changed config later.
+                        break
                 except ConfigChanged:
                     # Well then. Let's try this again.
                     continue
-                self.log.info(
-                    'waiting-for-config-to-settle', pause=self.config_settle_sleep)
-                time.sleep(self.config_settle_sleep)
         finally:
             self.__enter__()
         self.log.debug('changes-settled')
 
+    @locked(blocking=False)
     def ensure_(self):
-        # Host assignment is a bit tricky: we decided to not interpret
-        # an *empty* cfg['kvm_host'] as "should not be running here" for the
-        # sake of not accidentally causing downtime.
-        try:
-            if not self.cfg['online']:
-                # Wanted offline.
-                self.ensure_offline()
+        self.activate_new_config()
+        with self:
+            # Host assignment is a bit tricky: we decided to not interpret an
+            # *empty* cfg['kvm_host'] as "should not be running here" for the
+            # sake of not accidentally causing downtime.
+            try:
+                if not self.cfg['online']:
+                    # Wanted offline.
+                    self.ensure_offline()
 
-            elif self.cfg['kvm_host']:
-                if self.cfg['kvm_host'] != self.this_host:
-                    # Wanted online, but explicitly on a different host.
-                    self.ensure_online_remote()
-                else:
-                    # Wanted online, and it's OK if it's running here, but I'll
-                    # only start it if it really is wanted here.
-                    self.ensure_online_local()
+                elif self.cfg['kvm_host']:
+                    if self.cfg['kvm_host'] != self.this_host:
+                        # Wanted online, but explicitly on a different host.
+                        self.ensure_online_remote()
+                    else:
+                        # Wanted online, and it's OK if it's running here, but
+                        # I'll only start it if it really is wanted here.
+                        self.ensure_online_local()
 
-            self.raise_if_inconsistent()
-        except VMStateInconsistent:
-            # Last-resort seat-belt to verify that we ended up in a consistent
-            # state. Inconsistent states result in the VM being forcefully
-            # terminated.
-            self.log.error('inconsistent-state', action='destroy',
-                           exc_info=True)
-            self.qemu.destroy()
+                self.raise_if_inconsistent()
+            except VMStateInconsistent:
+                # Last-resort seat-belt to verify that we ended up in a
+                # consistent state. Inconsistent states result in the VM being
+                # forcefully terminated.
+                self.log.error('inconsistent-state', action='destroy',
+                               exc_info=True)
+                self.qemu.destroy()
 
     def ensure_offline(self):
         if self.qemu.is_running():

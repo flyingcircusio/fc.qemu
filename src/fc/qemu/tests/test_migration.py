@@ -37,7 +37,8 @@ def test_incoming_api():
     assert api.cookie == 'asdf'
 
     api.ping('asdf')
-    assert server.extend_cutoff_time.call_args_list == [mock.call()]
+    assert server.extend_cutoff_time.call_args_list == [
+        mock.call(hard_timeout=60)]
 
     api.acquire_migration_lock('asdf')
     assert server.acquire_migration_lock.call_args_list == [mock.call()]
@@ -70,6 +71,19 @@ def test_incoming_server():
     server = IncomingServer(agent)
     assert server.bind_address == ('localhost', 9000)
 
-    server._now = mock.Mock(return_value=30)
-    server.extend_cutoff_time()
+    server._now = server.timeout._now = mock.Mock(return_value=30)
+    server.timeout.cutoff = 29
+    server.extend_cutoff_time(soft_timeout=60)
     assert server.timeout.cutoff == 90
+    server.extend_cutoff_time(soft_timeout=30)
+    assert server.timeout.cutoff == 90
+    server.extend_cutoff_time(soft_timeout=40)
+    assert server.timeout.cutoff == 90
+    server.extend_cutoff_time(soft_timeout=120)
+    assert server.timeout.cutoff == 150
+    server.extend_cutoff_time(hard_timeout=30)
+    assert server.timeout.cutoff == 60
+    server.extend_cutoff_time(hard_timeout=340)
+    assert server.timeout.cutoff == 370
+    server.extend_cutoff_time(soft_timeout=30)
+    assert server.timeout.cutoff == 370

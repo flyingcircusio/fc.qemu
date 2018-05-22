@@ -119,7 +119,7 @@ class IncomingServer(object):
             return 1
 
     def extend_cutoff_time(self, hard_timeout=None, soft_timeout=None):
-        assert not (hard_timeout and soft_timeout)
+        assert bool(hard_timeout) != bool(soft_timeout)  # XOR
         # We start with a relatively high timeout but once we get a first
         # request we switch to always giving a new cutoff time starting from
         # now. This may cause sudden drops in remaining timeout but is
