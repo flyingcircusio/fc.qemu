@@ -29,8 +29,6 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     assert out == Ellipsis("""\
 event=acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
 event=acquire-lock machine=simplevm result=locked target=/run/qemu.simplevm.lock
-event=acquire-lock machine=simplevm target=/etc/qemu/vm/simplevm.cfg
-event=acquire-lock machine=simplevm result=locked target=/etc/qemu/vm/simplevm.cfg
 count=1 event=lock-status machine=simplevm
 event=generate-config machine=simplevm
 event=ensure-root machine=simplevm subsystem=ceph
@@ -83,8 +81,6 @@ arguments={\'bps_rd\': 0, \'bps_wr\': 0, \'bps\': 0, \'iops\': 3000, \'iops_rd\'
 action=none event=ensure-watchdog machine=simplevm
 arguments={'command-line': 'watchdog_action action=none'} event=human-monitor-command id=None machine=simplevm subsystem=qemu/qmp
 count=0 event=lock-status machine=simplevm
-event=release-lock machine=simplevm target=/etc/qemu/vm/simplevm.cfg
-event=release-lock machine=simplevm result=unlocked target=/etc/qemu/vm/simplevm.cfg
 event=release-lock machine=simplevm target=/run/qemu.simplevm.lock
 event=release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock""")
 

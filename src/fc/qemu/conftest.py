@@ -89,7 +89,6 @@ def vm(clean_environment):
     shutil.copy(fixtures + '/simplevm.yaml', '/etc/qemu/vm/simplevm.cfg')
     if os.path.exists('/etc/qemu/vm/.simplevm.cfg.staging'):
         os.unlink('/etc/qemu/vm/.simplevm.cfg.staging')
-    Agent.config_settle_sleep = 0
     vm = Agent('simplevm')
     vm.timeout_graceful = 1
     vm.__enter__()
