@@ -98,6 +98,10 @@ class IncomingServer(object):
             while self.timeout.tick():
                 s.handle_request()
                 if not self.had_contact and self.agent.has_new_config():
+                    # We are sure that we have not been in contact with the
+                    # outgoing server and thus we can simply abort here
+                    # (and check the new config) without risking to jump into
+                    # any intermediate state of a running migration.
                     s.server_close()
                     raise ConfigChanged()
                 if self.finished:
