@@ -85,9 +85,9 @@ class Outgoing(object):
             log=self.log)
         self.log.info('locate-inmigration-service')
         while timeout.tick():
-            candidates = self.consul.catalog.service(service_name)
             if self.agent.has_new_config():
                 raise ConfigChanged()
+            candidates = self.consul.catalog.service(service_name)
             if len(candidates) > 1:
                 self.log.warning('multiple-services-found',
                                  action='trying newest first',
