@@ -2,8 +2,8 @@ Release notes
 =============
 
 
-0.10 (unreleased)
-------------------
+1.0 (2018-05-23)
+----------------
 
 - Remove deprecated config file locking mechanism.
 
