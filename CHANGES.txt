@@ -5,7 +5,8 @@ Release notes
 1.0.1 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Bugfix: having a staging config but no active config
+  caused the agent to globally file and thus blocked creating new VMs.
 
 
 1.0 (2018-05-23)
