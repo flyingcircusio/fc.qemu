@@ -102,12 +102,13 @@ def test_qemu_config_change(clean_config_test22):
         'event=launch-ensure machine=test22',
         'event=finish-consul-events']
 
-    # Applying the same config again doesn't
+    # Applying the same config again doesn't cause another ensure run.
     stdin.seek(0)
     util.log_data = []
     Agent.handle_consul_event(stdin)
 
-    assert util.log_data == ['count=1 event=start-consul-events',
+    assert util.log_data == [
+        'count=1 event=start-consul-events',
         'consul_event=node event=processing-consul-event machine=test22',
         'event=ignore-consul-event machine=test22 reason=config is unchanged',
         'event=finish-consul-events']
