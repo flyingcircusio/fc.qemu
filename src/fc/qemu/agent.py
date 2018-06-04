@@ -189,6 +189,7 @@ class Agent(object):
         pkg_resources.resource_filename(__name__, 'qemu.vm.cfg.in')
     ]
     consul_token = None
+    consul_generation = -1
 
     # The binary generation is used to signal into a VM that the host
     # environment has changed in a way that requires a _cold_ reboot, thus
@@ -229,6 +230,7 @@ class Agent(object):
             self.enc = self._load_enc()
 
         self.consul = consulate.Consul(token=self.consul_token)
+        self.contexts = ()
 
     @property
     def configfile(self):
@@ -247,8 +249,15 @@ class Agent(object):
             with open(self.configfile) as f:
                 return yaml.safe_load(f)
         except IOError:
-            self.log.error('unknown-vm')
-            raise VMConfigNotFound("Could not load {}".format(self.configfile))
+            if os.path.exists(self.configfile_staging):
+                # The VM has been freshly created. Set up a boilerplate
+                # configuration and le the actual config be established
+                # through the 'ensure' command.
+                return None
+            else:
+                self.log.error('unknown-vm')
+                raise VMConfigNotFound("Could not load {}".format(
+                    self.configfile))
 
     @classmethod
     def handle_consul_event(cls, input=sys.stdin):
@@ -403,18 +412,19 @@ class Agent(object):
             with open(self.configfile_staging, 'r') as current_staging:
                 try:
                     current_staging_config = yaml.safe_load(current_staging)
-                    current_generation = current_staging_config[
+                    current_staging_generation = current_staging_config[
                         'consul-generation']
                 except Exception:
                     self.log.debug('inconsistent-staging-config')
                     pass
                 else:
-                    if current_generation >= self.enc['consul-generation']:
+                    if (self.enc['consul-generation'] <=
+                            current_staging_generation):
                         # Stop right here, do not write a new config if the
                         # existing one is newer (or as new) already.
                         self.log.debug('ignore-old-update',
-                                       existing=current_generation,
-                                       update=self.enc['consul-generation'])
+                                       existing=self.consul_generation,
+                                       update=current_staging_generation)
                         return False
 
             # The config is either newer, or there is no staging config, or it
@@ -462,14 +472,14 @@ class Agent(object):
                     os.unlink(self.configfile_staging)
                     return False
                 else:
-                    if staging_generation <= self.enc['consul-generation']:
+                    if staging_generation <= self.consul_generation:
                         # Stop right here, do not write a new config if the
                         # existing one is newer (or as new) already.
                         self.log.debug(
                             'update-check',
                             result='stale-update', action='ignore',
                             update=staging_generation,
-                            current=self.enc['consul-generation'])
+                            current=self.consul_generation)
                         # The old staging file needs to stay around so that
                         # the consul writer knows whether to launch an ensure
                         # agent or not.
@@ -478,7 +488,7 @@ class Agent(object):
                                result='update-available',
                                action='update',
                                update=staging_generation,
-                               current=self.enc['consul-generation'])
+                               current=self.consul_generation)
 
             # The config seems consistent and newer, lets update.
             # We can replace the config file because that one is protected
@@ -516,14 +526,14 @@ class Agent(object):
                     os.unlink(self.configfile_staging)
                     return False
                 else:
-                    if staging_generation <= self.enc['consul-generation']:
+                    if staging_generation <= self.consul_generation:
                         # Stop right here, do not write a new config if the
                         # existing one is newer (or as new) already.
                         self.log.debug('update-check',
                                        result='stale-update',
                                        action='ignore',
                                        update=staging_generation,
-                                       current=self.enc['consul-generation'])
+                                       current=self.consul_generation)
                         # The old staging file needs to stay around so that
                         # the consul writer knows whether to launch an ensure
                         # agent or not.
@@ -532,7 +542,7 @@ class Agent(object):
                                result='update-available',
                                action='update',
                                update=staging_generation,
-                               current=self.enc['consul-generation'])
+                               current=self.consul_generation)
             return True
         finally:
             fcntl.flock(staging_lock, fcntl.LOCK_UN)
@@ -548,11 +558,17 @@ class Agent(object):
         # OK. We did this at some point and we're adding computed data to the
         # `cfg` structure, that we do not want to accidentally reflect back
         # into the config file.
+        if self.enc is None:
+            return
         self.cfg = copy.copy(self.enc['parameters'])
         self.cfg['name'] = self.enc['name']
         self.cfg['swap_size'] = swap_size(self.cfg['memory'])
         self.cfg['tmp_size'] = tmp_size(self.cfg['disk'])
         self.cfg['ceph_id'] = self.ceph_id
+        try:
+            self.consul_generation = self.enc['consul-generation']
+        except Exception:
+            import pdb; pdb.set_trace()
         self.qemu = Qemu(self.cfg)
         self.ceph = Ceph(self.cfg)
         self.contexts = [self.qemu, self.ceph]
@@ -593,7 +609,7 @@ class Agent(object):
             first = True
             while self.has_new_config() or first:
                 self.log.info('running-ensure',
-                              generation=self.enc['consul-generation'])
+                              generation=self.consul_generation)
                 first = False
                 try:
                     locking_code = self.ensure_()

@@ -1,11 +1,13 @@
-from ..agent import swap_size, tmp_size
+from ..agent import swap_size, tmp_size, Agent
 from ..conftest import get_log
 from ..ellipsis import Ellipsis
 from ..util import MiB, GiB
 from fc.qemu import util
 import datetime
+import os
 import os.path
 import pytest
+import shutil
 import subprocess
 
 
@@ -388,3 +390,28 @@ def test_simple_cancelled_migration_doesnt_clean_up(vm, monkeypatch):
     vm.ensure_online_remote()
     assert vm.ceph.locked_by_me()
     assert os.path.exists('/run/qemu.simplevm.pid')
+
+
+def test_new_vm(vm):
+    # A new VM gets created by consul adding the staging filename and then
+    # starting it. At this point the main config file doesn't exist yet.
+    shutil.copy('/etc/qemu/vm/simplevm.cfg',
+                '/etc/qemu/vm/.simplevm.cfg.staging')
+    os.unlink('/etc/qemu/vm/simplevm.cfg')
+    # Include testing the agent setup for this scenario.
+    vm = Agent('simplevm')
+    with vm:
+        vm.ensure()
+    assert get_log() == Ellipsis("""\
+...
+event=running-ensure generation=-1 machine=simplevm
+...
+action=update current=-1 event=update-check machine=simplevm result=update-available update=0
+...
+action=start event=ensure-state found=offline machine=simplevm wanted=online
+...
+event=generate-config machine=simplevm
+event=ensure-root machine=simplevm subsystem=ceph
+event=create-vm machine=simplevm subsystem=ceph
+...
+""")
