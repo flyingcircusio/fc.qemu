@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-1.0.2 (unreleased)
+1.0.2 (2019-01-08)
 ------------------
 
 - Fix an edge condition: VMs that are still shutting down and then asked to
