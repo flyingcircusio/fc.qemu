@@ -11,6 +11,15 @@ ceph-deploy --overwrite-conf osd create host1:/var/local/osd0 host2:/var/local/o
 ceph-deploy --overwrite-conf osd activate host1:/var/local/osd0 host2:/var/local/osd1
 ceph-deploy --overwrite-conf admin host1 host2
 
+ceph osd pool set rbd size 2
+ceph osd pool set rbd min_size 1
+
+ceph osd pool set data size 2
+ceph osd pool set data min_size 1
+
+ceph osd pool set metadata size 2
+ceph osd pool set metadata min_size 1
+
 # Create demo VM pool
 ceph osd pool create rbd.hdd 8
 ceph osd pool set rbd.hdd size 2
