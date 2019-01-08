@@ -109,6 +109,20 @@ class Ceph(object):
         except TypeError:  # status[1] not accessible
             return False
 
+    def locked_by(self):
+        """Returns a hostname holding all locks or None if not locked.
+
+        Raises ValueError if not all locks are held by same owner.
+
+        """
+        lock_owners = set(
+            v.lock_status()[1] for v in self.volumes if v.lock_status())
+        if not lock_owners:
+            return None
+        if len(lock_owners) != 1:
+            raise ValueError("Multiple lock owners: {}".format(lock_owners))
+        return lock_owners.pop()
+
     def lock(self):
         for vol in self.volumes:
             vol.lock()

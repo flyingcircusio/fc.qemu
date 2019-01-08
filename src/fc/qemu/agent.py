@@ -690,11 +690,11 @@ class Agent(object):
         # Ensure state
         agent_likely_ready = True
         if not self.qemu.is_running():
-            existing = locate_live_service(self.consul, 'qemu-' + self.name)
-            if existing and existing['Address'] != self.this_host:
+            current_host = self._requires_inmigrate_from()
+            if current_host:
                 self.log.info(
                     'ensure-state', wanted='online', found='offline',
-                    action='inmigrate', remote=existing['Address'])
+                    action='inmigrate', remote=current_host)
                 exitcode = self.inmigrate()
                 if exitcode:
                     # This is suboptimal: I hate error returns,
@@ -718,6 +718,9 @@ class Agent(object):
         self.ensure_online_disk_size()
         self.ensure_online_disk_throttle()
         self.ensure_watchdog()
+        # Be aggressive/opportunistic about re-acquiring locks in case
+        # they were taken away.
+        self.ceph.lock()
         if agent_likely_ready:
             # This requires guest agent interaction and we should only
             # perform this when we haven't recently booted the machine to
@@ -901,6 +904,8 @@ class Agent(object):
         for volume in self.ceph.volumes:
             locker = volume.lock_status()
             self.log.info('rbd-status', volume=volume.fullname, locker=locker)
+        consul = locate_live_service(self.consul, 'qemu-' + self.name)
+        self.log.info('consul', service=consul['Service'], address=consul['Address'])
         return status
 
     def telnet(self):
@@ -953,15 +958,40 @@ class Agent(object):
         else:
             self.log.warning('kill-vm-failed', note='Check lock consistency.')
 
+    def _requires_inmigrate_from(self):
+        """Check whether an inmigration makes sense.
+
+        This makes sense if the VM isn't running locally and (Consul knows
+        about a running VM or the VM is locked remotely).
+
+        Returns the name of the remote host the VM should be migrated from
+        or None if inmigration doesn't make sense.
+
+        """
+        existing = locate_live_service(self.consul, 'qemu-' + self.name)
+
+        if existing and existing['Address'] != self.this_host:
+            # Consul knows about a running VM. Lets try a migration.
+            return existing['Address']
+
+        if not self.ceph.is_unlocked():
+            # Consul doesn't know about a running VM and no volume is locked.
+            # It doesn't make sense to live migrate this VM.
+            return None
+
+        if self.ceph.locked_by_me():
+            # Consul doesn't know about a running VM and the volume is
+            # locked by me, so it doesn't make sense to live migrate the VM.
+            return None
+
+        # The VM seems to be locked somewhere else, try to migrate it from
+        # there.
+        return self.ceph.locked_by()
+
     @locked()
     @running(False)
     def inmigrate(self):
         self.log.info('inmigrate')
-        if self.ceph.is_unlocked():
-            self.log.info('start-instead-of-inmigrate',
-                          reason='no locks found')
-            self.start()
-            return
         server = IncomingServer(self)
         exitcode = server.run()
         if not exitcode:
