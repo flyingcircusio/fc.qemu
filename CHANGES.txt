@@ -5,6 +5,11 @@ Release notes
 1.0.2 (unreleased)
 ------------------
 
+- Fix an edge condition: VMs that are still shutting down and then asked to
+  migrate may leave the inmigrate job hanging until it times out. We already
+  have opportunistic handling of config changes and this is now one of them
+  thus triggering a regular start of affected VMs much quicker.
+
 - Opportunistically try to re-acquire lost locks. This is needed to avoid an invalid
   "inconsistent" decision and allows us to repair broken locks due to a
   Ceph bug. This will still cause visible failures if the lock can't

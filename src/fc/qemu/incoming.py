@@ -97,11 +97,16 @@ class IncomingServer(object):
         with self.inmigrate_service_registered():
             while self.timeout.tick():
                 s.handle_request()
-                if not self.had_contact and self.agent.has_new_config():
+                if not self.had_contact and (
+                        self.agent.has_new_config() or
+                        not self.agent._requires_inmigrate_from()):
                     # We are sure that we have not been in contact with the
                     # outgoing server and thus we can simply abort here
                     # (and check the new config) without risking to jump into
                     # any intermediate state of a running migration.
+                    # The exception will trigger a retry way up in the
+                    # outermost ensure() so that we re-evaluate what needs
+                    # to be done.
                     s.server_close()
                     raise ConfigChanged()
                 if self.finished:
