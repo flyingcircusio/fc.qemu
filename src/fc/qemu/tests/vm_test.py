@@ -244,7 +244,8 @@ event=clean-run-files machine=simplevm subsystem=qemu
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
-event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp""")
+event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp
+address=host1 event=consul machine=simplevm service=qemu-simplevm""")
 
 
 def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):

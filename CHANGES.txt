@@ -5,7 +5,14 @@ Release notes
 1.0.2 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Opportunistically try to re-acquire lost locks. This is needed to avoid an invalid
+  "inconsistent" decision and allows us to repair broken locks due to a
+  Ceph bug. This will still cause visible failures if the lock can't
+  be properly re-acquired.
+
+- Clean up expectations around in-migrations and how to discover whether it
+  makes sense to wait for an incoming migration. Use consul _and_ Ceph lock
+  information and concentrate that decision in a single place.
 
 
 1.0.1 (2018-06-04)
