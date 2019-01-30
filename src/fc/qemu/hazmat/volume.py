@@ -280,16 +280,28 @@ class Volume(Image):
             self.rbdimage.unlock(lock_id)
             self.locked_by_me = False
             return
+
+        def _break_lock():
+            try:
+                self.rbdimage.break_lock(client_id, lock_id)
+            except rbd.InvalidArgument:
+                if client_id == 'client.?':
+                    self.log.warn('buggy-lock', action='low-level-delete')
+                    # This looks a lot like a broken hammer installation.
+                    # Be cruel.
+                    img_id = self.ioctx.read('rbd_id.{}'.format(self.name)).strip()
+                    img_id = img_id[4:]
+                    self.ioctx.rm_xattr('rbd_header.{}'.format(img_id), 'lock.rbd_lock')
+
         if lock_id == self.ceph.CEPH_LOCK_HOST:
             # This host owns this lock but from a different connection. This
             # means we have to break it.
             self.log.info('unlock')
-            self.rbdimage.break_lock(client_id, lock_id)
-            return
+            _break_lock()
         # We do not own this lock: need to explicitly ask for breaking.
-        if force:
+        elif force:
             self.log.info('break-lock')
-            self.rbdimage.break_lock(client_id, lock_id)
+            _break_lock()
 
     def mkswap(self):
         """Creates a swap partition. Requires the volume to be mappped."""

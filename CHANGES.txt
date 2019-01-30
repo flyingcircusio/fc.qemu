@@ -5,7 +5,11 @@ Release notes
 1.0.3 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Add custom daemonization wrapper for Qemu to capture stdout/stdin/exit code (reliably).
+
+- Add helper to support migrations on Ceph Hammer w/ broken lock IDs.
+
+- Fix minor bug when showing status and Consul is inconsistent.
 
 
 1.0.2 (2019-01-08)
