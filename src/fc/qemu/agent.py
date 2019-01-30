@@ -905,7 +905,10 @@ class Agent(object):
             locker = volume.lock_status()
             self.log.info('rbd-status', volume=volume.fullname, locker=locker)
         consul = locate_live_service(self.consul, 'qemu-' + self.name)
-        self.log.info('consul', service=consul['Service'], address=consul['Address'])
+        if consul:
+            self.log.info('consul', service=consul['Service'], address=consul['Address'])
+        else:
+            self.log.info('consul', result='no response')
         return status
 
     def telnet(self):
@@ -1073,7 +1076,6 @@ class Agent(object):
         """
         self.log.debug('generate-config')
         self.qemu.args = [
-            '-daemonize',
             '-nodefaults',
             '-name {name},process=kvm.{name}',
             '-chroot {{chroot}}',

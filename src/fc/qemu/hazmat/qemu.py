@@ -1,5 +1,6 @@
 """Low-level interface to Qemu commands."""
 
+from . import supervise
 from ..exc import QemuNotRunning, VMStateInconsistent
 from ..sysconfig import sysconfig
 from ..timeout import TimeOut
@@ -13,6 +14,7 @@ import os.path
 import psutil
 import socket
 import subprocess
+import sys
 import time
 import yaml
 
@@ -268,19 +270,26 @@ class Qemu(object):
         self.prepare_config()
         self.prepare_log()
         try:
-            cmd = '{} {} {}'.format(
-                self.executable,
-                ' '.join(self.local_args),
-                ' '.join(additional_args))
-            # We explicitly close all fds for the child to avoid
-            # inheriting locks infinitely.
+            args = list(self.local_args) + list(additional_args)
+            # We do not daemonize any longer and even want this to happen
+            # when migrating VMs.
+            # We also force the internal stderr log, even though I haven't
+            # seen this being useful, yet.
+            args = filter(lambda x: x != '-daemonize', args)
+            args = filter(lambda x: not x.startswith('-D '), args)
+            args.append('-D /var/log/vm/{}.qemu.internal.log'.format(self.name))
+
+            cmd = '{} {}'.format(self.executable, ' '.join(args))
             self.log.info('start-qemu')
             self.log.debug(self.executable,
                            local_args=self.local_args,
                            additional_args=additional_args)
-            p = subprocess.Popen(cmd, shell=True, close_fds=True,
-                                 stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE)
+            # We explicitly close all fds for the child to avoid inheriting fd
+            # locks accidentally and indefinitely.
+            qemu_log = '/var/log/vm/{}.qemu.log'.format(self.name)
+            p = subprocess.Popen(
+                [sys.executable, supervise.__file__, cmd, self.name, qemu_log],
+                close_fds=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = p.communicate()
             if p.returncode != 0:
                 raise QemuNotRunning(p.returncode, stdout, stderr)
@@ -291,7 +300,10 @@ class Qemu(object):
 
     def start(self):
         self._start()
-        assert self.is_running()
+        timeout = TimeOut(10, 0.25, raise_on_timeout=True)
+        while timeout.tick():
+            if self.is_running():
+                return
 
     def freeze(self):
         with self.guestagent as guest:
