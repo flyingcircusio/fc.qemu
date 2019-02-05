@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-1.0.4 (unreleased)
+1.0.4 (2019-02-05)
 ------------------
 
 - Do not - I repeat - do not kill processes, based on the PID file, if the
