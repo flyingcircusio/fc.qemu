@@ -2,23 +2,28 @@ from ..hazmat.qemu import Qemu
 import os
 import psutil
 import pytest
+import subprocess
 import tempfile
+import time
 
 
 @pytest.yield_fixture
 def qemu_with_pidfile():
+    try:
+        os.unlink('/run/qemu.testvm.pid')
+    except OSError:
+        pass
+    proc = subprocess.Popen(
+        ['qemu-system-x86_64',
+         '-name', 'testvm,process=kvm.testvm', '-nodefaults',
+         '-pidfile', '/run/qemu.testvm.pid'])
+    while not os.path.exists('/run/qemu.testvm.pid'):
+         time.sleep(0.01)
     q = Qemu(dict(name='testvm', id=1234))
-    tf = tempfile.NamedTemporaryFile(prefix='test.', delete=False)
-    q.pidfile = tf.name
-    tf.write('{}\n'.format(os.getpid()))
-    tf.close()
     try:
         yield q
     finally:
-        try:
-            os.unlink(tf.name)
-        except OSError:
-            pass
+        proc.kill()
 
 
 def test_proc_running(qemu_with_pidfile):
@@ -28,6 +33,12 @@ def test_proc_running(qemu_with_pidfile):
 def test_proc_not_running(qemu_with_pidfile):
     with open(qemu_with_pidfile.pidfile, 'w') as p:
         p.write('0\n')
+    assert qemu_with_pidfile.proc() is None
+
+
+def test_proc_wrong_process(qemu_with_pidfile):
+    with open(qemu_with_pidfile.pidfile, 'w') as p:
+        p.write('1\n')
     assert qemu_with_pidfile.proc() is None
 
 
