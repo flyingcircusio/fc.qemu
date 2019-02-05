@@ -178,7 +178,10 @@ class Qemu(object):
             with open(self.pidfile) as p:
                 # pid file may contain trailing lines with garbage
                 for line in p:
-                    return psutil.Process(int(line))
+                    proc =  psutil.Process(int(line))
+                    if proc.name() != 'kvm.{}'.format(self.name):
+                        break
+                    return proc
         except (IOError, OSError, ValueError, psutil.NoSuchProcess):
             pass
 

@@ -5,7 +5,15 @@ Release notes
 1.0.4 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Do not - I repeat - do not kill processes, based on the PID file, if the
+  process name does not match the expected VM process naming pattern.
+
+  This only manifested under a number of circumstances:
+
+  * a Ceph bug was leaving deleted VMs unable to delete their locks
+  * deleted VMs were sometimes considered stale
+  * the targetted PID was suddenly different VM because we recycled
+    PIDs much faster than expected (about every hour)
 
 
 1.0.3 (2019-01-30)

@@ -1077,7 +1077,7 @@ class Agent(object):
         self.log.debug('generate-config')
         self.qemu.args = [
             '-nodefaults',
-            '-name {name},process=kvm.{name}',
+            '-name {name},process=kvm.{name}',  # Watch out: kvm.name is used for sanity checking critical actions.
             '-chroot {{chroot}}',
             '-runas nobody',
             '-serial file:/var/log/vm/{name}.log',
