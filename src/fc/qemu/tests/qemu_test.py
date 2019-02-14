@@ -9,17 +9,21 @@ import time
 
 @pytest.yield_fixture
 def qemu_with_pidfile():
+    # The fixture uses a very long name which catches a special case where
+    # the proc name is limited to 16 bytes and then we failed to match
+    # the running VM. Parametrizing fixtures doesn't work the way I want
+    # so I did it this way ...
     try:
-        os.unlink('/run/qemu.testvm.pid')
+        os.unlink('/run/qemu.testvmwithverylongname.pid')
     except OSError:
         pass
     proc = subprocess.Popen(
         ['qemu-system-x86_64',
-         '-name', 'testvm,process=kvm.testvm', '-nodefaults',
-         '-pidfile', '/run/qemu.testvm.pid'])
-    while not os.path.exists('/run/qemu.testvm.pid'):
+         '-name', 'testvmwithverylongname,process=kvm.testvmwithverylongname',
+         '-nodefaults', '-pidfile', '/run/qemu.testvmwithverylongname.pid'])
+    while not os.path.exists('/run/qemu.testvmwithverylongname.pid'):
          time.sleep(0.01)
-    q = Qemu(dict(name='testvm', id=1234))
+    q = Qemu(dict(name='testvmwithverylongname', id=1234))
     try:
         yield q
     finally:

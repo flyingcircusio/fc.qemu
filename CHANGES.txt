@@ -5,7 +5,9 @@ Release notes
 1.0.5 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Fix process matching we introduced in 1.0.4 to also cover long
+  VM names. The proc.name() field under Linux only holds 16 bytes
+  and we definitely have VM names that are much longer ...
 
 
 1.0.4 (2019-02-05)
