@@ -5,7 +5,8 @@ Release notes
 1.0.6 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Explicitly fail when trying to take a snapshot of a VM that isn't
+  running locally. Also improve the snapshot output. (#108360)
 
 
 1.0.5 (2019-02-14)
