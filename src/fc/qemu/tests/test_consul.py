@@ -249,8 +249,7 @@ def test_snapshot_offline_vm(vm):
     assert get_log() == """\
 count=1 event=start-consul-events
 event=snapshot machine=simplevm snapshot=backy-1234
-event=snapshot-create machine=simplevm name=backy-1234
-event=snapshot-ignore machine=simplevm reason=not frozen
+event=snapshot expected=VM running machine=simplevm
 event=finish-consul-events"""
 
 

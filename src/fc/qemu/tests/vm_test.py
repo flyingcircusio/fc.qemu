@@ -1,4 +1,4 @@
-from ..agent import swap_size, tmp_size, Agent
+from ..agent import swap_size, tmp_size, Agent, InvalidCommand
 from ..conftest import get_log
 from ..ellipsis import Ellipsis
 from ..util import MiB, GiB
@@ -201,8 +201,9 @@ event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/s
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp""")
 
-    vm.qemu.proc().kill()
-    vm.qemu.proc().wait(2)
+    p = vm.qemu.proc()
+    p.kill()
+    p.wait(2)
     get_log()
 
     vm.status()
@@ -266,8 +267,8 @@ def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
 def test_vm_snapshot_only_if_running(vm):
     assert list(x.fullname for x in vm.ceph.root.snapshots) == []
     vm.ceph.root.ensure_presence()
-    vm.snapshot('asdf')
-    assert list(x.fullname for x in vm.ceph.root.snapshots) == []
+    with pytest.raises(InvalidCommand):
+        vm.snapshot('asdf')
 
 
 def test_vm_snapshot_with_missing_guest_agent(vm, monkeypatch):

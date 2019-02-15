@@ -868,6 +868,7 @@ class Agent(object):
                         raise
 
     @locked()
+    @running(True)
     def snapshot(self, snapshot, keep=0):
         """Guarantees a _consistent_ snapshot to be created.
 
@@ -881,12 +882,12 @@ class Agent(object):
         if snapshot in [x.snapname for x in self.ceph.root.snapshots]:
             self.log.info('snapshot-exists', snapshot=snapshot)
             return
-        self.log.debug('snapshot-create', name=snapshot)
+        self.log.info('snapshot-create', name=snapshot)
         with self.frozen_vm() as frozen:
             if frozen:
                 self.ceph.root.snapshots.create(snapshot)
             else:
-                self.log.debug('snapshot-ignore', reason='not frozen')
+                self.log.error('snapshot-ignore', reason='not frozen')
 
     @locked()
     def status(self):
