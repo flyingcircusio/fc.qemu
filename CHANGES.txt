@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-1.0.6 (unreleased)
+1.0.6 (2019-03-26)
 ------------------
 
 - Explicitly fail when trying to take a snapshot of a VM that isn't
