@@ -5,8 +5,8 @@ Release notes
 1.0.7 (unreleased)
 ------------------
 
-- Nothing changed yet.
-
+- Suppress error warnings when processing consul snapshot requests
+  for foreign VMs.
 
 1.0.6 (2019-03-26)
 ------------------
