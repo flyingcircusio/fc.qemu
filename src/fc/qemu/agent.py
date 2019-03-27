@@ -88,7 +88,14 @@ class ConsulEventHandler(object):
             return
         with agent:
             log_.info('snapshot')
-            agent.snapshot(snapshot, keep=0)
+            try:
+                agent.snapshot(snapshot, keep=0)
+            except InvalidCommand:
+                # The VM isn't in a state to make a snapshot. This is important
+                # information for regular users but not for consul - ignoring
+                # it is the right choice here. This will happen regularly
+                # when the VM is running on a different host.
+                pass
 
 
 def running(expected=True):
@@ -875,6 +882,7 @@ class Agent(object):
         If we can't properly freeze the VM then whoever needs a (consistent)
         snapshot needs to figure out whether to go forward with an
         inconsistent snapshot.
+
         """
         if keep:
             until = util.today() + datetime.timedelta(days=keep)
