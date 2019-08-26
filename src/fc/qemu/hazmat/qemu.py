@@ -30,7 +30,7 @@ def detect_current_machine_type(prefix):
     Newest in this case means the first item in the list as given by Qemu.
     """
     result = subprocess.check_output(
-        ['qemu-system-x86_64', '-machine', 'help'])
+        [Qemu.executable, '-machine', 'help'])
     for line in result.splitlines():
         if line.startswith(prefix):
             return line.split()[0]

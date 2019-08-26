@@ -1,7 +1,8 @@
 from . import util
-from .exc import InvalidCommand, VMConfigNotFound, VMStateInconsistent
 from .exc import ConfigChanged
+from .exc import InvalidCommand, VMConfigNotFound, VMStateInconsistent
 from .hazmat.ceph import Ceph
+from .hazmat.cpuscan import scan_cpus
 from .hazmat.qemu import Qemu, detect_current_machine_type
 from .incoming import IncomingServer
 from .outgoing import Outgoing
@@ -9,6 +10,7 @@ from .sysconfig import sysconfig
 from .timeout import TimeOut
 from .util import rewrite, locate_live_service, MiB, GiB, log
 from multiprocessing.pool import ThreadPool
+import colorama
 import consulate
 import contextlib
 import copy
@@ -292,6 +294,21 @@ class Agent(object):
                 log.exception('load-agent', machine=name, exc_info=True)
 
     @classmethod
+    def report_supported_cpu_models(self):
+        variations = []
+        for variation in scan_cpus():
+            log.info(
+                'supported-cpu-model',
+                architecture=variation.model.architecture,
+                id=variation.cpu_arg,
+                description=variation.model.description)
+            variations.append(variation.cpu_arg)
+
+        from gocept.net.directory import Directory, exceptions_screened
+        d = Directory()
+        d.report_supported_cpu_models(variations)
+
+    @classmethod
     def ls(cls):
         """List all VMs that this host knows about.
 
@@ -320,6 +337,52 @@ class Agent(object):
 
                 else:
                     log.info('offline', machine=vm.name)
+
+    @classmethod
+    def shutdown_all(cls):
+        """Shut down all VMs cleanly.
+
+        Runs the shutdowns in parallel to speed up host reboots.
+        """
+        vms = []
+
+        for vm in cls._vm_agents_for_host():
+            with vm:
+                running = vm.qemu.process_exists()
+                if running:
+                    vms.append(vm)
+
+        log.info('shutdown-all', count=len(vms))
+
+        if not vms:
+            return
+
+        if sys.stdout.isatty():
+            print colorama.Fore.RED, "The following VMs will be shut down: ", colorama.Style.RESET_ALL
+            print "\t" + ','.join(vm.name for vm in vms)
+            print
+            while True:
+                choice = raw_input(colorama.Style.BRIGHT + colorama.Fore.RED + "[DANGER] Are you really sure to shut down all {} VMs? (yes/no)\n".format(len(vms)) + colorama.Style.RESET_ALL)
+                if choice == "yes":
+                    break
+                elif choice == "no":
+                    return
+                else:
+                    print("Please type 'yes' or 'no'.")
+
+        def stop_vm(vm):
+            # Isolate processes to ensure stability.
+            log.info('shutdown', vm=vm.name)
+            p = subprocess.Popen([sys.argv[0], 'stop', vm.name])
+            p.wait()
+
+        pool = ThreadPool(5)
+        for vm in vms:
+            pool.apply_async(stop_vm, (vm,))
+            time.sleep(0.5)
+        pool.close()
+        pool.join()
+        log.info('shutdown-all', result='finished')
 
     @classmethod
     def check(cls):
@@ -572,10 +635,8 @@ class Agent(object):
         self.cfg['swap_size'] = swap_size(self.cfg['memory'])
         self.cfg['tmp_size'] = tmp_size(self.cfg['disk'])
         self.cfg['ceph_id'] = self.ceph_id
-        try:
-            self.consul_generation = self.enc['consul-generation']
-        except Exception:
-            import pdb; pdb.set_trace()
+        self.cfg['cpu_model'] = self.cfg.get('cpu_model', 'qemu64')
+        self.consul_generation = self.enc['consul-generation']
         self.qemu = Qemu(self.cfg)
         self.ceph = Ceph(self.cfg)
         self.contexts = [self.qemu, self.ceph]
@@ -1086,6 +1147,8 @@ class Agent(object):
         self.log.debug('generate-config')
         self.qemu.args = [
             '-nodefaults',
+            '-only-migratable',
+            '-cpu {cpu_model},enforce',
             '-name {name},process=kvm.{name}',  # Watch out: kvm.name is used for sanity checking critical actions.
             '-chroot {{chroot}}',
             '-runas nobody',

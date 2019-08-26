@@ -123,6 +123,12 @@ def main():
     p.add_argument('vm', metavar='VM', help='name of the VM')
     p.set_defaults(func='outmigrate')
 
+    p = sub.add_parser('report-supported-cpu-models', help='Report the list of supported CPU models to the directory.')
+    p.set_defaults(func='report_supported_cpu_models')
+
+    p = sub.add_parser('shutdown-all', help='Cleanly shut down all VMS running on this host.')
+    p.set_defaults(func='shutdown_all')
+
     p = sub.add_parser(
         'handle-consul-event',
         help='Handle a change in VM config distributed via consul.')
