@@ -2,6 +2,7 @@ from ..agent import swap_size, tmp_size, Agent, InvalidCommand
 from ..conftest import get_log
 from ..ellipsis import Ellipsis
 from ..util import MiB, GiB
+from ..hazmat import qemu
 from fc.qemu import util
 import datetime
 import os
@@ -278,6 +279,8 @@ def test_vm_snapshot_with_missing_guest_agent(vm, monkeypatch):
     monkeypatch.setattr(
         util, 'today', lambda: datetime.date(2010, 1, 1))
 
+    monkeypatch.setattr(qemu, 'FREEZE_TIMEOUT', 1)
+
     assert list(x.fullname for x in vm.ceph.root.snapshots) == []
     vm.ensure()
     get_log()
@@ -298,15 +301,15 @@ with guest agent after 20 tries.""") == get_log()
 
     with pytest.raises(Exception):
         vm.snapshot('asdf', 0)
-    assert """\
+    assert Ellipsis("""\
 event=snapshot-create machine=simplevm name=asdf
 event=freeze machine=simplevm volume=root
-action=continue event=freeze-failed machine=simplevm reason=[Errno 11] Resource temporarily unavailable
+action=continue event=freeze-failed machine=simplevm reason=...
 event=snapshot-ignore machine=simplevm reason=not frozen
 event=thaw machine=simplevm volume=root
-action=retry event=thaw-failed machine=simplevm reason=[Errno 11] Resource temporarily unavailable
-action=continue event=thaw-failed machine=simplevm reason=[Errno 11] Resource temporarily unavailable\
-""" == get_log()
+action=retry event=thaw-failed machine=simplevm reason=...
+action=continue event=thaw-failed machine=simplevm reason=...\
+""") == get_log()
 
 
 def test_vm_throttle_iops(vm):
