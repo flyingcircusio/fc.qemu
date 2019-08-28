@@ -14,6 +14,7 @@ def mock_agent():
     return agent
 
 
+
 def test_prepare_should_stop_ceph_on_exception(mock_agent):
     mock_agent.qemu.inmigrate.side_effect = Exception('boom!')
     s = IncomingServer(mock_agent)
@@ -47,7 +48,7 @@ def test_authentication_mismatch(server):
         assert api.ping('cookie-does-not-match') is None
 
 
-def test_screen_config(mock_agent):
+def test_screen_config_disable_iommu(mock_agent):
     s = IncomingServer(mock_agent)
     assert s.screen_config("""\
 [machine]
@@ -62,3 +63,42 @@ def test_screen_config(mock_agent):
   accel = "kvm"
 
 """
+
+
+def test_screen_config_update_qmp_monitor_syntax(mock_agent):
+    s = IncomingServer(mock_agent)
+    assert s.screen_config("""\
+
+# QMP monitor support via Unix socket
+
+[mon "qmp_monitor"]
+  mode = "control"
+  chardev = "ch_qmp_monitor"
+  default = "on"
+
+[chardev "ch_qmp_monitor"]
+  backend = "socket"
+  path = "/run/qemu.{name}.qmp.sock"
+  server = "on"
+  wait = "off"
+
+""") == """\
+
+# QMP monitor support via Unix socket
+
+[mon "qmp_monitor"]
+  mode = "control"
+  chardev = "ch_qmp_monitor"
+  pretty = "off"
+
+[chardev "ch_qmp_monitor"]
+  backend = "socket"
+  path = "/run/qemu.{name}.qmp.sock"
+  server = "on"
+  wait = "off"
+
+"""
+
+
+
+

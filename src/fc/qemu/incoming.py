@@ -35,7 +35,6 @@ class IncomingServer(object):
     """Run an XML-RPC server to orchestrate a single migration."""
 
     finished = False
-    obsolete_config_items = ['iommu']
 
     # How long to wait until we get the first connection by an outgoing
     # migration?
@@ -138,19 +137,22 @@ class IncomingServer(object):
 
     def screen_config(self, config):
         """Remove obsolete items from transferred Qemu config."""
-        exprs = [re.compile(r'^\s*{}\s*=.*$'.format(re.escape(c)), re.M)
-                 for c in self.obsolete_config_items]
-        for expr in exprs:
-            config = expr.sub('', config)
+        # Remove old IOMMU usage
+        config = re.sub(r'^\s*iommu\s*=.*$', '',
+                        config, flags=re.M)
+        # Update old qmp monitor snippet
+        config = re.sub(r'^\s*chardev\s*=\s*"ch_qmp_monitor"\n\s*default\s*=\s*"on"$',
+                        r'  chardev = "ch_qmp_monitor"\n  pretty = "off"',
+                        config, flags=re.M)
         return config
 
     def prepare_incoming(self, args, config):
         self.qemu.args = args
         # Adapt actual VM memory size: we will start with the proper parameter
         # but the memory verification needs to find the real value.
-        # XXX This is a nasty code path.
         for arg in args:
             if arg.startswith('-m '):
+                # XXX This is a nasty code path.
                 memory = int(arg.split(' ')[1])
                 self.qemu.cfg['memory'] = memory
         self.qemu.config = self.screen_config(config)

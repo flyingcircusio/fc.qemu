@@ -193,6 +193,8 @@ exec { "bootstrap-agent-project":
     command => "\
 sudo -u vagrant rm -rf bin/ include/ lib/ local/
 sudo -u vagrant virtualenv -p python2.7 --system-site-packages .
+sudo -u vagrant bin/pip install --upgrade -r setuptools
+sudo -u vagrant bin/pip install --upgrade -r pip
 sudo -u vagrant bin/pip install --upgrade -r requirements.txt
 ",
     require => [Package["python-virtualenv"],

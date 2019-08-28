@@ -63,7 +63,7 @@
 [mon "qmp_monitor"]
   mode = "control"
   chardev = "ch_qmp_monitor"
-  default = "on"
+  pretty = "off"
 
 [chardev "ch_qmp_monitor"]
   backend = "socket"

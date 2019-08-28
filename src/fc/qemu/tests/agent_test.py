@@ -21,7 +21,7 @@ def test_builtin_config_template(simplevm_cfg):
     with a:
         a.generate_config()
     # machine type must match Qemu version in virtualbox
-    assert 'type = "pc-i440fx-2.7"' in a.qemu.config
+    assert 'type = "pc-i440fx-4.1"' in a.qemu.config
 
 
 def test_userdefined_config_template(simplevm_cfg):
