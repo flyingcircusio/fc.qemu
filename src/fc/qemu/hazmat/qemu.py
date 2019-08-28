@@ -167,6 +167,7 @@ class Qemu(object):
     def __exit__(self, exc_value, exc_type, exc_tb):
         if self.__qmp:
             self.__qmp.close()
+            self.__qmp = None
 
     def proc(self):
         """Qemu processes as psutil.Process object.
