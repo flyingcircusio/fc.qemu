@@ -1,4 +1,5 @@
 from .agent import Agent
+import glob
 import os
 import pkg_resources
 import pytest
@@ -108,7 +109,8 @@ def vm(clean_environment):
     vm.__exit__(*exc_info)
     if len(exc_info):
         print(traceback.print_tb(exc_info[2]))
-    os.unlink('/etc/qemu/vm/simplevm.cfg')
+    for x in glob.glob('/run/qemu.simplevm.*'):
+        os.unlink(x)
     if os.path.exists('/etc/qemu/vm/.simplevm.cfg.staging'):
         os.unlink('/etc/qemu/vm/.simplevm.cfg.staging')
 
