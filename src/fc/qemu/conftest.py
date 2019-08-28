@@ -43,10 +43,10 @@ def setup_structlog():
             result.append('{}={}'.format(key, event[key]))
         util.log_data.append(' '.join(result))
         if log_exceptions:
-          if stack:
-              util.log_data.extend(stack.splitlines())
-          if exc:
-              util.log_data.extend(exc.splitlines())
+            if stack:
+                util.log_data.extend(stack.splitlines())
+            if exc:
+                util.log_data.extend(exc.splitlines())
         raise structlog.DropEvent
 
     structlog.configure(processors=(
