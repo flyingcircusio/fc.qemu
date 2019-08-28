@@ -8,11 +8,12 @@ import json
 import os.path
 import pytest
 
-# globally overriding timeouts since _handle_consul_event creates new
-# Agent/Qemu/... instances itself.
-Qemu.guestagent_timeout = .01
-Qemu.qmp_timeout = .01
-Qemu.thaw_retry_timeout = .1
+
+@pytest.fixture(autouse=True)
+def consul_timeouts(monkeypatch):
+    monkeypatch.setattr('Qemu.guestagent_timeout', .01)
+    monkeypatch.setattr('Qemu.qmp_timeout', .01)
+    monkeypatch.setattr('Qemu.thaw_retry_timeout', .1)
 
 
 def test_no_events():
