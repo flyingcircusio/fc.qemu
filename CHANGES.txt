@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-1.1 (unreleased)
+1.0.8 (2019-08-30)
 ------------------
 
 - Add capabilities to discover, report and select CPU models supported
