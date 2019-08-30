@@ -11,9 +11,9 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def consul_timeouts(monkeypatch):
-    monkeypatch.setattr('Qemu.guestagent_timeout', .01)
-    monkeypatch.setattr('Qemu.qmp_timeout', .01)
-    monkeypatch.setattr('Qemu.thaw_retry_timeout', .1)
+    monkeypatch.setattr(Qemu, 'guestagent_timeout', .01)
+    monkeypatch.setattr(Qemu, 'qmp_timeout', .01)
+    monkeypatch.setattr(Qemu, 'thaw_retry_timeout', .1)
 
 
 def test_no_events():
