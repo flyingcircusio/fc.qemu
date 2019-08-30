@@ -5,9 +5,6 @@ Release notes
 1.1 (unreleased)
 ----------------
 
-- Nothing changed yet.
-
-
 - Add capabilities to discover, report and select CPU models supported
   by the hosts and requested by guests. #114627
 
