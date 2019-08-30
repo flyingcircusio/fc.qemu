@@ -67,7 +67,7 @@ event=global-lock-acquire machine=simplevm result=locked subsystem=qemu target=/
 count=1 event=global-lock-status machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 available_real=... bookable=0 event=sufficient-host-memory machine=simplevm required=384 subsystem=qemu
 event=start-qemu machine=simplevm subsystem=qemu
-additional_args=() event=qemu-system-x86_64 local_args=[\'-nodefaults\', \'-name simplevm,process=kvm.simplevm\', \'-chroot /srv/vm/simplevm\', \'-runas nobody\', \'-serial file:/var/log/vm/simplevm.log\', \'-display vnc=host1:2345\', \'-pidfile /run/qemu.simplevm.pid\', \'-vga std\', \'-m 256\', \'-readconfig /run/qemu.simplevm.cfg\'] machine=simplevm subsystem=qemu
+additional_args=() event=qemu-system-x86_64 local_args=[\'-nodefaults\', \'-only-migratable\', \'-cpu qemu64,enforce\', \'-name simplevm,process=kvm.simplevm\', \'-chroot /srv/vm/simplevm\', \'-runas nobody\', \'-serial file:/var/log/vm/simplevm.log\', \'-display vnc=host1:2345\', \'-pidfile /run/qemu.simplevm.pid\', \'-vga std\', \'-m 256\', \'-readconfig /run/qemu.simplevm.cfg\'] machine=simplevm subsystem=qemu
 count=0 event=global-lock-status machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 event=global-lock-release machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 event=global-lock-release machine=simplevm result=unlocked subsystem=qemu
