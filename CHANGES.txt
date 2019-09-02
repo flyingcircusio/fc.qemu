@@ -5,7 +5,7 @@ Release notes
 1.1.1 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- `report-supported-cpu-models` was leaking VMs if the host supported the model.
 
 
 1.1 (2019-08-30)

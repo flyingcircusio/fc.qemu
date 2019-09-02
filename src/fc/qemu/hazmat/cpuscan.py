@@ -116,6 +116,10 @@ def scan_cpus():
                     # An error happened. This CPU seems unsupported.
                     break
         except TimeoutError:
+            try:
+                task.kill()
+            except Exception:
+                pass
             valid_models.append(variation)
 
     return valid_models
