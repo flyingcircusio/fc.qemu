@@ -96,30 +96,23 @@ def scan_cpus():
 
     for variation in variations:
         log.debug('test-cpu', id=variation.cpu_arg, description=variation.model.description, architecture=variation.model.architecture)
-        try:
-            task = subprocess.Popen(
-                [
-                    Qemu.executable,
-                    "-cpu",
-                    variation.cpu_arg + ',enforce',
-                    "-accel", "kvm",
-                    "-enable-kvm",
-                    "-display", "none",
-                    "-nodefaults",
-                ],
-                stdout=FNULL,
-                stderr=FNULL,
-            )
-            timeout = TimeOut(2, interval=0.1, log=log, raise_on_timeout=True)
-            while timeout.tick():
-                if task.poll():
-                    # An error happened. This CPU seems unsupported.
-                    break
-        except TimeoutError:
-            try:
-                task.kill()
-            except Exception:
-                pass
+        task = subprocess.Popen(
+            [
+                Qemu.executable,
+                "-cpu",
+                variation.cpu_arg + ',enforce',
+                "-accel", "kvm",
+                "-enable-kvm",
+                "-monitor", "stdio",
+                "-display", "none",
+                "-nodefaults",
+            ],
+            stdin=subprocess.PIPE,
+            stdout=FNULL,
+            stderr=FNULL,
+        )
+        task.communicate(input="quit\n")
+        if not task.wait():
             valid_models.append(variation)
 
     return valid_models
