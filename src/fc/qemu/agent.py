@@ -922,18 +922,7 @@ class Agent(object):
             yield frozen
         finally:
             if self.qemu.is_running():
-                try:
-                    self.log.info('thaw', volume='root')
-                    self.qemu.thaw()
-                except Exception as e:
-                    self.log.error('thaw-failed', reason=str(e),
-                                   action='retry')
-                    try:
-                        self.qemu.thaw()
-                    except Exception as e:
-                        self.log.error('thaw-failed', reason=str(e),
-                                       action='continue')
-                        raise
+                self.ensure_thawed()
 
     @locked()
     @running(True)
@@ -957,6 +946,7 @@ class Agent(object):
                 self.ceph.root.snapshots.create(snapshot)
             else:
                 self.log.error('snapshot-ignore', reason='not frozen')
+                raise RuntimeError('VM not frozen, not making snapshot.')
 
     @locked()
     def status(self):

@@ -55,10 +55,10 @@ class GuestAgent(object):
             # we tripped a client error as we caused the guest agent to notice
             # invalid json, which in turn triggers an error response
             result = self.read()
-        except socket.error:
+        except socket.error as e:
             # Maybe a timeout. Keep trying a little bit harder.
-            result = None
-        while n < 20:
+            result = str(e)
+        while n < 10:
             if result == sync_id:
                 return
             self.log.error('incorrect-sync-id', expected=sync_id, got=result,

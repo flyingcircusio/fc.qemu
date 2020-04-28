@@ -332,22 +332,28 @@ class Qemu(object):
                 self.log.debug('guest-fsfreeze-freeze-failed', exc_info=True)
             assert guest.cmd('guest-fsfreeze-status') == 'frozen'
 
+    def _thaw_via_guest_agent(self):
+        with self.guestagent as guest:
+            try:
+                guest.cmd('guest-fsfreeze-thaw')
+            except ClientError:
+                self.log.debug('guest-fsfreeze-freeze-thaw', exc_info=True)
+                raise
+            result = guest.cmd('guest-fsfreeze-status')
+            if result != 'thawed':
+                raise RuntimeError('Unexpected thaw result: {}'.format(result))
+
     def thaw(self):
-        tries = 10
-        while tries:
-            # Try _really_ _really_ hard to get the VM to thaw. Otherwise
-            # it will just sit there and do nothing, causing the application
-            # to crash and us to have to get up.
-            with self.guestagent as guest:
-                try:
-                    guest.cmd('guest-fsfreeze-thaw')
-                except ClientError:
-                    self.log.debug('guest-fsfreeze-freeze-thaw', exc_info=True)
-                if guest.cmd('guest-fsfreeze-status') == 'thawed':
-                    break
-                time.sleep(self.thaw_retry_timeout)
-        else:
-            self.log.error('guest-fsfreeze-thaw', result='failed')
+        try:
+            self._thaw_via_guest_agent()
+        except Exception:
+            self.log.warning('guest-fsfreeze-thaw-failed', exc_info=True)
+            self.log.warning('emergency-thaw')
+            self.qmp.command('send-key', keys=[
+                {'type': 'qcode', 'data': 'alt'},
+                {'type': 'qcode', 'data': 'sysrq'},
+                {'type': 'qcode', 'data': 'j'}])
+            raise
 
     def write_file(self, path, content):
         with self.guestagent as guest:

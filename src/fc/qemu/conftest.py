@@ -11,8 +11,6 @@ import traceback
 
 
 def pytest_collectstart(collector):
-    # sys.modules['rados'] = mock.Mock()
-    # sys.modules['rbd'] = mock.Mock()
     from fc.qemu.sysconfig import sysconfig
     sysconfig.load_system_config()
 
@@ -85,7 +83,9 @@ def clean_environment():
 
 
 @pytest.yield_fixture
-def vm(clean_environment):
+def vm(clean_environment, monkeypatch):
+    import fc.qemu.hazmat.qemu
+    monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, 'guestagent_timeout', .1)
     fixtures = pkg_resources.resource_filename(__name__, 'tests/fixtures')
     shutil.copy(fixtures + '/simplevm.yaml', '/etc/qemu/vm/simplevm.cfg')
     if os.path.exists('/etc/qemu/vm/.simplevm.cfg.staging'):
@@ -93,7 +93,6 @@ def vm(clean_environment):
     vm = Agent('simplevm')
     vm.timeout_graceful = 1
     vm.__enter__()
-    vm.qemu.guestagent_timeout = .1
     vm.qemu.qmp_timeout = .1
     vm.qemu.vm_expected_overhead = 128
     for snapshot in vm.ceph.root.snapshots:

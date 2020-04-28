@@ -196,13 +196,12 @@ event=snapshot machine=simplevm snapshot=backy-1234
 event=snapshot-create machine=simplevm name=backy-1234
 event=freeze machine=simplevm volume=root
 action=continue event=freeze-failed machine=simplevm reason=Unable to sync \
-with guest agent after 20 tries.
+with guest agent after 10 tries.
 event=snapshot-ignore machine=simplevm reason=not frozen
-event=thaw machine=simplevm volume=root
-action=retry event=thaw-failed machine=simplevm reason=Unable to sync with \
-guest agent after 20 tries.
-action=continue event=thaw-failed machine=simplevm reason=Unable to sync with \
-guest agent after 20 tries.
+event=ensure-thawed machine=simplevm volume=root
+event=guest-fsfreeze-thaw-failed exc_info=True machine=simplevm subsystem=qemu
+event=emergency-thaw machine=simplevm subsystem=qemu
+event=ensure-thawed-failed machine=simplevm reason=Unable to sync with guest agent after 10 tries.
 event=handle-key-failed exc_info=True key=snapshot/7468743
 event=finish-consul-events""") == get_log()
 
