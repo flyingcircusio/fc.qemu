@@ -6,7 +6,7 @@ Workstation development
 
 Prepare Vagrant environment::
 
-    host$ hg clone https://bitbucket.org/flyingcircus/fc.qemu
+    host$ git clone https://github.com/flyingcircusio/fc.qemu
     host$ cd fc.qemu
     host$ vagrant up
     host$ vagrant ssh

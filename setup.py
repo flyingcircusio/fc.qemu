@@ -12,7 +12,7 @@ setup(
     version='1.1.4.dev0',
     author='Christian Kauhaus, Christian Theune',
     author_email='mail@flyingcircus.io',
-    url='http://bitbucket.org/flyingcircus/fc.qemu',
+    url='http://github.com/flyingcircusio/fc.qemu',
     description='Qemu VM management utilities',
     long_description=readme,
     packages=find_packages('src'),
