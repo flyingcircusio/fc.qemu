@@ -2,7 +2,7 @@ Release notes
 =============
 
 
-1.1.3 (unreleased)
+1.1.3 (2020-04-30)
 ------------------
 
 - Improve unthawing reliability. Use the monitor to send alt-sysrq-j
