@@ -348,11 +348,6 @@ class Qemu(object):
             self._thaw_via_guest_agent()
         except Exception:
             self.log.warning('guest-fsfreeze-thaw-failed', exc_info=True)
-            self.log.warning('emergency-thaw')
-            self.qmp.command('send-key', keys=[
-                {'type': 'qcode', 'data': 'alt'},
-                {'type': 'qcode', 'data': 'sysrq'},
-                {'type': 'qcode', 'data': 'j'}])
             raise
 
     def write_file(self, path, content):

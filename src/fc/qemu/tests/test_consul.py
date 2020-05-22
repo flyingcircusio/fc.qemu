@@ -200,8 +200,8 @@ with guest agent after 10 tries.
 event=snapshot-ignore machine=simplevm reason=not frozen
 event=ensure-thawed machine=simplevm volume=root
 event=guest-fsfreeze-thaw-failed exc_info=True machine=simplevm subsystem=qemu
-event=emergency-thaw machine=simplevm subsystem=qemu
-event=ensure-thawed-failed machine=simplevm reason=Unable to sync with guest agent after 10 tries.
+event=ensure-thawed-failed machine=simplevm reason=Unable to sync with guest \
+agent after 10 tries.
 event=handle-key-failed exc_info=True key=snapshot/7468743
 event=finish-consul-events""") == get_log()
 

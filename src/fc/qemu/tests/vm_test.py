@@ -295,23 +295,22 @@ with guest agent after 10 tries.
 event=snapshot-ignore machine=simplevm reason=not frozen
 event=ensure-thawed machine=simplevm volume=root
 event=guest-fsfreeze-thaw-failed exc_info=True machine=simplevm subsystem=qemu
-event=emergency-thaw machine=simplevm subsystem=qemu
-event=ensure-thawed-failed machine=simplevm reason=Unable to \
-sync with guest agent after 10 tries.""") == get_log()
+event=ensure-thawed-failed machine=simplevm reason=Unable to sync with guest \
+agent after 10 tries.\
+""") == get_log()
 
     with pytest.raises(Exception):
         vm.snapshot('asdf', 0)
     assert Ellipsis("""\
 event=snapshot-create machine=simplevm name=asdf
 event=freeze machine=simplevm volume=root
-action=continue event=freeze-failed machine=simplevm reason=Unable to sync \
-with guest agent after 10 tries.
+action=continue event=freeze-failed machine=simplevm reason=...
 event=snapshot-ignore machine=simplevm reason=not frozen
 event=ensure-thawed machine=simplevm volume=root
 event=guest-fsfreeze-thaw-failed exc_info=True machine=simplevm subsystem=qemu
-event=emergency-thaw machine=simplevm subsystem=qemu
-event=ensure-thawed-failed machine=simplevm reason=Unable to \
-sync with guest agent after 10 tries.""") == get_log()
+event=ensure-thawed-failed machine=simplevm reason=Unable to sync with guest \
+agent after 10 tries.\
+""") == get_log()
 
 
 def test_vm_throttle_iops(vm):
