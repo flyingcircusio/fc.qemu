@@ -8,6 +8,39 @@ import subprocess
 FNULL = open(os.devnull, 'w')
 
 
+IDENTIFIERS = {
+    'AuthenticAMD': [
+        'qemu64-v1',
+        'EPYC-v1',
+        'EPYC-v2'
+    ],
+
+    'GenuineIntel': [
+        'Broadwell-v1',
+        'Broadwell-v2',
+        'Broadwell-v3',
+        'Broadwell-v4',
+        'Cascadelake-Server-v1',
+        'Cascadelake-Server-v2',
+        'Haswell-v1',
+        'Haswell-v2',
+        'Haswell-v3',
+        'Haswell-v4',
+        'IvyBridge-v1',
+        'IvyBridge-v2',
+        'Nehalem-v1',
+        'Nehalem-v2',
+        'SandyBridge-v1',
+        'SandyBridge-v2',
+        'Skylake-Server-v1',
+        'Skylake-Server-v2',
+        'Westmere-v1',
+        'Westmere-v2',
+        'qemu64-v1'
+    ]
+
+}
+
 class Model(object):
 
     architecture = None
@@ -35,50 +68,18 @@ class Variation(object):
 
 
 def scan_cpus():
-    # Determine processor models/flavours supported by Qemu
-    result = subprocess.check_output([Qemu.executable, "-cpu", "help"])
-    lines = result.decode("ascii").splitlines()
+    for line in open('/proc/cpuinfo'):
+        if not line.startswith('vendor_id'):
+            continue
+        _, vendor = line.split(':')
+        vendor = vendor.strip()
+        break
+    else:
+        raise RuntimeError('Could not determine CPU vendor.')
 
     models = []
-
-    for line in lines:
-        if not line.strip():
-            # Empty lines signal that the list of supported CPUs is finished
-            # and we're now entering the section where known flags are shown.
-            break
-        splitted = line.split(None, 2)
-        architecture = splitted[0]
-        identifier = splitted[1]
-        if len(splitted) == 3:
-            description = splitted[2].strip()
-        else:
-            description = ""
-        models.append(Model(architecture, identifier, description))
-
-    # Reduce list of models by hard limits
-    models = [m for m in models if m.architecture == "x86"]
-    IGNORED_MODELS = [
-        "486",
-        "kvm32",
-        "kvm64",
-        "qemu32",
-        "host",
-        "coreduo",
-        "core2duo",
-        "pentium",
-        "pentium2",
-        "pentium3",
-        "athlon",
-        "Penryn",
-        "base",
-        "max",
-        "-Client",
-    ]
-    for ignore in IGNORED_MODELS:
-        models = [m for m in models if ignore not in m.identifier]
-    IGNORED_DESCRIPTION = ["AMD", "Atom", "Celeron", "alias", "Hygon"]
-    for ignore in IGNORED_DESCRIPTION:
-        models = [m for m in models if ignore not in m.description]
+    for identifier in IDENTIFIERS[vendor]:
+        models.append(Model('x86', identifier, ''))
 
     # Determine combinations with additional desirable flags
     desirable_flags = ["pcid", "spec-ctrl", "ssbd", "pde1gb"]
