@@ -9,6 +9,8 @@ Release notes
   not use the alt-sysrq-j combination as too many guest kernels are actually
   allergic to this and need a reboot after this.
 
+- Add support for AMD CPU models and simplify (and speed up) model
+  detection. #3-126540
 
 1.1.3 (2020-04-30)
 ------------------
