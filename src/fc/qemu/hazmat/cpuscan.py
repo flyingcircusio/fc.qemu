@@ -14,6 +14,8 @@ IDENTIFIERS = {
         'qemu64-v1',
         'EPYC-v1',
         'EPYC-v2',
+        'EPYC-v3',
+        'EPYC-Rome-v1',
     ],
     'GenuineIntel': [
         'Broadwell-v1',
