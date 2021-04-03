@@ -1,20 +1,20 @@
-from .qemu import Qemu
-from fc.qemu.timeout import TimeOut, TimeoutError
-from fc.qemu.util import log
 import itertools
 import os
 import subprocess
 
-FNULL = open(os.devnull, 'w')
+from fc.qemu.timeout import TimeOut, TimeoutError
+from fc.qemu.util import log
 
+from .qemu import Qemu
+
+FNULL = open(os.devnull, 'w')
 
 IDENTIFIERS = {
     'AuthenticAMD': [
         'qemu64-v1',
         'EPYC-v1',
-        'EPYC-v2'
+        'EPYC-v2',
     ],
-
     'GenuineIntel': [
         'Broadwell-v1',
         'Broadwell-v2',
@@ -36,10 +36,10 @@ IDENTIFIERS = {
         'Skylake-Server-v2',
         'Westmere-v1',
         'Westmere-v2',
-        'qemu64-v1'
+        'qemu64-v1',
     ]
-
 }
+
 
 class Model(object):
 
@@ -64,7 +64,7 @@ class Variation(object):
 
     @property
     def cpu_arg(self):
-        return ",".join((self.model.identifier,) + self.flags)
+        return ",".join((self.model.identifier, ) + self.flags)
 
 
 def scan_cpus():
@@ -85,7 +85,8 @@ def scan_cpus():
     desirable_flags = ["pcid", "spec-ctrl", "ssbd", "pde1gb"]
     desirable_combinations = []
     for L in range(0, len(desirable_flags) + 1):
-        desirable_combinations.extend(itertools.combinations(desirable_flags, L))
+        desirable_combinations.extend(
+            itertools.combinations(desirable_flags, L))
 
     variations = []
 
@@ -96,16 +97,22 @@ def scan_cpus():
     valid_models = []
 
     for variation in variations:
-        log.debug('test-cpu', id=variation.cpu_arg, description=variation.model.description, architecture=variation.model.architecture)
+        log.debug('test-cpu',
+                  id=variation.cpu_arg,
+                  description=variation.model.description,
+                  architecture=variation.model.architecture)
         task = subprocess.Popen(
             [
                 Qemu.executable,
                 "-cpu",
                 variation.cpu_arg + ',enforce',
-                "-accel", "kvm",
+                "-accel",
+                "kvm",
                 "-enable-kvm",
-                "-monitor", "stdio",
-                "-display", "none",
+                "-monitor",
+                "stdio",
+                "-display",
+                "none",
                 "-nodefaults",
             ],
             stdin=subprocess.PIPE,
