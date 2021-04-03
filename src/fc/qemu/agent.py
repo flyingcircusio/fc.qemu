@@ -21,7 +21,7 @@ import pkg_resources
 import requests
 import yaml
 
-from . import util
+from . import directory, util
 from .exc import (ConfigChanged, InvalidCommand, VMConfigNotFound,
                   VMStateInconsistent)
 from .hazmat.ceph import Ceph
@@ -316,8 +316,7 @@ class Agent(object):
                      description=variation.model.description)
             variations.append(variation.cpu_arg)
 
-        from gocept.net.directory import Directory, exceptions_screened
-        d = Directory()
+        d = directory.connect()
         d.report_supported_cpu_models(variations)
 
     @classmethod
