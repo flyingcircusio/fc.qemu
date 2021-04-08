@@ -42,6 +42,11 @@ IDENTIFIERS = {
     ]
 }
 
+BUG_FLAGS = {
+    'AuthenticAMD': ['ibpb', 'virt-ssbd', 'amd-ssbd', 'amd-no-ssb', 'pdpe1gb'],
+    'GenuineIntel': ['pcid', 'spec-ctrl', 'ssbd', 'pdpe1gb']
+}
+
 
 class Model(object):
 
@@ -84,7 +89,7 @@ def scan_cpus():
         models.append(Model('x86', identifier, ''))
 
     # Determine combinations with additional desirable flags
-    desirable_flags = ["pcid", "spec-ctrl", "ssbd", "pde1gb"]
+    desirable_flags = BUG_FLAGS[vendor]
     desirable_combinations = []
     for L in range(0, len(desirable_flags) + 1):
         desirable_combinations.extend(
