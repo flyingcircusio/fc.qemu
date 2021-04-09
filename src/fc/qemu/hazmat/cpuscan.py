@@ -9,44 +9,6 @@ from .qemu import Qemu
 
 FNULL = open(os.devnull, 'w')
 
-IDENTIFIERS = {
-    'AuthenticAMD': [
-        'qemu64-v1',
-        'EPYC-v1',
-        'EPYC-v2',
-        'EPYC-v3',
-        'EPYC-Rome-v1',
-    ],
-    'GenuineIntel': [
-        'Broadwell-v1',
-        'Broadwell-v2',
-        'Broadwell-v3',
-        'Broadwell-v4',
-        'Cascadelake-Server-v1',
-        'Cascadelake-Server-v2',
-        'Haswell-v1',
-        'Haswell-v2',
-        'Haswell-v3',
-        'Haswell-v4',
-        'IvyBridge-v1',
-        'IvyBridge-v2',
-        'Nehalem-v1',
-        'Nehalem-v2',
-        'SandyBridge-v1',
-        'SandyBridge-v2',
-        'Skylake-Server-v1',
-        'Skylake-Server-v2',
-        'Westmere-v1',
-        'Westmere-v2',
-        'qemu64-v1',
-    ]
-}
-
-BUG_FLAGS = {
-    'AuthenticAMD': ['ibpb', 'virt-ssbd', 'amd-ssbd', 'amd-no-ssb', 'pdpe1gb'],
-    'GenuineIntel': ['pcid', 'spec-ctrl', 'ssbd', 'pdpe1gb']
-}
-
 
 class Model(object):
 
@@ -74,22 +36,89 @@ class Variation(object):
         return ",".join((self.model.identifier, ) + self.flags)
 
 
-def scan_cpus():
-    for line in open('/proc/cpuinfo'):
-        if not line.startswith('vendor_id'):
-            continue
-        _, vendor = line.split(':')
-        vendor = vendor.strip()
-        break
-    else:
-        raise RuntimeError('Could not determine CPU vendor.')
+class QemuHost(object):
+    @classmethod
+    def detect(self):
+        for line in open('/proc/cpuinfo'):
+            if not line.startswith('vendor_id'):
+                continue
+            _, vendor = line.split(':')
+            vendor = vendor.strip()
+            for host in [AMDHost, IntelHost]:
+                if host.vendor == vendor:
+                    return host()
+            break
+        else:
+            raise RuntimeError('Could not determine CPU vendor.')
+
+
+class AMDHost(QemuHost):
+
+    vendor = 'AuthenticAMD'
+
+    CPU_MODELS = [
+        'qemu64-v1',
+        'EPYC-v1',
+        'EPYC-v2',
+        'EPYC-v3',
+        'EPYC-Rome-v1',
+    ]
+
+    BUG_FLAGS = [
+        'ibpb',
+        'virt-ssbd',
+        'amd-ssbd',
+        'amd-no-ssb',
+        'pdpe1gb',
+    ]
+
+
+class IntelHost(QemuHost):
+
+    vendor = 'GenuineIntel'
+
+    CPU_MODELS = [
+        'Broadwell-v1',
+        'Broadwell-v2',
+        'Broadwell-v3',
+        'Broadwell-v4',
+        'Cascadelake-Server-v1',
+        'Cascadelake-Server-v2',
+        'Haswell-v1',
+        'Haswell-v2',
+        'Haswell-v3',
+        'Haswell-v4',
+        'IvyBridge-v1',
+        'IvyBridge-v2',
+        'Nehalem-v1',
+        'Nehalem-v2',
+        'SandyBridge-v1',
+        'SandyBridge-v2',
+        'Skylake-Server-v1',
+        'Skylake-Server-v2',
+        'Westmere-v1',
+        'Westmere-v2',
+        'qemu64-v1',
+    ]
+
+    BUG_FLAGS = [
+        'pcid',
+        'spec-ctrl',
+        'ssbd',
+        'pdpe1gb',
+    ]
+
+
+def scan_cpus(host=None):
+    if host is None:
+        host = QemuHost.detect()
 
     models = []
-    for identifier in IDENTIFIERS[vendor]:
+    for identifier in host.CPU_MODELS:
         models.append(Model('x86', identifier, ''))
 
     # Determine combinations with additional desirable flags
-    desirable_flags = BUG_FLAGS[vendor]
+    desirable_flags = host.BUG_FLAGS
     desirable_combinations = []
     for L in range(0, len(desirable_flags) + 1):
         desirable_combinations.extend(
