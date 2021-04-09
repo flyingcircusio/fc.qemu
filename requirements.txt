@@ -1,6 +1,8 @@
 -e .
-pytest>=2.6
-pytest-cov
-pytest-cache
-mock>=1.0
-pytest-timeout
+pytest==3.6.4
+mock==3.0.5
+more-itertools==4.0
+pytest-timeout==1.3.4
+attrs==17.4.0
+atomicwrites==1.0
+pytest-cov==2.9

@@ -7,10 +7,10 @@ Exec {
 }
 
 Package {
-    require => Exec["apt-get update"]
+    require => Exec["/vagrant/prepare-apt.sh"]
 }
 
-exec { 'apt-get update': refreshonly => false }
+exec { '/vagrant/prepare-apt.sh': refreshonly => false }
 
 file { "/etc/environment":
     content => "\
@@ -191,11 +191,9 @@ file { "/etc/qemu/vm/test00.cfg":
 exec { "bootstrap-agent-project":
     creates => "/vagrant/bin",
     command => "\
-sudo -u vagrant rm -rf bin/ include/ lib/ local/
-sudo -u vagrant virtualenv -p python2.7 --system-site-packages .
-sudo -u vagrant bin/pip install --upgrade -r setuptools
-sudo -u vagrant bin/pip install --upgrade -r pip
-sudo -u vagrant bin/pip install --upgrade -r requirements.txt
+rm -rf bin/ include/ lib/ local/
+virtualenv -p python2.7 --system-site-packages .
+bin/pip install -r requirements.txt
 ",
     require => [Package["python-virtualenv"],
                 Package["python-dev"]],
@@ -232,6 +230,7 @@ exec { 'install qemu':
     creates => '/usr/local/bin/qemu-system-x86_64',
     refreshonly => false,
     command => "/vagrant/bootstrap-qemu.sh",
+    timeout => 3600,
     require => [Package['unzip'],
                 Package['build-essential'],
                 Package['pkg-config'],

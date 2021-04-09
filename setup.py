@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 with open('README.txt') as f:
     readme = f.read() + '\n'
@@ -27,13 +27,13 @@ setup(
     license='BSD',
     namespace_packages=['fc'],
     install_requires=[
-        'colorama',
-        'consulate>=0.4',
-        'psutil>=2.1',
-        'PyYaml>=3.10',
-        'requests',
+        'colorama==0.3.3',
+        'consulate==0.6.0',
+        'psutil==5.4.2',
+        'PyYaml==5.3.1',
+        'requests==2.11.1',
         'setuptools',
-        'structlog',
+        'structlog==16.1.0',
     ],
     entry_points={
         'console_scripts': [
