@@ -1,7 +1,13 @@
 import contextlib
 import json
 import os.path
-import xmlrpc.client
+
+try:
+    import xmlrpc.client
+    make_xmlrpc_connection = xmlrpc.client.Server
+except ImportError:
+    import xmlrpclib
+    make_xmlrpc_connection = xmlrpclib.ServerProxy
 
 DIRECTORY_URL_RING0 = (
     'https://{enc[name]}:{enc[parameters][directory_password]}@'
@@ -40,9 +46,9 @@ def connect(enc_data=None, ring=1):
     if ring == 'max':
         ring = enc_data['parameters']['directory_ring']
     url = {0: DIRECTORY_URL_RING0, 1: DIRECTORY_URL_RING1}[ring]
-    return xmlrpc.client.Server(url.format(enc=enc_data),
-                                allow_none=True,
-                                use_datetime=True)
+    return make_xmlrpc_connection(url.format(enc=enc_data),
+                                  allow_none=True,
+                                  use_datetime=True)
 
 
 @contextlib.contextmanager
