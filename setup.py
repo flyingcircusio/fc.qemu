@@ -29,7 +29,7 @@ setup(
     install_requires=[
         'colorama==0.3.3',
         'consulate==0.6.0',
-        'psutil==5.4.2',
+        'psutil==5.6.6',
         'PyYaml==5.3.1',
         'requests==2.11.1',
         'setuptools',
