@@ -5,7 +5,13 @@ Release notes
 1.1.5 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Fix AMD/Intel compatibility matrix for CPU bug flags
+  (ssbd vs amd-ssbd et. al.) to avoid crashes in startup and live migration
+  due to compatibility issues.
+
+- Add newer AMD Epyc models.
+
+- Prepare directory integration for Python 2/3 and Gentoo/NixOS compatibility.
 
 
 1.1.4 (2020-11-06)
