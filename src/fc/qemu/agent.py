@@ -35,7 +35,7 @@ from .incoming import IncomingServer
 from .outgoing import Outgoing
 from .sysconfig import sysconfig
 from .timeout import TimeOut
-from .util import GiB, MiB, locate_live_service, log, rewrite
+from .util import GiB, MiB, locate_live_service, log
 
 
 def _handle_consul_event(event):
@@ -524,6 +524,7 @@ class Agent(object):
             result="locked",
         )
         try:
+            update_staging_config = False
             # Verify generation of config to protect against lost updates.
             with open(self.configfile_staging, "r") as current_staging:
                 try:
@@ -533,29 +534,39 @@ class Agent(object):
                     ]
                 except Exception:
                     self.log.debug("inconsistent-staging-config")
-                    pass
+                    # Inconsistent staging configs should be updated
+                    update_staging_config = True
                 else:
-                    if (
+                    # Newer staging configs should be updated
+                    update_staging_config = (
                         self.enc["consul-generation"]
-                        <= current_staging_generation
-                    ):
-                        # Stop right here, do not write a new config if the
-                        # existing one is newer (or as new) already.
-                        self.log.debug(
-                            "ignore-old-update",
-                            existing=self.consul_generation,
-                            update=current_staging_generation,
-                        )
-                        return False
+                        > current_staging_generation
+                    )
 
-            # The config is either newer, or there is no staging config, or it
-            # is inconsistent. Let's update it.
-            self.log.debug("save-staging-config")
-            # Update the file in place to avoid lock breaking.
-            with open(self.configfile_staging, "w") as new_staging:
-                yaml.safe_dump(self.enc, new_staging)
-            os.chmod(self.configfile_staging, 0o644)
-            return True
+            if update_staging_config:
+                self.log.debug("save-staging-config")
+                # Update the file in place to avoid lock breaking.
+                with open(self.configfile_staging, "w") as new_staging:
+                    yaml.safe_dump(self.enc, new_staging)
+                os.chmod(self.configfile_staging, 0o644)
+
+            # Do we need to activate this config?
+            activate_staging_config = False
+            try:
+                current_active_config = yaml.safe_load(self.configfile)
+                current_active_generation = current_active_config[
+                    "consul-generation"
+                ]
+            except Exception:
+                self.log.debug("inconsistent-active-config")
+                # Inconsistent staging configs should be updated
+                activate_staging_config = True
+            else:
+                # Newer staging configs should be updated
+                activate_staging_config = (
+                    self.enc["consul-generation"] > current_active_generation
+                )
+            return activate_staging_config
         finally:
             fcntl.flock(staging_lock, fcntl.LOCK_UN)
             os.close(staging_lock)

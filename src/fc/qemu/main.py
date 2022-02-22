@@ -1,7 +1,7 @@
 import os.path
 import sys
 
-from .util import ControlledRuntimeException
+from .util import ControlledRuntimeException, ensure_separate_cgroup
 
 
 def daemonize():
@@ -56,6 +56,7 @@ def daemonize():
 
 
 def main():
+    ensure_separate_cgroup()
     import argparse
 
     a = argparse.ArgumentParser(description="Qemu VM agent")
@@ -174,7 +175,7 @@ def main():
     del kwargs["verbose"]
 
     if args.daemonize:
-        daemonize()
+        raise RuntimeError("Deprecated feature. Do not use.")
 
     from .agent import Agent, InvalidCommand, VMConfigNotFound
     from .logging import init_logging

@@ -2,10 +2,9 @@ import datetime
 import shlex
 import subprocess
 import sys
-import time
 
 from fc.qemu.main import daemonize
-from fc.qemu.util import leave_cgroups
+from fc.qemu.util import ensure_separate_cgroup
 
 
 def run_supervised(cmd, name, logfile):
@@ -20,11 +19,9 @@ def run_supervised(cmd, name, logfile):
     log.write("{} - command has PID {}\n".format(now, s.pid))
     exit_code = s.wait()
     now = datetime.datetime.now().isoformat()
-    log.write(
-        "{} - command exited with exit code {}\   n".format(now, exit_code)
-    )
+    log.write("{} - command exited with exit code {}\n".format(now, exit_code))
 
 
 def main():
-    leave_cgroups()
+    ensure_separate_cgroup()
     run_supervised(*sys.argv[1:])

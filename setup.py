@@ -30,10 +30,10 @@ setup(
         "colorama",  # ==0.3.3',
         "consulate==0.6.0",
         "psutil",  # ==5.4.2',
-        "PyYaml==5.3.1",
+        "PyYaml>=5.3.1",
         "requests",  # ==2.11.1',
         "setuptools",
-        "structlog==16.1.0",
+        "structlog>=16.1.0",
     ],
     entry_points={
         "console_scripts": [

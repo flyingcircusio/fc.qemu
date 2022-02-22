@@ -130,9 +130,10 @@ def today():
     return datetime.date.today()
 
 
-def leave_cgroups():
-    "Move this process in cgroups to the root."
-    pid = os.getpid()
-    for cgroup in os.listdir("/sys/fs/cgroup"):
-        with open("/sys/fs/cgroup/{}/cgroup.procs".format(cgroup), "w") as f:
-            f.write(str(pid))
+def ensure_separate_cgroup():
+    "Move this process to a separate fc-qemu cgroup."
+    CGROUP = "/sys/fs/cgroup/fc-qemu"
+    if not os.path.exists(CGROUP):
+        os.mkdir(CGROUP)
+    with open(f"{CGROUP}/cgroup.procs", "w") as f:
+        f.write(str(os.getpid()))
