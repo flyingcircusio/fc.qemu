@@ -1,17 +1,19 @@
-from ..guestagent import GuestAgent, ClientError
+import socket
+
 import mock
 import pytest
-import socket
 import StringIO
+
+from ..guestagent import ClientError, GuestAgent
 
 
 @pytest.fixture
 def ga(monkeypatch):
-    ga = GuestAgent('testvm', .1)
+    ga = GuestAgent("testvm", 0.1)
     ga.file = StringIO.StringIO()
     ga.client = mock.MagicMock()
     randint = mock.Mock(return_value=87643)
-    monkeypatch.setattr('random.randint', randint)
+    monkeypatch.setattr("random.randint", randint)
     return ga
 
 
@@ -39,7 +41,8 @@ def test_ga_sync_retry(ga):
 
 
 def test_ga_sync_too_often(ga):
-    ga.file = StringIO.StringIO("""\
+    ga.file = StringIO.StringIO(
+        """\
 {"return": 2}
 {"return": 3}
 {"return": 4}
@@ -63,16 +66,17 @@ def test_ga_sync_too_often(ga):
 {"return": 4}
 {"return": 4}
 {"return": 87643}
-""")
+"""
+    )
     with pytest.raises(ClientError):
         ga.sync()
 
 
 def test_ga_contextmgr(ga, monkeypatch, tmpdir):
-    monkeypatch.setattr(socket, 'socket', mock.MagicMock(socket.socket))
-    with open(str(tmpdir / 'socket'), 'w') as f:
+    monkeypatch.setattr(socket, "socket", mock.MagicMock(socket.socket))
+    with open(str(tmpdir / "socket"), "w") as f:
         f.write('{"return": 87643}\n')
-    f = open(str(tmpdir / 'socket'), 'r')
+    f = open(str(tmpdir / "socket"), "r")
     socket.socket().makefile.return_value = f
     with ga as g:
-        assert g.machine == 'testvm'
+        assert g.machine == "testvm"

@@ -4,31 +4,35 @@ import os.path
 
 try:
     import xmlrpc.client
+
     make_xmlrpc_connection = xmlrpc.client.Server
 except ImportError:
     import xmlrpclib
+
     make_xmlrpc_connection = xmlrpclib.ServerProxy
 
 DIRECTORY_URL_RING0 = (
-    'https://{enc[name]}:{enc[parameters][directory_password]}@'
-    'directory.fcio.net/v2/api')
+    "https://{enc[name]}:{enc[parameters][directory_password]}@"
+    "directory.fcio.net/v2/api"
+)
 
 DIRECTORY_URL_RING1 = (
-    'https://{enc[name]}:{enc[parameters][directory_password]}@'
-    'directory.fcio.net/v2/api/rg-{enc[parameters][resource_group]}')
+    "https://{enc[name]}:{enc[parameters][directory_password]}@"
+    "directory.fcio.net/v2/api/rg-{enc[parameters][resource_group]}"
+)
 
 
 def load_default_enc_json():
-    if os.path.exists('/etc/nixos/enc.json'):
-        with open('/etc/nixos/enc.json') as f:
+    if os.path.exists("/etc/nixos/enc.json"):
+        with open("/etc/nixos/enc.json") as f:
             return json.load(f)
     else:
-        with open('/etc/puppet/enc.json') as f:
+        with open("/etc/puppet/enc.json") as f:
             data = json.load(f)
-        with open('/etc/directory.secret') as f:
-            data['parameters']['directory_password'] = f.read().strip()
+        with open("/etc/directory.secret") as f:
+            data["parameters"]["directory_password"] = f.read().strip()
         return data
-    raise RuntimeError('No ENC file found.')
+    raise RuntimeError("No ENC file found.")
 
 
 def connect(enc_data=None, ring=1):
@@ -43,12 +47,12 @@ def connect(enc_data=None, ring=1):
     """
     if not enc_data:
         enc_data = load_default_enc_json()
-    if ring == 'max':
-        ring = enc_data['parameters']['directory_ring']
+    if ring == "max":
+        ring = enc_data["parameters"]["directory_ring"]
     url = {0: DIRECTORY_URL_RING0, 1: DIRECTORY_URL_RING1}[ring]
-    return make_xmlrpc_connection(url.format(enc=enc_data),
-                                  allow_none=True,
-                                  use_datetime=True)
+    return make_xmlrpc_connection(
+        url.format(enc=enc_data), allow_none=True, use_datetime=True
+    )
 
 
 @contextlib.contextmanager

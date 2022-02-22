@@ -1,6 +1,7 @@
-from ..outgoing import Outgoing
-import pytest
 import mock
+import pytest
+
+from ..outgoing import Outgoing
 
 
 @pytest.fixture
@@ -17,7 +18,7 @@ def test_prefer_remote_rescue(outgoing):
 
 
 def test_request_remote_destroy_if_remote_rescue_fails(outgoing):
-    outgoing.target.rescue.side_effect = RuntimeError('boom')
+    outgoing.target.rescue.side_effect = RuntimeError("boom")
     outgoing.rescue()
     assert outgoing.target.destroy.called is True
     assert outgoing.agent.qemu.destroy.called is False

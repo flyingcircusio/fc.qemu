@@ -9,8 +9,7 @@ class TimeOut(object):
 
     _now = time.time
 
-    def __init__(self, timeout, interval=1, raise_on_timeout=False,
-                 log=None):
+    def __init__(self, timeout, interval=1, raise_on_timeout=False, log=None):
         self.cutoff = self._now() + timeout
         self.interval = interval
         self.timed_out = False
@@ -45,8 +44,8 @@ class TimeOut(object):
         else:
             if self.log:
                 self.log.debug(
-                    'waiting', interval=int(self.interval),
-                    remaining=remaining)
+                    "waiting", interval=int(self.interval), remaining=remaining
+                )
             time.sleep(self.interval)
 
         return True

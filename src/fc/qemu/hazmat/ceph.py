@@ -3,11 +3,13 @@
 We expect Ceph Python bindings to be present in the system site packages.
 """
 
+import hashlib
+
+import rados
+
 from ..sysconfig import sysconfig
 from ..util import cmd, log
 from .volume import Volume
-import hashlib
-import rados
 
 
 class Ceph(object):
@@ -21,7 +23,7 @@ class Ceph(object):
     def __init__(self, cfg):
         # Update configuration values from system or test config.
         self.__dict__.update(sysconfig.ceph)
-        self.log = log.bind(subsystem='ceph', machine=cfg['name'])
+        self.log = log.bind(subsystem="ceph", machine=cfg["name"])
 
         self.cfg = cfg
         self.rados = None
@@ -30,24 +32,24 @@ class Ceph(object):
         self.swap = None
         self.tmp = None
         self.volumes = []
-        self.pool = self.cfg['rbd_pool'].encode('ascii')
+        self.pool = self.cfg["rbd_pool"].encode("ascii")
 
     def __enter__(self):
         # Not sure whether it makes sense that we configure the client ID
         # without 'client.': qemu doesn't want to see this, whereas the
         # Rados binding does ... :/
-        self.log.debug('connect-rados')
+        self.log.debug("connect-rados")
         self.rados = rados.Rados(
-            conffile=self.CEPH_CONF,
-            name='client.' + self.CEPH_CLIENT)
+            conffile=self.CEPH_CONF, name="client." + self.CEPH_CLIENT
+        )
         self.rados.connect()
 
         self.ioctx = self.rados.open_ioctx(self.pool)
 
-        volume_prefix = self.cfg['name'].encode('ascii')
-        self.root = Volume(self, volume_prefix + '.root', 'root')
-        self.swap = Volume(self, volume_prefix + '.swap', 'swap')
-        self.tmp = Volume(self, volume_prefix + '.tmp', 'tmp')
+        volume_prefix = self.cfg["name"].encode("ascii")
+        self.root = Volume(self, volume_prefix + ".root", "root")
+        self.swap = Volume(self, volume_prefix + ".swap", "swap")
+        self.tmp = Volume(self, volume_prefix + ".tmp", "tmp")
 
         self.volumes = [self.root, self.swap, self.tmp]
 
@@ -67,25 +69,25 @@ class Ceph(object):
         self.unlock()
 
     def ensure_root_volume(self):
-        self.log.info('ensure-root')
+        self.log.info("ensure-root")
         if not self.root.exists():
-            self.log.info('create-vm')
+            self.log.info("create-vm")
             cmd(self.CREATE_VM.format(**self.cfg), self.log)
         self.root.lock()
 
     def ensure_swap_volume(self):
-        self.log.info('ensure-swap')
-        self.swap.ensure_presence(self.cfg['swap_size'])
+        self.log.info("ensure-swap")
+        self.swap.ensure_presence(self.cfg["swap_size"])
         self.swap.lock()
-        self.swap.ensure_size(self.cfg['swap_size'])
+        self.swap.ensure_size(self.cfg["swap_size"])
         with self.swap.mapped():
             self.swap.mkswap()
 
     def ensure_tmp_volume(self, enc_data, generation):
-        self.log.info('ensure-tmp')
-        self.tmp.ensure_presence(self.cfg['tmp_size'])
+        self.log.info("ensure-tmp")
+        self.tmp.ensure_presence(self.cfg["tmp_size"])
         self.tmp.lock()
-        self.tmp.ensure_size(self.cfg['tmp_size'])
+        self.tmp.ensure_size(self.cfg["tmp_size"])
         with self.tmp.mapped():
             self.tmp.mkfs()
             self.tmp.seed(enc_data, generation)
@@ -104,8 +106,9 @@ class Ceph(object):
     def locked_by_me(self):
         """Returns True if CEPH_LOCK_HOST holds locks for all volumes."""
         try:
-            return all(v.lock_status()[1] == self.CEPH_LOCK_HOST
-                       for v in self.volumes)
+            return all(
+                v.lock_status()[1] == self.CEPH_LOCK_HOST for v in self.volumes
+            )
         except TypeError:  # status[1] not accessible
             return False
 
@@ -116,7 +119,8 @@ class Ceph(object):
 
         """
         lock_owners = set(
-            v.lock_status()[1] for v in self.volumes if v.lock_status())
+            v.lock_status()[1] for v in self.volumes if v.lock_status()
+        )
         if not lock_owners:
             return None
         if len(lock_owners) != 1:
@@ -140,11 +144,12 @@ class Ceph(object):
             try:
                 vol.unlock()
             except Exception:
-                vol.log.warning('unlock-failed', exc_info=True)
+                vol.log.warning("unlock-failed", exc_info=True)
                 exception = True
         if exception:
             raise RuntimeError(
-                "Failed to unlock all locks. See log for specific exceptions.")
+                "Failed to unlock all locks. See log for specific exceptions."
+            )
 
     def force_unlock(self):
         for vol in self.volumes:
@@ -162,5 +167,5 @@ class Ceph(object):
             lock = vol.lock_status()
             if lock:
                 status.extend(lock)
-            c.update('\0'.join(status) + '\0')
+            c.update("\0".join(status) + "\0")
         return c.hexdigest()

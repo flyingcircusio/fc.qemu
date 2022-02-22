@@ -1,15 +1,17 @@
 """Global helper functions and utilites for fc.qemu."""
 
 from __future__ import print_function
-from structlog import get_logger
+
 import contextlib
+import datetime
 import filecmp
 import os
 import subprocess
 import sys
 import tempfile
 import time
-import datetime
+
+from structlog import get_logger
 
 MiB = 2 ** 20
 GiB = 2 ** 30
@@ -33,8 +35,10 @@ def rewrite(filename):
     """
 
     with tempfile.NamedTemporaryFile(
-            dir=os.path.dirname(filename), delete=False,
-            prefix=os.path.basename(filename) + '.') as tf:
+        dir=os.path.dirname(filename),
+        delete=False,
+        prefix=os.path.basename(filename) + ".",
+    ) as tf:
         if os.path.exists(filename):
             os.chmod(tf.name, os.stat(filename).st_mode & 0o7777)
         tf.has_changed = False
@@ -42,8 +46,9 @@ def rewrite(filename):
         if not os.path.exists(tf.name):
             return
         filename_tmp = tf.name
-    if (os.path.exists(filename) and
-            filecmp.cmp(filename, filename_tmp, shallow=False)):
+    if os.path.exists(filename) and filecmp.cmp(
+        filename, filename_tmp, shallow=False
+    ):
         os.unlink(filename_tmp)
     else:
         os.rename(filename_tmp, filename)
@@ -51,10 +56,10 @@ def rewrite(filename):
 
 
 def parse_address(addr):
-    if addr.startswith('['):
-        host, port = addr[1:].split(']:')
+    if addr.startswith("["):
+        host, port = addr[1:].split("]:")
     else:
-        host, port = addr.split(':')
+        host, port = addr.split(":")
     return host, int(port)
 
 
@@ -64,16 +69,22 @@ def locate_live_service(consul, service_id):
     It is an error if multiple live services with the same service name
     are found.
     """
-    def passing(checks):
-        return (any(check['Status'] == 'passing' for check in checks) and
-                not any(check['Status'] == 'critical' for check in checks))
 
-    live = [svc for svc in consul.health.service(service_id)
-            if passing(svc['Checks'])]
+    def passing(checks):
+        return any(
+            check["Status"] == "passing" for check in checks
+        ) and not any(check["Status"] == "critical" for check in checks)
+
+    live = [
+        svc
+        for svc in consul.health.service(service_id)
+        if passing(svc["Checks"])
+    ]
     if len(live) > 1:
-        raise RuntimeError('multiple services with passing checks found',
-                           service_id)
-    return live[0]['Service'] if len(live) else None
+        raise RuntimeError(
+            "multiple services with passing checks found", service_id
+        )
+    return live[0]["Service"] if len(live) else None
 
 
 def remove_empty_dirs(d):
@@ -81,7 +92,7 @@ def remove_empty_dirs(d):
 
     Stops on the first non-empty directory.
     """
-    while d != '/':
+    while d != "/":
         try:
             os.rmdir(d)
         except OSError:
@@ -94,9 +105,10 @@ def cmd(cmdline, log):
     prefix = cmdline.split()[0]
     args = " ".join(cmdline.split()[1:])
     log.debug(prefix, args=args)
-    with open('/dev/null') as null:
+    with open("/dev/null") as null:
         output = subprocess.check_output(
-            cmdline, shell=True, stdin=null, stderr=subprocess.STDOUT)
+            cmdline, shell=True, stdin=null, stderr=subprocess.STDOUT
+        )
     output = output.strip()
     # Keep this here for compatibility with tests
     if output:
@@ -108,12 +120,19 @@ def cmd(cmdline, log):
 def timeit(label):
     start = time.time()
     yield
-    print('run time for {}: {}'.format(label, time.time() - start),
-          file=sys.stderr)
+    print(
+        "run time for {}: {}".format(label, time.time() - start),
+        file=sys.stderr,
+    )
 
 
 def today():
     return datetime.date.today()
 
 
-
+def leave_cgroups():
+    "Move this process in cgroups to the root."
+    pid = os.getpid()
+    for cgroup in os.listdir("/sys/fs/cgroup"):
+        with open("/sys/fs/cgroup/{}/cgroup.procs".format(cgroup), "w") as f:
+            f.write(str(pid))

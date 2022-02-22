@@ -8,11 +8,13 @@ class MigrationError(RuntimeError):
 
 class DestructionError(RuntimeError):
     """Failed to destroy a running VM."""
+
     pass
 
 
 class QemuNotRunning(Exception):
     """Something happened and we're sure Qemu isn't running."""
+
     pass
 
 
@@ -37,8 +39,8 @@ class VMStateInconsistent(RuntimeError):
 
 class ConfigChanged(Exception):
     """Used to break up flows to signal that the config changed and we
-       may want to retry.
+    may want to retry.
 
-       Useful to break up long waiting periods while data is changing.
+    Useful to break up long waiting periods while data is changing.
 
     """

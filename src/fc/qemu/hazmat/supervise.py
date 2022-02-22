@@ -1,24 +1,30 @@
-from fc.qemu.main import daemonize
 import datetime
-import sys
-import subprocess
-import time
 import shlex
+import subprocess
+import sys
+import time
+
+from fc.qemu.main import daemonize
+from fc.qemu.util import leave_cgroups
 
 
 def run_supervised(cmd, name, logfile):
     daemonize()
-    log = open(logfile, 'a+', buffering=0)
+    log = open(logfile, "a+", buffering=0)
     now = datetime.datetime.now().isoformat()
-    log.write('{} - starting command {}\n'.format(now, cmd))
+    log.write("{} - starting command {}\n".format(now, cmd))
     s = subprocess.Popen(
-        shlex.split(cmd), close_fds=True, stdin=None, stdout=log, stderr=log)
+        shlex.split(cmd), close_fds=True, stdin=None, stdout=log, stderr=log
+    )
     now = datetime.datetime.now().isoformat()
-    log.write('{} - command has PID {}\n'.format(now, s.pid))
+    log.write("{} - command has PID {}\n".format(now, s.pid))
     exit_code = s.wait()
     now = datetime.datetime.now().isoformat()
-    log.write('{} - command exited with exit code {}\n'.format(now, exit_code))
+    log.write(
+        "{} - command exited with exit code {}\   n".format(now, exit_code)
+    )
 
 
-if __name__ == '__main__':
+def main():
+    leave_cgroups()
     run_supervised(*sys.argv[1:])

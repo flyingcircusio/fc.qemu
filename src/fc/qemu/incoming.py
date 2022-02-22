@@ -1,33 +1,42 @@
-from .exc import MigrationError, QemuNotRunning, ConfigChanged
-from .timeout import TimeOut
-from .util import parse_address, log
 import contextlib
 import functools
 import re
-import SimpleXMLRPCServer
 import time
+
+import SimpleXMLRPCServer
+
+from .exc import ConfigChanged, MigrationError, QemuNotRunning
+from .timeout import TimeOut
+from .util import log, parse_address
 
 
 def authenticated(f):
     """Decorator to express that authentication is required."""
+
     @functools.wraps(f)
     def wrapper(self, cookie, *args):
         if cookie != self.cookie:
-            self.log.debug('authentication-cookie-mismatch',
-                method=f.__name__, received_cookie=cookie)
-            raise MigrationError('authentication cookie mismatch')
+            self.log.debug(
+                "authentication-cookie-mismatch",
+                method=f.__name__,
+                received_cookie=cookie,
+            )
+            raise MigrationError("authentication cookie mismatch")
         return f(self, *args)
+
     return wrapper
 
 
 def reset_timeout(f):
     """Reset the timeout when interacting with the wrapped method."""
+
     @functools.wraps(f)
     def wrapper(self, *args):
         result = f(self, *args)
-        self.log.debug('reset-timeout')
+        self.log.debug("reset-timeout")
         self.server.extend_cutoff_time(soft_timeout=60)
         return result
+
     return wrapper
 
 
@@ -49,8 +58,11 @@ class IncomingServer(object):
         self.ceph = agent.ceph
         self.bind_address = parse_address(self.agent.migration_ctl_address)
         self.timeout = TimeOut(
-            self.connect_timeout, interval=0, raise_on_timeout=False,
-            log=self.log)
+            self.connect_timeout,
+            interval=0,
+            raise_on_timeout=False,
+            log=self.log,
+        )
         self.consul = agent.consul
         self.had_contact = False
 
@@ -64,26 +76,30 @@ class IncomingServer(object):
         with-block is executing.
 
         """
-        svcname = 'vm-inmigrate-' + self.name
-        self.log.debug('consul-register-inmigrate')
+        svcname = "vm-inmigrate-" + self.name
+        self.log.debug("consul-register-inmigrate")
         self.consul.agent.service.register(
-            svcname, address=self.bind_address[0], port=self.bind_address[1],
-            ttl=self.timeout.remaining)
+            svcname,
+            address=self.bind_address[0],
+            port=self.bind_address[1],
+            ttl=self.timeout.remaining,
+        )
         try:
             yield
         finally:
-            self.log.debug('consul-deregister-inmigrate')
+            self.log.debug("consul-deregister-inmigrate")
             self.consul.agent.service.deregister(svcname)
 
     def run(self):
         s = SimpleXMLRPCServer.SimpleXMLRPCServer(
-            self.bind_address, logRequests=False, allow_none=True)
+            self.bind_address, logRequests=False, allow_none=True
+        )
         # Support ephemeral ports (specifying 0 as the bind port)
         # so we avoid running into recently used ports if migrations need
         # to be retried.
         self.bind_address = self.bind_address[0], s.socket.getsockname()[1]
-        url = 'http://{}:{}/'.format(*self.bind_address)
-        self.log.info('start-server', type='incoming', url=url)
+        url = "http://{}:{}/".format(*self.bind_address)
+        self.log.info("start-server", type="incoming", url=url)
         # This timeout causes the `handle_request` call a few lines down to
         # not block infinitely so the timeout-based while loop actually does
         # something useful. This is combined with having our peer call any
@@ -97,8 +113,9 @@ class IncomingServer(object):
             while self.timeout.tick():
                 s.handle_request()
                 if not self.had_contact and (
-                        self.agent.has_new_config() or
-                        not self.agent._requires_inmigrate_from()):
+                    self.agent.has_new_config()
+                    or not self.agent._requires_inmigrate_from()
+                ):
                     # We are sure that we have not been in contact with the
                     # outgoing server and thus we can simply abort here
                     # (and check the new config) without risking to jump into
@@ -115,8 +132,8 @@ class IncomingServer(object):
         except Exception:
             pass
         s.server_close()
-        self.log.info('stop-server', type='incoming', result=self.finished)
-        if self.finished == 'success':
+        self.log.info("stop-server", type="incoming", result=self.finished)
+        if self.finished == "success":
             return 0
         else:
             self.qemu.destroy()
@@ -138,12 +155,14 @@ class IncomingServer(object):
     def screen_config(self, config):
         """Remove obsolete items from transferred Qemu config."""
         # Remove old IOMMU usage
-        config = re.sub(r'^\s*iommu\s*=.*$', '',
-                        config, flags=re.M)
+        config = re.sub(r"^\s*iommu\s*=.*$", "", config, flags=re.M)
         # Update old qmp monitor snippet
-        config = re.sub(r'^\s*chardev\s*=\s*"ch_qmp_monitor"\n\s*default\s*=\s*"on"$',
-                        r'  chardev = "ch_qmp_monitor"\n  pretty = "off"',
-                        config, flags=re.M)
+        config = re.sub(
+            r'^\s*chardev\s*=\s*"ch_qmp_monitor"\n\s*default\s*=\s*"on"$',
+            r'  chardev = "ch_qmp_monitor"\n  pretty = "off"',
+            config,
+            flags=re.M,
+        )
         return config
 
     def prepare_incoming(self, args, config):
@@ -151,36 +170,39 @@ class IncomingServer(object):
         # Adapt actual VM memory size: we will start with the proper parameter
         # but the memory verification needs to find the real value.
         for arg in args:
-            if arg.startswith('-m '):
+            if arg.startswith("-m "):
                 # XXX This is a nasty code path.
-                memory = int(arg.split(' ')[1])
-                self.qemu.cfg['memory'] = memory
+                memory = int(arg.split(" ")[1])
+                self.qemu.cfg["memory"] = memory
         self.qemu.config = self.screen_config(config)
         try:
             return self.qemu.inmigrate()
         except Exception:
-            log.exception('incoming-migration-failed',
-                          note='releasing locks', machine=self.name,
-                          exc_info=True)
+            log.exception(
+                "incoming-migration-failed",
+                note="releasing locks",
+                machine=self.name,
+                exc_info=True,
+            )
             self.ceph.stop()
             raise
 
     def rescue(self):
         if not self.qemu.is_running():
-            log.warning('rescue-failed', reason='VM is offline',
-                        machine=self.name)
+            log.warning(
+                "rescue-failed", reason="VM is offline", machine=self.name
+            )
             self.qemu.clean_run_files()
             self.ceph.stop()
-            raise RuntimeError('rescue not possible - destroyed VM', self.name)
+            raise RuntimeError("rescue not possible - destroyed VM", self.name)
         try:
-            log.info('rescue-locks', machine=self.name)
+            log.info("rescue-locks", machine=self.name)
             self.ceph.lock()
         except Exception:
-            log.warning('rescue-locks-failed', machine=self.name,
-                        exc_info=True)
+            log.warning("rescue-locks-failed", machine=self.name, exc_info=True)
             self.destroy()
             raise
-        log.info('rescue-succeeded', machine=self.name)
+        log.info("rescue-succeeded", machine=self.name)
 
     def acquire_migration_lock(self):
         return self.qemu.acquire_migration_lock()
@@ -193,16 +215,16 @@ class IncomingServer(object):
 
     def finish_incoming(self):
         assert self.qemu.is_running()
-        self.finished = 'success'
+        self.finished = "success"
 
     def cancel(self):
         self.ceph.unlock()
-        self.finished = 'cancelled'
+        self.finished = "cancelled"
 
     def destroy(self):
         """Reliably get rid of the VM."""
-        log.info('destroying', machine=self.name)
-        self.finished = 'destroyed'
+        log.info("destroying", machine=self.name)
+        self.finished = "destroyed"
         try:
             self.qemu.destroy()
         except QemuNotRunning:
@@ -215,12 +237,11 @@ class IncomingServer(object):
 
 
 class IncomingAPI(object):
-
     def __init__(self, server):
         self.server = server
         self.log = self.server.log
         self.cookie = server.agent.ceph.auth_cookie()
-        self.log.debug('setup-incoming-api', cookie=self.cookie)
+        self.log.debug("setup-incoming-api", cookie=self.cookie)
 
     @authenticated
     def ping(self, timeout=60):
@@ -233,26 +254,26 @@ class IncomingAPI(object):
         get reduced by regular interaction.
 
         """
-        self.log.debug('received-ping', timeout=timeout)
+        self.log.debug("received-ping", timeout=timeout)
         self.server.extend_cutoff_time(hard_timeout=timeout)
         self.server.had_contact = True
 
     @authenticated
     @reset_timeout
     def acquire_migration_lock(self):
-        self.log.debug('received-acquire-migration-lock')
+        self.log.debug("received-acquire-migration-lock")
         return self.server.acquire_migration_lock()
 
     @authenticated
     @reset_timeout
     def release_migration_lock(self):
-        self.log.debug('received-release-migration-lock')
+        self.log.debug("received-release-migration-lock")
         return self.server.release_migration_lock()
 
     @authenticated
     @reset_timeout
     def acquire_ceph_locks(self):
-        self.log.debug('received-acquire-ceph-locks')
+        self.log.debug("received-acquire-ceph-locks")
         return self.server.acquire_ceph_locks()
 
     @authenticated
@@ -263,32 +284,31 @@ class IncomingAPI(object):
         `args` and `config` should be the output of
         qemu.get_running_config() on the sending side.
         """
-        self.log.debug('received-prepare-incoming')
+        self.log.debug("received-prepare-incoming")
         return self.server.prepare_incoming(args, config)
 
     @authenticated
     @reset_timeout
     def finish_incoming(self):
-        self.log.debug('received-finish-incoming')
+        self.log.debug("received-finish-incoming")
         self.server.finish_incoming()
 
     @authenticated
     @reset_timeout
     def rescue(self):
         """Incoming rescue."""
-        self.log.debug('received-rescue')
+        self.log.debug("received-rescue")
         return self.server.rescue()
 
     @authenticated
     @reset_timeout
     def destroy(self):
         """Incoming destroy."""
-        self.log.debug('received-destroy')
+        self.log.debug("received-destroy")
         return self.server.destroy()
 
     @authenticated
     @reset_timeout
     def cancel(self):
-        self.log.debug('received-cancel')
+        self.log.debug("received-cancel")
         self.server.cancel()
-

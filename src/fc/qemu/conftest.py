@@ -1,36 +1,40 @@
-from .agent import Agent
 import glob
 import os
-import pkg_resources
-import pytest
 import shutil
-import structlog
 import subprocess
 import sys
 import traceback
 
+import pkg_resources
+import pytest
+import structlog
+
+from .agent import Agent
+
 
 def pytest_collectstart(collector):
     from fc.qemu.sysconfig import sysconfig
+
     sysconfig.load_system_config()
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def setup_structlog():
     from . import util
+
     log_exceptions = False  # set to True to temporarily get detailed tracebacks
 
     def test_logger(logger, method_name, event):
         result = []
 
-        show_methods = util.test_log_options['show_methods']
+        show_methods = util.test_log_options["show_methods"]
         if show_methods and method_name not in show_methods:
             raise structlog.DropEvent
 
-        show_events = util.test_log_options['show_events']
+        show_events = util.test_log_options["show_events"]
         if show_events:
             for show in show_events:
-                if show in event['event']:
+                if show in event["event"]:
                     break
             else:
                 raise structlog.DropEvent
@@ -39,8 +43,8 @@ def setup_structlog():
             stack = event.pop("stack", None)
             exc = event.pop("exception", None)
         for key in sorted(event):
-            result.append('{}={}'.format(key, event[key]))
-        util.log_data.append(' '.join(result))
+            result.append("{}={}".format(key, event[key]))
+        util.log_data.append(" ".join(result))
         if log_exceptions:
             if stack:
                 util.log_data.extend(stack.splitlines())
@@ -48,35 +52,38 @@ def setup_structlog():
                 util.log_data.extend(exc.splitlines())
         raise structlog.DropEvent
 
-    structlog.configure(processors=(
-        ([structlog.processors.format_exc_info] if log_exceptions else []) +
-        [test_logger]))
+    structlog.configure(
+        processors=(
+            ([structlog.processors.format_exc_info] if log_exceptions else [])
+            + [test_logger]
+        )
+    )
 
 
 @pytest.fixture(autouse=True)
 def reset_structlog(setup_structlog):
     from . import util
+
     util.log_data = []
-    util.test_log_options = {
-        'show_methods': [],
-        'show_events': []}
+    util.test_log_options = {"show_methods": [], "show_events": []}
 
 
 def pytest_assertrepr_compare(op, left, right):
-    if left.__class__.__name__ == 'Ellipsis':
+    if left.__class__.__name__ == "Ellipsis":
         return left.compare(right).diff
-    elif right.__class__.__name__ == 'Ellipsis':
+    elif right.__class__.__name__ == "Ellipsis":
         return right.compare(left).diff
 
 
 @pytest.yield_fixture
 def clean_environment():
     def clean():
-        subprocess.call('pkill -f qemu', shell=True)
-        subprocess.call('rbd rm rbd.ssd/simplevm.swap', shell=True)
-        subprocess.call('rbd snap purge rbd.ssd/simplevm.root', shell=True)
-        subprocess.call('rbd rm rbd.ssd/simplevm.root', shell=True)
-        subprocess.call('rbd rm rbd.ssd/simplevm.tmp', shell=True)
+        subprocess.call("pkill -f qemu", shell=True)
+        subprocess.call("rbd rm rbd.ssd/simplevm.swap", shell=True)
+        subprocess.call("rbd snap purge rbd.ssd/simplevm.root", shell=True)
+        subprocess.call("rbd rm rbd.ssd/simplevm.root", shell=True)
+        subprocess.call("rbd rm rbd.ssd/simplevm.tmp", shell=True)
+
     clean()
     yield
     clean()
@@ -85,15 +92,16 @@ def clean_environment():
 @pytest.yield_fixture
 def vm(clean_environment, monkeypatch):
     import fc.qemu.hazmat.qemu
-    monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, 'guestagent_timeout', .1)
-    fixtures = pkg_resources.resource_filename(__name__, 'tests/fixtures')
-    shutil.copy(fixtures + '/simplevm.yaml', '/etc/qemu/vm/simplevm.cfg')
-    if os.path.exists('/etc/qemu/vm/.simplevm.cfg.staging'):
-        os.unlink('/etc/qemu/vm/.simplevm.cfg.staging')
-    vm = Agent('simplevm')
+
+    monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "guestagent_timeout", 0.1)
+    fixtures = pkg_resources.resource_filename(__name__, "tests/fixtures")
+    shutil.copy(fixtures + "/simplevm.yaml", "/etc/qemu/vm/simplevm.cfg")
+    if os.path.exists("/etc/qemu/vm/.simplevm.cfg.staging"):
+        os.unlink("/etc/qemu/vm/.simplevm.cfg.staging")
+    vm = Agent("simplevm")
     vm.timeout_graceful = 1
     vm.__enter__()
-    vm.qemu.qmp_timeout = .1
+    vm.qemu.qmp_timeout = 0.1
     vm.qemu.vm_expected_overhead = 128
     for snapshot in vm.ceph.root.snapshots:
         snapshot.remove()
@@ -108,14 +116,15 @@ def vm(clean_environment, monkeypatch):
     vm.__exit__(*exc_info)
     if len(exc_info):
         print(traceback.print_tb(exc_info[2]))
-    for x in glob.glob('/run/qemu.simplevm.*'):
+    for x in glob.glob("/run/qemu.simplevm.*"):
         os.unlink(x)
-    if os.path.exists('/etc/qemu/vm/.simplevm.cfg.staging'):
-        os.unlink('/etc/qemu/vm/.simplevm.cfg.staging')
+    if os.path.exists("/etc/qemu/vm/.simplevm.cfg.staging"):
+        os.unlink("/etc/qemu/vm/.simplevm.cfg.staging")
 
 
 def get_log():
     from fc.qemu import util
-    result = '\n'.join(util.log_data)
+
+    result = "\n".join(util.log_data)
     util.log_data = []
     return result

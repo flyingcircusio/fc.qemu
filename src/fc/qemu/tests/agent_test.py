@@ -1,19 +1,21 @@
-from ..agent import Agent
-from ..exc import VMStateInconsistent
-import mock
 import os
+import shutil
+
+import mock
 import pkg_resources
 import psutil
 import pytest
-import shutil
+
+from ..agent import Agent
+from ..exc import VMStateInconsistent
 
 
 @pytest.yield_fixture
 def simplevm_cfg():
-    fixtures = pkg_resources.resource_filename(__name__, 'fixtures')
-    shutil.copy(fixtures + '/simplevm.yaml', '/etc/qemu/vm/simplevm.cfg')
-    yield 'simplevm'
-    os.unlink('/etc/qemu/vm/simplevm.cfg')
+    fixtures = pkg_resources.resource_filename(__name__, "fixtures")
+    shutil.copy(fixtures + "/simplevm.yaml", "/etc/qemu/vm/simplevm.cfg")
+    yield "simplevm"
+    os.unlink("/etc/qemu/vm/simplevm.cfg")
 
 
 def test_builtin_config_template(simplevm_cfg):
@@ -25,15 +27,15 @@ def test_builtin_config_template(simplevm_cfg):
 
 
 def test_userdefined_config_template(simplevm_cfg):
-    with open('/etc/qemu/qemu.vm.cfg.in', 'w') as f:
-        f.write('# user defined config template\n')
+    with open("/etc/qemu/qemu.vm.cfg.in", "w") as f:
+        f.write("# user defined config template\n")
     try:
         a = Agent(simplevm_cfg)
         with a:
             a.generate_config()
-        assert 'user defined config template' in a.qemu.config
+        assert "user defined config template" in a.qemu.config
     finally:
-        os.unlink('/etc/qemu/qemu.vm.cfg.in')
+        os.unlink("/etc/qemu/qemu.vm.cfg.in")
 
 
 def test_consistency_vm_running(simplevm_cfg):

@@ -35,7 +35,7 @@ Release notes
 
 - Improve unthawing reliability. Use the monitor to send alt-sysrq-j
   (global thaw) and only try the agent up to 3 times. Using a better hammer
-  is more likely to succeed than using the same hammer over and over ... 
+  is more likely to succeed than using the same hammer over and over ...
   Helps in fixing #124656.
 
 
@@ -785,4 +785,3 @@ Release notes
 
 * Implement a safety-belt to prohibit migrating VMs that have not
   yet been started with the supported /run/kvm.*.cfg.in format.
-

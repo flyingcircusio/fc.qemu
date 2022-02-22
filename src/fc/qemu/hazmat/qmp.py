@@ -8,8 +8,8 @@
 # This work is licensed under the terms of the GNU GPL, version 2.  See
 # the COPYING file in the top-level directory.
 
-import json
 import errno
+import json
 import socket
 import sys
 
@@ -43,7 +43,7 @@ class QEMUMonitorProtocol:
         @note No connection is established, this is done by the connect() or
               accept() methods
         """
-        self.log = log.bind(subsystem='qemu/qmp')
+        self.log = log.bind(subsystem="qemu/qmp")
         self.__events = []
         self.__address = address
         self._debug = debug
@@ -62,10 +62,10 @@ class QEMUMonitorProtocol:
 
     def __negotiate_capabilities(self):
         greeting = self.__json_read()
-        if greeting is None or not greeting.has_key('QMP'):
+        if greeting is None or not greeting.has_key("QMP"):
             raise QMPConnectError
         # Greeting seems ok, negotiate capabilities
-        resp = self.cmd('qmp_capabilities')
+        resp = self.cmd("qmp_capabilities")
         if "return" in resp:
             return greeting
         raise QMPCapabilitiesError
@@ -76,7 +76,7 @@ class QEMUMonitorProtocol:
             if not data:
                 return
             resp = json.loads(data)
-            if 'event' in resp:
+            if "event" in resp:
                 if self._debug:
                     print >>sys.stderr, "QMP:<<< %s" % resp
                 self.__events.append(resp)
@@ -160,9 +160,11 @@ class QEMUMonitorProtocol:
         @return QMP response as a Python dict or None if the connection has
                 been closed
         """
-        self.log.debug(qmp_cmd['execute'],
-                       arguments=qmp_cmd.get('arguments', {}),
-                       id=qmp_cmd.get('id', None))
+        self.log.debug(
+            qmp_cmd["execute"],
+            arguments=qmp_cmd.get("arguments", {}),
+            id=qmp_cmd.get("id", None),
+        )
         if self._debug:
             print >>sys.stderr, "QMP:>>> %s" % qmp_cmd
         try:
@@ -184,20 +186,20 @@ class QEMUMonitorProtocol:
         @param args: command arguments (dict)
         @param id: command id (dict, list, string or int)
         """
-        qmp_cmd = {'execute': name}
+        qmp_cmd = {"execute": name}
         if args:
-            qmp_cmd['arguments'] = args
+            qmp_cmd["arguments"] = args
         if id:
-            qmp_cmd['id'] = id
+            qmp_cmd["id"] = id
         return self.cmd_obj(qmp_cmd)
 
     def command(self, cmd, **kwds):
         ret = self.cmd(cmd, kwds)
         if ret is None:
             raise QMPConnectError("Connection went away.")
-        if ret.has_key('error'):
-            raise Exception(ret['error']['desc'])
-        return ret['return']
+        if ret.has_key("error"):
+            raise Exception(ret["error"]["desc"])
+        return ret["return"]
 
     def pull_event(self, wait=False):
         """

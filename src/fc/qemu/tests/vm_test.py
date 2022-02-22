@@ -1,35 +1,42 @@
-from ..agent import swap_size, tmp_size, Agent, InvalidCommand
-from ..conftest import get_log
-from ..ellipsis import Ellipsis
-from ..util import MiB, GiB
-from ..hazmat import qemu
-from fc.qemu import util
 import datetime
 import os
 import os.path
-import pytest
 import shutil
 import subprocess
 
+import pytest
+
+from fc.qemu import util
+
+from ..agent import Agent, InvalidCommand, swap_size, tmp_size
+from ..conftest import get_log
+from ..ellipsis import Ellipsis
+from ..hazmat import qemu
+from ..util import GiB, MiB
+
 
 def test_simple_vm_lifecycle_start_stop(vm):
-    util.test_log_options['show_events'] = ['vm-status', 'rbd-status']
+    util.test_log_options["show_events"] = ["vm-status", "rbd-status"]
 
     vm.status()
 
     status = get_log()
-    assert status == """\
+    assert (
+        status
+        == """\
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+    )
 
-    util.test_log_options['show_events'] = []
+    util.test_log_options["show_events"] = []
     vm.start()
 
     out = get_log()
     # This is 1 end-to-end logging test to see everything.
-    assert out == Ellipsis("""\
+    assert out == Ellipsis(
+        """\
 event=acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
 event=acquire-lock machine=simplevm result=locked target=/run/qemu.simplevm.lock
 count=1 event=lock-status machine=simplevm
@@ -85,112 +92,152 @@ action=none event=ensure-watchdog machine=simplevm
 arguments={'command-line': 'watchdog_action action=none'} event=human-monitor-command id=None machine=simplevm subsystem=qemu/qmp
 count=0 event=lock-status machine=simplevm
 event=release-lock machine=simplevm target=/run/qemu.simplevm.lock
-event=release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock""")
+event=release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock"""
+    )
 
-    util.test_log_options['show_events'] = [
-        'vm-status', 'rbd-status', 'disk-throttle']
+    util.test_log_options["show_events"] = [
+        "vm-status",
+        "rbd-status",
+        "disk-throttle",
+    ]
 
     vm.status()
-    assert get_log() == Ellipsis("""\
+    assert get_log() == Ellipsis(
+        """\
 event=vm-status machine=simplevm result=online
 device=virtio0 event=disk-throttle iops=3000 machine=simplevm
 device=virtio1 event=disk-throttle iops=3000 machine=simplevm
 device=virtio2 event=disk-throttle iops=3000 machine=simplevm
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp""")
+event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+    )
 
     vm.stop()
     get_log()
 
     vm.status()
-    assert get_log() == """\
+    assert (
+        get_log()
+        == """\
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+    )
 
 
 def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys, caplog):
-    util.test_log_options['show_events'] = ['vm-status', 'rbd-status', 'ensure-state', 'disk-throttle']
+    util.test_log_options["show_events"] = [
+        "vm-status",
+        "rbd-status",
+        "ensure-state",
+        "disk-throttle",
+    ]
     vm.status()
-    assert get_log() == """\
+    assert (
+        get_log()
+        == """\
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+    )
 
     vm.ensure()
     out = get_log()
-    assert "action=start event=ensure-state found=offline machine=simplevm wanted=online" in out
+    assert (
+        "action=start event=ensure-state found=offline machine=simplevm wanted=online"
+        in out
+    )
 
     vm.status()
-    assert get_log() == Ellipsis("""\
+    assert get_log() == Ellipsis(
+        """\
 event=vm-status machine=simplevm result=online
 device=virtio0 event=disk-throttle iops=3000 machine=simplevm
 device=virtio1 event=disk-throttle iops=3000 machine=simplevm
 device=virtio2 event=disk-throttle iops=3000 machine=simplevm
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp""")
+event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+    )
 
-    vm.enc['parameters']['online'] = False
-    vm.enc['consul-generation'] += 1
+    vm.enc["parameters"]["online"] = False
+    vm.enc["consul-generation"] += 1
     vm.stage_new_config()
     # As we're re-using the same agent object, we have to time-travel here,
     # otherwise ensure will already think we're on the new generation.
-    vm.enc['consul-generation'] -= 1
+    vm.enc["consul-generation"] -= 1
     vm.ensure()
-    assert get_log() == """\
+    assert (
+        get_log()
+        == """\
 action=stop event=ensure-state found=online machine=simplevm wanted=offline"""
+    )
 
     vm.status()
-    assert get_log() == """\
+    assert (
+        get_log()
+        == """\
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+    )
 
 
 def test_vm_not_running_here(vm, capsys):
-    util.test_log_options['show_events'] = [
-        'vm-status', 'rbd-status']
+    util.test_log_options["show_events"] = ["vm-status", "rbd-status"]
 
     vm.status()
-    assert get_log() == """\
+    assert (
+        get_log()
+        == """\
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+    )
 
-    vm.enc['parameters']['kvm_host'] = 'otherhost'
-    vm.enc['consul-generation'] += 1
+    vm.enc["parameters"]["kvm_host"] = "otherhost"
+    vm.enc["consul-generation"] += 1
     vm.stage_new_config()
-    vm.enc['consul-generation'] -= 1
+    vm.enc["consul-generation"] -= 1
     vm.ensure()
     vm.status()
-    assert get_log() == Ellipsis("""\
+    assert get_log() == Ellipsis(
+        """\
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
-event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp""")
+event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+    )
 
 
 def test_crashed_vm_clean_restart(vm):
-    util.test_log_options['show_events'] = [
-        'rbd-status', 'vm-status', 'ensure', 'throttle', 'shutdown']
+    util.test_log_options["show_events"] = [
+        "rbd-status",
+        "vm-status",
+        "ensure",
+        "throttle",
+        "shutdown",
+    ]
 
     vm.status()
 
-    assert get_log() == Ellipsis("""\
+    assert get_log() == Ellipsis(
+        """\
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
-event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp""")
+event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+    )
 
     vm.ensure()
     vm.status()
-    assert get_log() == Ellipsis("""\
+    assert get_log() == Ellipsis(
+        """\
 event=running-ensure generation=0 machine=simplevm
 action=start event=ensure-state found=offline machine=simplevm wanted=online
 ...
@@ -200,7 +247,8 @@ device=virtio1 event=disk-throttle iops=3000 machine=simplevm
 device=virtio2 event=disk-throttle iops=3000 machine=simplevm
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp""")
+event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+    )
 
     p = vm.qemu.proc()
     p.kill()
@@ -208,16 +256,19 @@ event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/s
     get_log()
 
     vm.status()
-    assert get_log() == Ellipsis("""\
+    assert get_log() == Ellipsis(
+        """\
 event=vm-status machine=simplevm result=offline
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp""")
+event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+    )
 
     vm.ensure()
 
     vm.status()
-    assert get_log() == Ellipsis("""\
+    assert get_log() == Ellipsis(
+        """\
 event=running-ensure generation=0 machine=simplevm
 action=start event=ensure-state found=offline machine=simplevm wanted=online
 ...
@@ -227,13 +278,22 @@ device=virtio1 event=disk-throttle iops=3000 machine=simplevm
 device=virtio2 event=disk-throttle iops=3000 machine=simplevm
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp""")
+event=rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+    )
 
-    util.test_log_options['show_events'] = [
-        'shutdown', 'kill', 'unlock', 'vm-status', 'consul', 'clean', 'rbd-status']
+    util.test_log_options["show_events"] = [
+        "shutdown",
+        "kill",
+        "unlock",
+        "vm-status",
+        "consul",
+        "clean",
+        "rbd-status",
+    ]
     vm.stop()
     vm.status()
-    assert get_log() == Ellipsis("""\
+    assert get_log() == Ellipsis(
+        """\
 event=graceful-shutdown machine=simplevm
 event=graceful-shutdown-failed machine=simplevm reason=timeout
 event=kill-vm machine=simplevm
@@ -247,7 +307,8 @@ event=vm-status machine=simplevm result=offline
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
 event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp
-address=host1 event=consul machine=simplevm service=qemu-simplevm""")
+address=host1 event=consul machine=simplevm service=qemu-simplevm"""
+    )
 
 
 def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
@@ -256,10 +317,10 @@ def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
     vm.qemu.proc().kill()
     vm.qemu.proc().wait(2)
     assert vm.ceph.locked_by_me() is True
-    vm.enc['parameters']['online'] = False
-    vm.enc['consul-generation'] += 1
+    vm.enc["parameters"]["online"] = False
+    vm.enc["consul-generation"] += 1
     vm.stage_new_config()
-    vm.enc['consul-generation'] -= 1
+    vm.enc["consul-generation"] -= 1
     vm.ensure()
     # We don't really know what's going on here, so, yeah, don't touch it.
     assert vm.ceph.locked_by_me() is True
@@ -269,25 +330,30 @@ def test_vm_snapshot_only_if_running(vm):
     assert list(x.fullname for x in vm.ceph.root.snapshots) == []
     vm.ceph.root.ensure_presence()
     with pytest.raises(InvalidCommand):
-        vm.snapshot('asdf')
+        vm.snapshot("asdf")
 
 
 def test_vm_snapshot_with_missing_guest_agent(vm, monkeypatch):
-    util.test_log_options['show_events'] = [
-        'consul', 'snapshot', 'freeze', 'thaw']
+    util.test_log_options["show_events"] = [
+        "consul",
+        "snapshot",
+        "freeze",
+        "thaw",
+    ]
 
-    monkeypatch.setattr(
-        util, 'today', lambda: datetime.date(2010, 1, 1))
+    monkeypatch.setattr(util, "today", lambda: datetime.date(2010, 1, 1))
 
-    monkeypatch.setattr(qemu, 'FREEZE_TIMEOUT', 1)
+    monkeypatch.setattr(qemu, "FREEZE_TIMEOUT", 1)
 
     assert list(x.fullname for x in vm.ceph.root.snapshots) == []
     vm.ensure()
     get_log()
 
     with pytest.raises(Exception):
-        vm.snapshot('asdf', 7)
-    assert Ellipsis("""\
+        vm.snapshot("asdf", 7)
+    assert (
+        Ellipsis(
+            """\
 event=snapshot-create machine=simplevm name=asdf-keep-until-20100108
 event=freeze machine=simplevm volume=root
 action=continue event=freeze-failed machine=simplevm reason=Unable to sync \
@@ -297,11 +363,16 @@ event=ensure-thawed machine=simplevm volume=root
 event=guest-fsfreeze-thaw-failed exc_info=True machine=simplevm subsystem=qemu
 event=ensure-thawed-failed machine=simplevm reason=Unable to sync with guest \
 agent after 10 tries.\
-""") == get_log()
+"""
+        )
+        == get_log()
+    )
 
     with pytest.raises(Exception):
-        vm.snapshot('asdf', 0)
-    assert Ellipsis("""\
+        vm.snapshot("asdf", 0)
+    assert (
+        Ellipsis(
+            """\
 event=snapshot-create machine=simplevm name=asdf
 event=freeze machine=simplevm volume=root
 action=continue event=freeze-failed machine=simplevm reason=...
@@ -310,7 +381,10 @@ event=ensure-thawed machine=simplevm volume=root
 event=guest-fsfreeze-thaw-failed exc_info=True machine=simplevm subsystem=qemu
 event=ensure-thawed-failed machine=simplevm reason=Unable to sync with guest \
 agent after 10 tries.\
-""") == get_log()
+"""
+        )
+        == get_log()
+    )
 
 
 def test_vm_throttle_iops(vm):
@@ -318,16 +392,21 @@ def test_vm_throttle_iops(vm):
     get_log()
 
     vm.ensure_online_disk_throttle()
-    assert get_log() == """\
+    assert (
+        get_log()
+        == """\
 arguments={} event=query-block id=None machine=simplevm subsystem=qemu/qmp
 action=none current_iops=3000 device=virtio0 event=ensure-throttle machine=simplevm target_iops=3000
 action=none current_iops=3000 device=virtio1 event=ensure-throttle machine=simplevm target_iops=3000
 action=none current_iops=3000 device=virtio2 event=ensure-throttle machine=simplevm target_iops=3000"""
+    )
 
-    vm.cfg['iops'] = 10
+    vm.cfg["iops"] = 10
 
     vm.ensure_online_disk_throttle()
-    assert get_log() == """\
+    assert (
+        get_log()
+        == """\
 arguments={} event=query-block id=None machine=simplevm subsystem=qemu/qmp
 action=throttle current_iops=3000 device=virtio0 event=ensure-throttle machine=simplevm target_iops=10
 arguments={'bps_rd': 0, 'bps_wr': 0, 'bps': 0, 'iops': 10, 'iops_rd': 0, 'device': u'virtio0', 'iops_wr': 0} event=block_set_io_throttle id=None machine=simplevm subsystem=qemu/qmp
@@ -335,33 +414,46 @@ action=throttle current_iops=3000 device=virtio1 event=ensure-throttle machine=s
 arguments={'bps_rd': 0, 'bps_wr': 0, 'bps': 0, 'iops': 10, 'iops_rd': 0, 'device': u'virtio1', 'iops_wr': 0} event=block_set_io_throttle id=None machine=simplevm subsystem=qemu/qmp
 action=throttle current_iops=3000 device=virtio2 event=ensure-throttle machine=simplevm target_iops=10
 arguments={'bps_rd': 0, 'bps_wr': 0, 'bps': 0, 'iops': 10, 'iops_rd': 0, 'device': u'virtio2', 'iops_wr': 0} event=block_set_io_throttle id=None machine=simplevm subsystem=qemu/qmp"""
+    )
 
     vm.ensure_online_disk_throttle()
-    assert get_log() == """\
+    assert (
+        get_log()
+        == """\
 arguments={} event=query-block id=None machine=simplevm subsystem=qemu/qmp
 action=none current_iops=10 device=virtio0 event=ensure-throttle machine=simplevm target_iops=10
 action=none current_iops=10 device=virtio1 event=ensure-throttle machine=simplevm target_iops=10
 action=none current_iops=10 device=virtio2 event=ensure-throttle machine=simplevm target_iops=10"""
+    )
 
 
 def test_vm_resize_disk(vm):
     vm.start()
     get_log()
     vm.ensure_online_disk_size()
-    assert get_log() == """\
+    assert (
+        get_log()
+        == """\
 action=none event=check-disk-size found=5368709120 machine=simplevm wanted=5368709120\
 """
+    )
 
-    vm.cfg['disk'] *= 2
+    vm.cfg["disk"] *= 2
 
     vm.ensure_online_disk_size()
-    assert get_log() == """\
+    assert (
+        get_log()
+        == """\
 action=resize event=check-disk-size found=5368709120 machine=simplevm wanted=10737418240
 arguments={'device': 'virtio0', 'size': 10737418240} event=block_resize id=None machine=simplevm subsystem=qemu/qmp"""
+    )
 
     vm.ensure_online_disk_size()
-    assert get_log() == """\
+    assert (
+        get_log()
+        == """\
 action=none event=check-disk-size found=10737418240 machine=simplevm wanted=10737418240"""
+    )
 
 
 def test_swap_size():
@@ -382,33 +474,36 @@ def test_tmp_size():
 
 
 def test_vm_migration(vm):
-    subprocess.check_call('./test-migration.sh', shell=True)
+    subprocess.check_call("./test-migration.sh", shell=True)
 
 
 def test_simple_cancelled_migration_doesnt_clean_up(vm, monkeypatch):
     import fc.qemu.outgoing
-    monkeypatch.setattr(fc.qemu.outgoing.Outgoing, 'connect_timeout', 2)
+
+    monkeypatch.setattr(fc.qemu.outgoing.Outgoing, "connect_timeout", 2)
 
     vm.start()
-    assert os.path.exists('/run/qemu.simplevm.pid')
+    assert os.path.exists("/run/qemu.simplevm.pid")
     assert vm.ceph.locked_by_me()
 
     vm.ensure_online_remote()
     assert vm.ceph.locked_by_me()
-    assert os.path.exists('/run/qemu.simplevm.pid')
+    assert os.path.exists("/run/qemu.simplevm.pid")
 
 
 def test_new_vm(vm):
     # A new VM gets created by consul adding the staging filename and then
     # starting it. At this point the main config file doesn't exist yet.
-    shutil.copy('/etc/qemu/vm/simplevm.cfg',
-                '/etc/qemu/vm/.simplevm.cfg.staging')
-    os.unlink('/etc/qemu/vm/simplevm.cfg')
+    shutil.copy(
+        "/etc/qemu/vm/simplevm.cfg", "/etc/qemu/vm/.simplevm.cfg.staging"
+    )
+    os.unlink("/etc/qemu/vm/simplevm.cfg")
     # Include testing the agent setup for this scenario.
-    vm = Agent('simplevm')
+    vm = Agent("simplevm")
     with vm:
         vm.ensure()
-    assert get_log() == Ellipsis("""\
+    assert get_log() == Ellipsis(
+        """\
 ...
 event=running-ensure generation=-1 machine=simplevm
 ...
@@ -420,4 +515,5 @@ event=generate-config machine=simplevm
 event=ensure-root machine=simplevm subsystem=ceph
 event=create-vm machine=simplevm subsystem=ceph
 ...
-""")
+"""
+    )

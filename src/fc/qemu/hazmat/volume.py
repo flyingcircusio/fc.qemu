@@ -5,13 +5,15 @@ represents an RBD volume that is not a snapshot. Image is an abstract
 base class for both volumes and snapshots.
 """
 
-from ..util import remove_empty_dirs, cmd
 import contextlib
 import json
 import os
 import os.path as p
-import rbd
 import time
+
+import rbd
+
+from ..util import cmd, remove_empty_dirs
 
 
 class Image(object):
@@ -41,21 +43,27 @@ class Image(object):
     def part1dev(self):
         if not self.device:
             return None
-        return self.device + '-part1'
+        return self.device + "-part1"
 
     def map(self):
         if self.device is not None:
             return
-        self.cmd('rbd -c "{}" --id "{}" map "{}"'.format(
-                 self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.fullname))
+        self.cmd(
+            'rbd -c "{}" --id "{}" map "{}"'.format(
+                self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.fullname
+            )
+        )
         time.sleep(0.1)
-        self.device = '/dev/rbd/' + self.fullname
+        self.device = "/dev/rbd/" + self.fullname
 
     def unmap(self):
         if self.device is None:
             return
-        self.cmd('rbd -c "{}" --id "{}" unmap "{}"'.format(
-                 self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.device))
+        self.cmd(
+            'rbd -c "{}" --id "{}" unmap "{}"'.format(
+                self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.device
+            )
+        )
         self.device = None
 
     @contextlib.contextmanager
@@ -71,9 +79,10 @@ class Image(object):
         if self.mountpoint is not None:
             return
         if not self.device:
-            raise RuntimeError('image must be mapped before mounting',
-                               self.fullname)
-        mountpoint = '/mnt/rbd/{}'.format(self.fullname)
+            raise RuntimeError(
+                "image must be mapped before mounting", self.fullname
+            )
+        mountpoint = "/mnt/rbd/{}".format(self.fullname)
         try:
             os.makedirs(mountpoint)
         except OSError:  # pragma: no cover
@@ -113,16 +122,18 @@ class Snapshots(object):
 
     def __iter__(self):
         """Iterate over all existing snapshots."""
-        return (Snapshot(self.vol, s['name'], s['id'], s['size'])
-                for s in self._list_snaps())
+        return (
+            Snapshot(self.vol, s["name"], s["id"], s["size"])
+            for s in self._list_snaps()
+        )
 
     def __len__(self):
         return len(list(self._list_snaps()))
 
     def __getitem__(self, key):
         for s in self._list_snaps():
-            if key == s['name']:
-                return Snapshot(self.vol, s['name'], s['id'], s['size'])
+            if key == s["name"]:
+                return Snapshot(self.vol, s["name"], s["id"], s["size"])
         raise KeyError(key)
 
     def _list_snaps(self):
@@ -134,15 +145,17 @@ class Snapshots(object):
     def purge(self):
         """Remove all snapshots."""
         for snapshot in self:
-            self.log.info('remove-snapshot',
-                          volum=self.vol.fullname,
-                          snapshot=snapshot.name)
+            self.log.info(
+                "remove-snapshot",
+                volum=self.vol.fullname,
+                snapshot=snapshot.name,
+            )
             snapshot.remove()
 
     def create(self, snapname):
-        self.log.info('create-snapshot',
-                      volume=self.vol.fullname,
-                      snapshot=snapname)
+        self.log.info(
+            "create-snapshot", volume=self.vol.fullname, snapshot=snapname
+        )
         self.vol.rbdimage.create_snap(snapname)
 
 
@@ -164,11 +177,11 @@ class Snapshot(Image):
 
     @property
     def fullname(self):
-        return self.ioctx.name + '/' + self.name + '@' + self.snapname
+        return self.ioctx.name + "/" + self.name + "@" + self.snapname
 
     def remove(self):
         """Destroy myself."""
-        self.log.info('remove-snapshot')
+        self.log.info("remove-snapshot")
         self.vol.rbdimage.remove_snap(self.snapname)
 
 
@@ -181,9 +194,11 @@ class Volume(Image):
     """
 
     MKFS_CMD = {
-        'xfs': ('mkfs.xfs {options} -L "{label}" "{device}"'),
-        'ext4': ('mkfs.ext4 {options} -L "{label}" "{device}" '
-                 '&& tune2fs -e remount-ro "{device}"')
+        "xfs": ('mkfs.xfs {options} -L "{label}" "{device}"'),
+        "ext4": (
+            'mkfs.ext4 {options} -L "{label}" "{device}" '
+            '&& tune2fs -e remount-ro "{device}"'
+        ),
     }
 
     def __init__(self, ceph, name, label):
@@ -203,7 +218,7 @@ class Volume(Image):
 
     @property
     def fullname(self):
-        return self.ioctx.name + '/' + self.name
+        return self.ioctx.name + "/" + self.name
 
     @property
     def size(self):
@@ -224,7 +239,7 @@ class Volume(Image):
         self.rbdimage.resize(size)
 
     def lock(self):
-        self.log.info('lock')
+        self.log.info("lock")
         retry = 3
         while retry:
             try:
@@ -248,11 +263,12 @@ class Volume(Image):
                     # the existing lock.
                     return
                 # Its locked for some other client.
-                self.log.error('assume-lock-failed', competing=status)
+                self.log.error("assume-lock-failed", competing=status)
                 raise
         raise rbd.ImageBusy(
-            'Could not acquire lock - tried multiple times. '
-            'Someone seems to be racing me.')
+            "Could not acquire lock - tried multiple times. "
+            "Someone seems to be racing me."
+        )
 
     def lock_status(self):
         """Return None if not locked and (client_id, lock_id) if it is."""
@@ -264,7 +280,7 @@ class Volume(Image):
             return
         # For some reasons list_lockers may just return an empty list instead
         # of a dict. Say what?
-        lockers = lockers['lockers']
+        lockers = lockers["lockers"]
         if not len(lockers) == 1:
             raise NotImplementedError("I'm not prepared for shared locks")
         client_id, lock_id, addr = lockers[0]
@@ -276,7 +292,7 @@ class Volume(Image):
             return
         client_id, lock_id = locked_by
         if self.locked_by_me:
-            self.log.info('unlock')
+            self.log.info("unlock")
             self.rbdimage.unlock(lock_id)
             self.locked_by_me = False
             return
@@ -285,58 +301,69 @@ class Volume(Image):
             try:
                 self.rbdimage.break_lock(client_id, lock_id)
             except rbd.InvalidArgument:
-                if client_id == 'client.?':
-                    self.log.warn('buggy-lock', action='low-level-delete')
+                if client_id == "client.?":
+                    self.log.warn("buggy-lock", action="low-level-delete")
                     # This looks a lot like a broken hammer installation.
                     # Be cruel.
-                    img_id = self.ioctx.read('rbd_id.{}'.format(self.name)).strip()
+                    img_id = self.ioctx.read(
+                        "rbd_id.{}".format(self.name)
+                    ).strip()
                     img_id = img_id[4:]
-                    self.ioctx.rm_xattr('rbd_header.{}'.format(img_id), 'lock.rbd_lock')
+                    self.ioctx.rm_xattr(
+                        "rbd_header.{}".format(img_id), "lock.rbd_lock"
+                    )
 
         if lock_id == self.ceph.CEPH_LOCK_HOST:
             # This host owns this lock but from a different connection. This
             # means we have to break it.
-            self.log.info('unlock')
+            self.log.info("unlock")
             _break_lock()
         # We do not own this lock: need to explicitly ask for breaking.
         elif force:
-            self.log.info('break-lock')
+            self.log.info("break-lock")
             _break_lock()
 
     def mkswap(self):
         """Creates a swap partition. Requires the volume to be mappped."""
-        assert self.device, 'volume must be mapped first'
+        assert self.device, "volume must be mapped first"
         self.cmd('mkswap -f -L "{}" "{}"'.format(self.label, self.device))
 
-    def mkfs(self, fstype='xfs', gptbios=False):
-        self.log.debug('create-fs', type=fstype)
-        assert self.device, 'volume must be mapped first'
+    def mkfs(self, fstype="xfs", gptbios=False):
+        self.log.debug("create-fs", type=fstype)
+        assert self.device, "volume must be mapped first"
         self.cmd('sgdisk -o "{}"'.format(self.device))
-        self.cmd('sgdisk -a 8192 -n 1:8192:0 -c "1:{}" -t 1:8300 '
-                 '"{}"'.format(self.label, self.device))
+        self.cmd(
+            'sgdisk -a 8192 -n 1:8192:0 -c "1:{}" -t 1:8300 '
+            '"{}"'.format(self.label, self.device)
+        )
         if gptbios:
-            self.cmd('sgdisk -n 2:2048:+1M -c 2:gptbios -t 2:EF02 "{}"'.format(
-                     self.device))
-        self.cmd('partprobe {}'.format(self.device))
+            self.cmd(
+                'sgdisk -n 2:2048:+1M -c 2:gptbios -t 2:EF02 "{}"'.format(
+                    self.device
+                )
+            )
+        self.cmd("partprobe {}".format(self.device))
         time.sleep(0.2)
         while not p.exists(self.part1dev):  # pragma: no cover
             time.sleep(0.1)
-        options = getattr(self.ceph, 'MKFS_' + fstype.upper())
-        self.cmd(self.MKFS_CMD[fstype].format(
-                 options=options, device=self.part1dev, label=self.label))
+        options = getattr(self.ceph, "MKFS_" + fstype.upper())
+        self.cmd(
+            self.MKFS_CMD[fstype].format(
+                options=options, device=self.part1dev, label=self.label
+            )
+        )
 
     def seed(self, enc, generation):
-        self.log.info('seed')
+        self.log.info("seed")
         with self.mounted() as target:
             os.chmod(target, 0o1777)
-            fc_data = p.join(target, 'fc-data')
+            fc_data = p.join(target, "fc-data")
             os.mkdir(fc_data)
             os.chmod(fc_data, 0o750)
-            with open(p.join(fc_data, 'enc.json'), 'w') as f:
+            with open(p.join(fc_data, "enc.json"), "w") as f:
                 os.fchmod(f.fileno(), 0o640)
                 json.dump(enc, f)
-                f.write('\n')
-            generation_marker = p.join(
-                fc_data, 'qemu-binary-generation-booted')
-            with open(generation_marker, 'w') as f:
-                f.write(str(generation) + '\n')
+                f.write("\n")
+            generation_marker = p.join(fc_data, "qemu-binary-generation-booted")
+            with open(generation_marker, "w") as f:
+                f.write(str(generation) + "\n")
