@@ -28,7 +28,7 @@ setup(
     namespace_packages=["fc"],
     install_requires=[
         "colorama",  # ==0.3.3',
-        "consulate==0.6.0",
+        "abaez.consulate==1.1.0",
         "psutil",  # ==5.4.2',
         "PyYaml>=5.3.1",
         "requests",  # ==2.11.1',
@@ -38,7 +38,7 @@ setup(
     entry_points={
         "console_scripts": [
             "fc-qemu = fc.qemu.main:main",
-            "fc-qemu-supervise = fc.qemu.hazmat.supervise:main",
+            "supervised-qemu = fc.qemu.hazmat.supervise:main",
         ],
     },
 )

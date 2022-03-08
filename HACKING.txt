@@ -4,42 +4,22 @@ fc.qemu development
 Workstation development
 -----------------------
 
-Prepare Vagrant environment::
-
     host$ git clone https://github.com/flyingcircusio/fc.qemu
     host$ cd fc.qemu
-    host$ vagrant up
-    host$ vagrant ssh
-
-Prepare virtualenv::
-
-    vm$ cd /vagrant
-    vm$ virtualenv --system-site-packages .
-    vm$ bin/pip install -r requirements.txt
-
-Run the tests::
-
-    vm$ cd /vagrant
-    vm$ sudo bin/py.test
+    host$ nix-shell
+    host$ pytest
 
 Test execution automatically updates a coverage report in the `htmlcov`
 directory.
 
-Run end-to-end migration test::
+Run end-to-end migration test (requires a NixOS host to run Qemu-based NixOS tests)::
 
-    vm$ cd /vagrant
-    vm$ sudo ./test-migration.sh
+    vm$ nix-build test.nix
 
 
 Real-world testing on FCIO DEV network
 --------------------------------------
 
-* Check out the source on a VM host
-* Set Puppet stopper
-* Create virtualenv: `virtualenv --system-site-packages .`
-* Install software: `bin/pip install -r requirements.txt`
-* Make symlink /usr/src/fc.qemu point to the local checkout
-* Install fc-qemu package in development mode:
-  `ACCEPT_KEYWORDS="**" emerge -1 fc-qemu`
+TBD
 
 .. vim: set ft=rst:

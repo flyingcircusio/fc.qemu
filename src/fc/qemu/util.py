@@ -135,5 +135,5 @@ def ensure_separate_cgroup():
     CGROUP = "/sys/fs/cgroup/fc-qemu"
     if not os.path.exists(CGROUP):
         os.mkdir(CGROUP)
-    with open(f"{CGROUP}/cgroup.procs", "w") as f:
+    with open("{}/cgroup.procs".format(CGROUP), "w") as f:
         f.write(str(os.getpid()))

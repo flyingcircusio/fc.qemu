@@ -3,6 +3,7 @@ import functools
 import re
 import time
 
+import consulate.models.agent
 import SimpleXMLRPCServer
 
 from .exc import ConfigChanged, MigrationError, QemuNotRunning
@@ -82,7 +83,9 @@ class IncomingServer(object):
             svcname,
             address=self.bind_address[0],
             port=self.bind_address[1],
-            ttl=self.timeout.remaining,
+            check=consulate.models.agent.Check(
+                name="migration-ttl", ttl="{}s".format(self.timeout.remaining)
+            ),
         )
         try:
             yield

@@ -17,6 +17,7 @@ from multiprocessing.pool import ThreadPool
 
 import colorama
 import consulate
+import consulate.models.agent
 import pkg_resources
 import requests
 import yaml
@@ -47,6 +48,11 @@ OK, WARNING, CRITICAL, UNKNOWN = 0, 1, 2, 3
 
 
 class ConsulEventHandler(object):
+    """This is a wrapper that processes various consul events and multiplexes
+    them into individual method handlers.
+
+    """
+
     def handle(self, event):
         """Actual handling of a single Consul event in a
         separate process."""
@@ -77,13 +83,29 @@ class ConsulEventHandler(object):
                 reason="is a physical machine",
             )
             return
+        log_ = log.bind(machine=vm)
         agent = Agent(vm, config)
-        log.info("processing-consul-event", consul_event="node", machine=vm)
+        log_.info("processing-consul-event", consul_event="node")
         if agent.stage_new_config():
-            log.info("launch-ensure", machine=vm)
-            subprocess.Popen([sys.argv[0], "-D", "ensure", vm], close_fds=True)
+            cmd = [sys.argv[0], "-D", "ensure", vm]
+            log_.info("launch-ensure", cmd=cmd)
+            s = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                close_fds=True,
+            )
+            log_.debug("launch-ensure", subprocess_pid=s.pid)
+            stdout, stderr = s.communicate()
+            exit_code = s.wait()
+            log_.debug("launch-ensure", exit_code=exit_code)
+            if exit_code:
+                # Avoid logging things twice. However, if it failed then
+                # we might be missing output that was generated before setting
+                # up logging.
+                log_.debug("launch-ensure", output=stdout)
         else:
-            log.info(
+            log_.info(
                 "ignore-consul-event", machine=vm, reason="config is unchanged"
             )
 
@@ -369,6 +391,51 @@ class Agent(object):
 
                 else:
                     log.info("offline", machine=vm.name)
+
+    @classmethod
+    def maintenance_enter(cls):
+        """Prepare the host for maintenance mode.
+
+        process exit codes signal success or (temporary) failure
+        """
+        d = directory.connect()
+        host = socket.gethostname()
+        for attempt in range(3):
+            log.info("request-evacuation")
+            evacuated = d.evacuate_vms(host)
+            if not evacuated:
+                # need to call evacuate_vms again to arrive at the empty set
+                break
+            log.info("evacuation-started", vms=evacuated)
+            time.sleep(5)
+
+        log.info("evacuation-pending")
+        # Trigger a gratuitous event handling cycle to help speed up the
+        # migration.
+        subprocess.call(["systemctl", "reload", "consul"])
+
+        # Monitor whether there are still VMs running.
+        timeout = TimeOut(300, interval=3)
+        while timeout.tick():
+            p = subprocess.Popen(
+                ["pgrep", "-f", "qemu-system-x86_64"], stdout=subprocess.PIPE
+            )
+            p.wait()
+            num_procs = len(p.stdout.read().splitlines())
+            log.info(
+                "evacuation-running",
+                vms=num_procs,
+                timeout_remaining=timeout.remaining,
+            )
+            if num_procs == 0:
+                # We made it: no VMs remaining, so we can proceed with the
+                # maintenance.
+                log.info("evacuation-success")
+                sys.exit(0)
+            time.sleep(10)
+
+        log.info("evacuation-timeout", action="postpone maintenance")
+        sys.exit(75)
 
     @classmethod
     def shutdown_all(cls):
@@ -778,6 +845,10 @@ class Agent(object):
             self.__enter__()
         self.log.debug("changes-settled")
 
+    # This needs to be non-blocking at least to allow triggering an `fc-qemu
+    # ensure` after a VM has spontaneously exited in the `run_supervised` code
+    # but maybe also due to other situations where we want to avoid
+    # deadlocks.
     @locked(blocking=False)
     def ensure_(self):
         self.activate_new_config()
@@ -976,18 +1047,23 @@ class Agent(object):
         self.consul.agent.service.register(
             self.svc_name,
             address=self.this_host,
-            interval="5s",
-            check=(
-                "test -e /proc/$(< /run/qemu.{}.pid )/mem || exit 2".format(
-                    self.name
-                )
+            check=consulate.models.agent.Check(
+                name="qemu-process",
+                args=[
+                    "/bin/sh",
+                    "-c",
+                    "test -e /proc/$(< /run/qemu.{}.pid )/mem || exit 2".format(
+                        self.name
+                    ),
+                ],
+                interval="5s",
             ),
         )
 
     def consul_deregister(self):
         """De-register non-running VM with Consul."""
         try:
-            if self.svc_name not in self.consul.agent.services()[0]:
+            if self.svc_name not in self.consul.agent.services():
                 return
             self.log.info("consul-deregister")
             self.consul.agent.service.deregister("qemu-{}".format(self.name))
@@ -1159,7 +1235,7 @@ class Agent(object):
             # Consul knows about a running VM. Lets try a migration.
             return existing["Address"]
 
-        if not self.ceph.is_unlocked():
+        if self.ceph.is_unlocked():
             # Consul doesn't know about a running VM and no volume is locked.
             # It doesn't make sense to live migrate this VM.
             return None
@@ -1263,7 +1339,8 @@ class Agent(object):
             "-nodefaults",
             "-only-migratable",
             "-cpu {cpu_model},enforce",
-            "-name {name},process=kvm.{name}",  # Watch out: kvm.name is used for sanity checking critical actions.
+            # Watch out: kvm.name is used for sanity checking critical actions.
+            "-name {name},process=kvm.{name}",
             "-chroot {{chroot}}",
             "-runas nobody",
             "-serial file:/var/log/vm/{name}.log",

@@ -39,6 +39,7 @@ def qemu_with_pidfile():
 
 
 def test_proc_running(qemu_with_pidfile):
+    assert False  # hangs
     assert isinstance(qemu_with_pidfile.proc(), psutil.Process)
 
 

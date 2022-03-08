@@ -11,6 +11,7 @@ htmlcov
 include
 .installed.cfg
 lib
+pyvenv.cfg
 lib64
 local
 local

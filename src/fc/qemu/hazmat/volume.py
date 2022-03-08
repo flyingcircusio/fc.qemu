@@ -191,6 +191,7 @@ class Volume(Image):
     A volume has a name (shown in `rbd ls`) and a filesystem label. The
     latter is only used for mkfs/mkswap. A volume may have a set of
     snapshots accessible via the `snapshots` container object.
+
     """
 
     MKFS_CMD = {
@@ -245,6 +246,7 @@ class Volume(Image):
             try:
                 self.rbdimage.lock_exclusive(self.ceph.CEPH_LOCK_HOST)
                 self.locked_by_me = True
+                return
             except rbd.ImageExists:
                 # This client and cookie already locked this. This is
                 # definitely fine.

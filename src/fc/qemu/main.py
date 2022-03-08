@@ -60,6 +60,7 @@ def main():
     import argparse
 
     a = argparse.ArgumentParser(description="Qemu VM agent")
+
     a.add_argument(
         "--verbose",
         "-v",
@@ -78,6 +79,14 @@ def main():
 
     p = sub.add_parser("ls", help="List VMs on this host.")
     p.set_defaults(func="ls")
+
+    maint = sub.add_parser("maintenance", help="Perform maintenance tasks.")
+    maint_sub = maint.add_subparsers()
+
+    parser_enter = maint_sub.add_parser(
+        "enter", help="Prepare host for maintenance mode."
+    )
+    parser_enter.set_defaults(func="maintenance_enter")
 
     p = sub.add_parser("check", help="Perform health check for this host.")
     p.set_defaults(func="check")
@@ -175,7 +184,8 @@ def main():
     del kwargs["verbose"]
 
     if args.daemonize:
-        raise RuntimeError("Deprecated feature. Do not use.")
+        # Needed to help spawn subprocesses from consul without blocking.
+        daemonize()
 
     from .agent import Agent, InvalidCommand, VMConfigNotFound
     from .logging import init_logging
@@ -206,6 +216,7 @@ def main():
     except (ControlledRuntimeException):
         # Those exceptions are properly logged and indicate an error with a
         # proper shutdown.
+        log.exception("controlled-exception", exc_info=True)
         sys.exit(1)
     except (VMConfigNotFound, InvalidCommand):
         # Those exceptions are properly logged and don't have to be shown

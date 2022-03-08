@@ -91,7 +91,7 @@ class Qemu(object):
     cfg = None
     require_kvm = True
     migration_address = None
-    max_downtime = 1.0
+    max_downtime = 1.0  # seconds
     guestagent_timeout = 3.0
     # QMP runs in the main thread and can block. Our original 15s timeout
     # is definitely too short. Many discussions mention that 5 minutes have
@@ -216,7 +216,10 @@ class Qemu(object):
             os.rename(logfile, alternate)
 
     def _current_vms_booked_memory(self):
-        """Determine the amount of booked memory (MiB) from the currently running VM processes."""
+        """Determine the amount of booked memory (MiB) from the
+
+        currently running VM processes.
+        """
         total = 0
         for proc in psutil.process_iter():
             try:
@@ -255,10 +258,12 @@ class Qemu(object):
         are still running. This can cause severe performance penalties and may
         also kill VMs under some circumstances.
 
-        Also, if VMs should exhibit extreme overhead, we protect against starting additional VMs even if our inventory says we should be
+        Also, if VMs should exhibit extreme overhead, we protect against
+        starting additional VMs even if our inventory says we should be
         able to run them.
 
-        If no limit is configured then we start VMs based on actual availability only.
+        If no limit is configured then we start VMs based on actual
+        availability only.
 
         """
         current_booked = self._current_vms_booked_memory()  # MiB
@@ -322,9 +327,9 @@ class Qemu(object):
             )
             # We explicitly close all fds for the child to avoid inheriting fd
             # locks accidentally and indefinitely.
-            qemu_log = "/var/log/vm/{}.qemu.log".format(self.name)
+            qemu_log = "/var/log/vm/{}.supervisor.log".format(self.name)
             p = subprocess.Popen(
-                [sys.executable, supervise.__file__, cmd, self.name, qemu_log],
+                ["supervised-qemu", cmd, self.name, qemu_log],
                 close_fds=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -406,10 +411,14 @@ class Qemu(object):
                 {"capability": "auto-converge", "state": True},
             ],
         )
-        self.qmp.command("migrate-set-parameters", **{"compress-level": 0})
-
-        self.qmp.command("migrate_set_downtime", value=self.max_downtime)
-        self.qmp.command("migrate_set_speed", value=0)
+        self.qmp.command(
+            "migrate-set-parameters",
+            **{
+                "compress-level": 0,
+                "downtime-limit": int(self.max_downtime * 1000),  # ms
+                "max-bandwidth": 0,
+            }
+        )
         self.qmp.command("migrate", uri=address)
         self.log.debug(
             "migrate-parameters", **self.qmp.command("query-migrate-parameters")
