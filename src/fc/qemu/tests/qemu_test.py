@@ -1,6 +1,5 @@
 import os
 import subprocess
-import tempfile
 import time
 
 import psutil
@@ -10,13 +9,14 @@ from ..hazmat.qemu import Qemu
 
 
 @pytest.yield_fixture
-def qemu_with_pidfile():
+def qemu_with_pidfile(tmpdir):
     # The fixture uses a very long name which catches a special case where
     # the proc name is limited to 16 bytes and then we failed to match
     # the running VM. Parametrizing fixtures doesn't work the way I want
     # so I did it this way ...
+    pidfile = str(tmpdir / "run/qemu.testvmwithverylongname.pid")
     try:
-        os.unlink("/run/qemu.testvmwithverylongname.pid")
+        os.unlink(pidfile)
     except OSError:
         pass
     proc = subprocess.Popen(
@@ -26,10 +26,10 @@ def qemu_with_pidfile():
             "testvmwithverylongname,process=kvm.testvmwithverylongname",
             "-nodefaults",
             "-pidfile",
-            "/run/qemu.testvmwithverylongname.pid",
+            pidfile,
         ]
     )
-    while not os.path.exists("/run/qemu.testvmwithverylongname.pid"):
+    while not os.path.exists(pidfile):
         time.sleep(0.01)
     q = Qemu(dict(name="testvmwithverylongname", id=1234))
     try:
@@ -39,7 +39,6 @@ def qemu_with_pidfile():
 
 
 def test_proc_running(qemu_with_pidfile):
-    assert False  # hangs
     assert isinstance(qemu_with_pidfile.proc(), psutil.Process)
 
 

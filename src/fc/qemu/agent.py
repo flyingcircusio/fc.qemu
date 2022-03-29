@@ -46,6 +46,8 @@ def _handle_consul_event(event):
 
 OK, WARNING, CRITICAL, UNKNOWN = 0, 1, 2, 3
 
+EXECUTABLE = sys.argv[0]  # make mockable
+
 
 class ConsulEventHandler(object):
     """This is a wrapper that processes various consul events and multiplexes
@@ -87,7 +89,7 @@ class ConsulEventHandler(object):
         agent = Agent(vm, config)
         log_.info("processing-consul-event", consul_event="node")
         if agent.stage_new_config():
-            cmd = [sys.argv[0], "-D", "ensure", vm]
+            cmd = [EXECUTABLE, "-D", "ensure", vm]
             log_.info("launch-ensure", cmd=cmd)
             s = subprocess.Popen(
                 cmd,
@@ -236,6 +238,7 @@ class Agent(object):
     # from the sysconfig module. See this class' __init__. The defaults
     # are here to support testing.
 
+    prefix = "/"
     this_host = ""
     migration_ctl_address = None
     accelerator = ""
@@ -293,15 +296,21 @@ class Agent(object):
 
     @property
     def configfile(self):
-        return "/etc/qemu/vm/{}.cfg".format(self.name)
+        return os.path.join(
+            self.prefix, "etc/qemu/vm", "{}.cfg".format(self.name)
+        )
 
     @property
     def configfile_staging(self):
-        return "/etc/qemu/vm/.{}.cfg.staging".format(self.name)
+        return os.path.join(
+            self.prefix, "etc/qemu/vm", ".{}.cfg.staging".format(self.name)
+        )
 
     @property
     def lockfile(self):
-        return "/run/qemu.{}.lock".format(self.name)
+        return os.path.join(
+            self.prefix, "run", "qemu.{}.lock".format(self.name)
+        )
 
     def _load_enc(self):
         try:
@@ -335,8 +344,8 @@ class Agent(object):
 
     @classmethod
     def _vm_agents_for_host(cls):
-        for candidate in sorted(glob.glob("/run/qemu.*.pid")):
-            name = candidate.replace("/run/qemu.", "")
+        for candidate in sorted(glob.glob(self.prefix + "run/qemu.*.pid")):
+            name = candidate.replace(self.prefix + "run/qemu.", "")
             name = name.replace(".pid", "")
             try:
                 agent = Agent(name)
@@ -388,7 +397,6 @@ class Agent(object):
                         memory_pss="{:,.0f}".format(vm_mem.pss / MiB),
                         memory_swap="{:,.0f}".format(vm_mem.swap / MiB),
                     )
-
                 else:
                     log.info("offline", machine=vm.name)
 
@@ -477,9 +485,10 @@ class Agent(object):
                     print ("Please type 'yes' or 'no'.")
 
         def stop_vm(vm):
-            # Isolate processes to ensure stability.
+            # Isolate the stop call into separate fc-qemu
+            # processes to ensure reliability.
             log.info("shutdown", vm=vm.name)
-            p = subprocess.Popen([sys.argv[0], "stop", vm.name])
+            p = subprocess.Popen([EXECUTABLE, "stop", vm.name])
             p.wait()
 
         pool = ThreadPool(5)
@@ -620,7 +629,8 @@ class Agent(object):
             # Do we need to activate this config?
             activate_staging_config = False
             try:
-                current_active_config = yaml.safe_load(self.configfile)
+                with open(self.configfile, "r") as current_active:
+                    current_active_config = yaml.safe_load(current_active)
                 current_active_generation = current_active_config[
                     "consul-generation"
                 ]
@@ -772,15 +782,11 @@ class Agent(object):
                 result="released",
             )
 
-    def __enter__(self):
-        # Allow updating our config by exiting/entering after setting new ENC
-        # data.
+    def _update_from_enc(self):
         # This copy means we can't manipulate cfg to update ENC data, which is
         # OK. We did this at some point and we're adding computed data to the
         # `cfg` structure, that we do not want to accidentally reflect back
         # into the config file.
-        if self.enc is None:
-            return
         self.cfg = copy.copy(self.enc["parameters"])
         self.cfg["name"] = self.enc["name"]
         self.cfg["swap_size"] = swap_size(self.cfg["memory"])
@@ -798,6 +804,13 @@ class Agent(object):
                 self.vm_config_template = cand
                 break
 
+    def __enter__(self):
+        # Allow updating our config by exiting/entering after setting new ENC
+        # data.
+        self._update_from_enc()
+        if self.enc is None:
+            return
+        self._update_from_enc()
         for c in self.contexts:
             c.__enter__()
 

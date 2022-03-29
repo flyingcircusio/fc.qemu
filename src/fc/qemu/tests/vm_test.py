@@ -15,6 +15,7 @@ from ..hazmat import qemu
 from ..util import GiB, MiB
 
 
+@pytest.mark.live
 def test_simple_vm_lifecycle_start_stop(vm):
     util.test_log_options["show_events"] = ["vm-status", "rbd-status"]
 
@@ -127,6 +128,7 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     )
 
 
+@pytest.mark.live
 def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys, caplog):
     util.test_log_options["show_events"] = [
         "vm-status",
@@ -187,6 +189,7 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     )
 
 
+@pytest.mark.live
 def test_vm_not_running_here(vm, capsys):
     util.test_log_options["show_events"] = ["vm-status", "rbd-status"]
 
@@ -215,6 +218,7 @@ event=rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     )
 
 
+@pytest.mark.live
 def test_crashed_vm_clean_restart(vm):
     util.test_log_options["show_events"] = [
         "rbd-status",
@@ -311,6 +315,7 @@ address=host1 event=consul machine=simplevm service=qemu-simplevm"""
     )
 
 
+@pytest.mark.live
 def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
     vm.ensure()
     assert vm.qemu.is_running() is True
@@ -326,6 +331,7 @@ def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
     assert vm.ceph.locked_by_me() is True
 
 
+@pytest.mark.live
 def test_vm_snapshot_only_if_running(vm):
     assert list(x.fullname for x in vm.ceph.root.snapshots) == []
     vm.ceph.root.ensure_presence()
@@ -333,6 +339,7 @@ def test_vm_snapshot_only_if_running(vm):
         vm.snapshot("asdf")
 
 
+@pytest.mark.live
 def test_vm_snapshot_with_missing_guest_agent(vm, monkeypatch):
     util.test_log_options["show_events"] = [
         "consul",
@@ -387,6 +394,7 @@ agent after 10 tries.\
     )
 
 
+@pytest.mark.live
 def test_vm_throttle_iops(vm):
     vm.start()
     get_log()
@@ -427,6 +435,7 @@ action=none current_iops=10 device=virtio2 event=ensure-throttle machine=simplev
     )
 
 
+@pytest.mark.live
 def test_vm_resize_disk(vm):
     vm.start()
     get_log()
@@ -473,10 +482,12 @@ def test_tmp_size():
     assert tmp_size(1000) == 31 * GiB
 
 
+@pytest.mark.live
 def test_vm_migration(vm):
     subprocess.check_call("./test-migration.sh", shell=True)
 
 
+@pytest.mark.live
 def test_simple_cancelled_migration_doesnt_clean_up(vm, monkeypatch):
     import fc.qemu.outgoing
 
@@ -491,6 +502,7 @@ def test_simple_cancelled_migration_doesnt_clean_up(vm, monkeypatch):
     assert os.path.exists("/run/qemu.simplevm.pid")
 
 
+@pytest.mark.live
 def test_new_vm(vm):
     # A new VM gets created by consul adding the staging filename and then
     # starting it. At this point the main config file doesn't exist yet.

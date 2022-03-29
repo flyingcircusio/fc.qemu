@@ -4,6 +4,7 @@ import os.path
 import pytest
 from StringIO import StringIO
 
+import fc.qemu.agent
 from fc.qemu import util
 from fc.qemu.agent import Agent
 from fc.qemu.hazmat.qemu import Qemu
@@ -50,8 +51,11 @@ def test_no_key_event():
 
 
 @pytest.yield_fixture
-def clean_config_test22():
-    targets = ["/etc/qemu/vm/test22.cfg", "/etc/qemu/vm/.test22.cfg.staging"]
+def clean_config_test22(tmpdir):
+    targets = [
+        str(tmpdir / "etc/qemu/vm/test22.cfg"),
+        str(tmpdir / "/etc/qemu/vm/.test22.cfg.staging"),
+    ]
     for target in targets:
         if os.path.exists(target):
             os.unlink(target)
@@ -112,9 +116,20 @@ def test_qemu_config_change(clean_config_test22):
     assert util.log_data == [
         "count=1 event=start-consul-events",
         "consul_event=node event=processing-consul-event machine=test22",
-        "event=launch-ensure machine=test22",
+        "cmd=['true', '-D', 'ensure', u'test22'] event=launch-ensure machine=test22",
         "event=finish-consul-events",
     ]
+
+    # The test doesn't really active the config, so we need to mock this.
+    util.log_data = []
+    agent = Agent("test22")
+    assert agent.has_new_config()
+    assert not os.path.exists(agent.configfile)
+    agent.activate_new_config()
+    agent._update_from_enc()
+    assert not agent.has_new_config()
+    assert os.path.exists(agent.configfile)
+    assert util.log_data == []
 
     # Applying the same config again doesn't cause another ensure run.
     stdin.seek(0)
@@ -141,7 +156,7 @@ def test_qemu_config_change(clean_config_test22):
     assert util.log_data == [
         "count=1 event=start-consul-events",
         "consul_event=node event=processing-consul-event machine=test22",
-        "event=launch-ensure machine=test22",
+        "cmd=['true', '-D', 'ensure', u'test22'] event=launch-ensure machine=test22",
         "event=finish-consul-events",
     ]
 
@@ -203,6 +218,7 @@ def test_qemu_config_change_physical():
     ]
 
 
+@pytest.mark.live
 def test_snapshot_online_vm(vm):
     util.test_log_options["show_events"] = [
         "consul",
@@ -268,6 +284,7 @@ event=finish-consul-events"""
     )
 
 
+@pytest.mark.live
 def test_snapshot_offline_vm(vm):
     util.test_log_options["show_events"] = ["consul", "snapshot"]
 

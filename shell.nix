@@ -63,5 +63,5 @@ let
 in
   pkgs.mkShell {
     # nativeBuildInputs is usually what you want -- tools you need to run
-    nativeBuildInputs = [ fc-qemu py.pytest py.pytest-cov py.mock py.pytest-timeout ];
+    nativeBuildInputs = [ fc-qemu py.pytest py.pytest-xdist py.pytest-cov py.mock py.pytest-timeout ];
 }

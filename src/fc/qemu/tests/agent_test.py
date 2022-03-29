@@ -11,13 +11,15 @@ from ..exc import VMStateInconsistent
 
 
 @pytest.yield_fixture
-def simplevm_cfg():
+def simplevm_cfg(tmpdir):
     fixtures = pkg_resources.resource_filename(__name__, "fixtures")
-    shutil.copy(fixtures + "/simplevm.yaml", "/etc/qemu/vm/simplevm.cfg")
+    shutil.copy(
+        fixtures + "/simplevm.yaml", str(tmpdir / "/etc/qemu/vm/simplevm.cfg")
+    )
     yield "simplevm"
-    os.unlink("/etc/qemu/vm/simplevm.cfg")
 
 
+@pytest.mark.live
 def test_builtin_config_template(simplevm_cfg):
     a = Agent(simplevm_cfg)
     with a:
@@ -26,18 +28,17 @@ def test_builtin_config_template(simplevm_cfg):
     assert 'type = "pc-i440fx-4.1"' in a.qemu.config
 
 
-def test_userdefined_config_template(simplevm_cfg):
-    with open("/etc/qemu/qemu.vm.cfg.in", "w") as f:
+@pytest.mark.live
+def test_userdefined_config_template(tmpdir, simplevm_cfg):
+    with open(str(tmpdir / "/etc/qemu/qemu.vm.cfg.in"), "w") as f:
         f.write("# user defined config template\n")
-    try:
-        a = Agent(simplevm_cfg)
-        with a:
-            a.generate_config()
-        assert "user defined config template" in a.qemu.config
-    finally:
-        os.unlink("/etc/qemu/qemu.vm.cfg.in")
+    a = Agent(simplevm_cfg)
+    with a:
+        a.generate_config()
+    assert "user defined config template" in a.qemu.config
 
 
+@pytest.mark.live
 def test_consistency_vm_running(simplevm_cfg):
     a = Agent(simplevm_cfg)
     with a:
@@ -47,6 +48,7 @@ def test_consistency_vm_running(simplevm_cfg):
         a.raise_if_inconsistent()
 
 
+@pytest.mark.live
 def test_consistency_vm_not_running(simplevm_cfg):
     a = Agent(simplevm_cfg)
     with a:
@@ -56,6 +58,7 @@ def test_consistency_vm_not_running(simplevm_cfg):
         a.raise_if_inconsistent()
 
 
+@pytest.mark.live
 def test_consistency_process_dead(simplevm_cfg):
     a = Agent(simplevm_cfg)
     with a:
@@ -66,6 +69,7 @@ def test_consistency_process_dead(simplevm_cfg):
             a.raise_if_inconsistent()
 
 
+@pytest.mark.live
 def test_consistency_pidfile_missing(simplevm_cfg):
     a = Agent(simplevm_cfg)
     with a:
@@ -76,6 +80,7 @@ def test_consistency_pidfile_missing(simplevm_cfg):
             a.raise_if_inconsistent()
 
 
+@pytest.mark.live
 def test_consistency_ceph_lock_missing(simplevm_cfg):
     a = Agent(simplevm_cfg)
     with a:
@@ -86,6 +91,7 @@ def test_consistency_ceph_lock_missing(simplevm_cfg):
             a.raise_if_inconsistent()
 
 
+@pytest.mark.live
 def test_ensure_resize(simplevm_cfg):
     a = Agent(simplevm_cfg)
     with a:

@@ -82,6 +82,7 @@ def locked_global(f):
 
 class Qemu(object):
 
+    prefix = ""
     executable = "qemu-system-x86_64"
 
     # Attributes on this class can be overriden (in a controlled fashion
@@ -160,6 +161,13 @@ class Qemu(object):
         self.guestagent = GuestAgent(self.name, timeout=self.guestagent_timeout)
 
         self.log = log.bind(machine=self.name, subsystem="qemu")
+
+        self.pidfile = self.prefix + self.pidfile
+        self.configfile = self.prefix + self.configfile
+        self.argfile = self.prefix + self.argfile
+        self.qmp_socket = self.prefix + self.qmp_socket
+        self.migration_lockfile = self.prefix + self.migration_lockfile
+        self.chroot = self.prefix + self.chroot
 
     __qmp = None
 

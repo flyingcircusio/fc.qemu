@@ -9,6 +9,9 @@ import pkg_resources
 import pytest
 import structlog
 
+import fc.qemu.agent
+import fc.qemu.hazmat.qemu
+
 from .agent import Agent
 
 
@@ -16,6 +19,15 @@ def pytest_collectstart(collector):
     from fc.qemu.sysconfig import sysconfig
 
     sysconfig.load_system_config()
+
+
+@pytest.fixture(autouse=True)
+def synthetic_root(monkeypatch, tmpdir):
+    monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "prefix", str(tmpdir))
+    os.makedirs(str(tmpdir / "run"))
+    os.makedirs(str(tmpdir / "etc/qemu/vm"))
+    monkeypatch.setattr(Agent, "prefix", str(tmpdir))
+    monkeypatch.setattr(fc.qemu.agent, "EXECUTABLE", "true")
 
 
 @pytest.fixture(scope="session")
@@ -89,15 +101,18 @@ def clean_environment():
     clean()
 
 
+@pytest.mark.live
 @pytest.yield_fixture
-def vm(clean_environment, monkeypatch):
+def vm(clean_environment, monkeypatch, tmpdir):
     import fc.qemu.hazmat.qemu
 
     monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "guestagent_timeout", 0.1)
     fixtures = pkg_resources.resource_filename(__name__, "tests/fixtures")
-    shutil.copy(fixtures + "/simplevm.yaml", "/etc/qemu/vm/simplevm.cfg")
-    if os.path.exists("/etc/qemu/vm/.simplevm.cfg.staging"):
-        os.unlink("/etc/qemu/vm/.simplevm.cfg.staging")
+    shutil.copy(
+        fixtures + "/simplevm.yaml", str(tmpdir / "/etc/qemu/vm/simplevm.cfg")
+    )
+    if os.path.exists(str(tmpdir / "/etc/qemu/vm/.simplevm.cfg.staging")):
+        os.unlink(str(tmpdir / "/etc/qemu/vm/.simplevm.cfg.staging"))
     vm = Agent("simplevm")
     vm.timeout_graceful = 1
     vm.__enter__()
@@ -116,10 +131,6 @@ def vm(clean_environment, monkeypatch):
     vm.__exit__(*exc_info)
     if len(exc_info):
         print(traceback.print_tb(exc_info[2]))
-    for x in glob.glob("/run/qemu.simplevm.*"):
-        os.unlink(x)
-    if os.path.exists("/etc/qemu/vm/.simplevm.cfg.staging"):
-        os.unlink("/etc/qemu/vm/.simplevm.cfg.staging")
 
 
 def get_log():
