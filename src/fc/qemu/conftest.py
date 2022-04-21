@@ -1,4 +1,3 @@
-import glob
 import os
 import shutil
 import subprocess
@@ -22,7 +21,11 @@ def pytest_collectstart(collector):
 
 
 @pytest.fixture(autouse=True)
-def synthetic_root(monkeypatch, tmpdir):
+def synthetic_root(request, monkeypatch, tmpdir):
+    is_live = request.node.get_closest_marker("live")
+    if is_live is not None:
+        # This is a live test. Do not mock things.
+        return
     monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "prefix", str(tmpdir))
     os.makedirs(str(tmpdir / "run"))
     os.makedirs(str(tmpdir / "etc/qemu/vm"))
@@ -34,11 +37,42 @@ def synthetic_root(monkeypatch, tmpdir):
 def setup_structlog():
     from . import util
 
-    log_exceptions = False  # set to True to temporarily get detailed tracebacks
+    # set to True to temporarily get detailed tracebacks
+    log_exceptions = False
 
     def test_logger(logger, method_name, event):
+        stack = event.pop("stack", None)
+        exc = event.pop("exception", None)
+        event_name = event.pop("event", "")
+        event_prefix = os.path.basename(event_name) if event_name else " "
         result = []
+        if "output_line" in event:
+            result = fc.qemu.logging.prefix(
+                event_prefix, event["output_line"].strip()
+            )
+        else:
+            output = event.pop("output", None)
 
+            result = []
+            if event_name:
+                result.append(event_name)
+            for key in sorted(event):
+                result.append("{}={}".format(key, str(event[key]).strip()))
+            result = " ".join(result)
+
+            if output:
+                result += fc.qemu.logging.prefix(event_prefix, output)
+
+        # Ensure we get something to read on stdout in case we have errors.
+        print(result)
+        if stack:
+            print(stack)
+        if exc:
+            print(exc)
+
+        # Allow tests to inspect only methods and events they are interested
+        # in. This reduces noise in our test outputs and comparisons and
+        # reduces fragility.
         show_methods = util.test_log_options["show_methods"]
         if show_methods and method_name not in show_methods:
             raise structlog.DropEvent
@@ -46,17 +80,12 @@ def setup_structlog():
         show_events = util.test_log_options["show_events"]
         if show_events:
             for show in show_events:
-                if show in event["event"]:
+                if show in event_name:
                     break
             else:
                 raise structlog.DropEvent
 
-        if log_exceptions:
-            stack = event.pop("stack", None)
-            exc = event.pop("exception", None)
-        for key in sorted(event):
-            result.append("{}={}".format(key, event[key]))
-        util.log_data.append(" ".join(result))
+        util.log_data.append(result)
         if log_exceptions:
             if stack:
                 util.log_data.extend(stack.splitlines())
@@ -101,18 +130,15 @@ def clean_environment():
     clean()
 
 
-@pytest.mark.live
 @pytest.yield_fixture
 def vm(clean_environment, monkeypatch, tmpdir):
     import fc.qemu.hazmat.qemu
 
     monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "guestagent_timeout", 0.1)
     fixtures = pkg_resources.resource_filename(__name__, "tests/fixtures")
-    shutil.copy(
-        fixtures + "/simplevm.yaml", str(tmpdir / "/etc/qemu/vm/simplevm.cfg")
-    )
-    if os.path.exists(str(tmpdir / "/etc/qemu/vm/.simplevm.cfg.staging")):
-        os.unlink(str(tmpdir / "/etc/qemu/vm/.simplevm.cfg.staging"))
+    shutil.copy(fixtures + "/simplevm.yaml", "/etc/qemu/vm/simplevm.cfg")
+    if os.path.exists("/etc/qemu/vm/.simplevm.cfg.staging"):
+        os.unlink("/etc/qemu/vm/.simplevm.cfg.staging")
     vm = Agent("simplevm")
     vm.timeout_graceful = 1
     vm.__enter__()

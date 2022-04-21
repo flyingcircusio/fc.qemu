@@ -319,7 +319,7 @@ class Agent(object):
         except IOError:
             if os.path.exists(self.configfile_staging):
                 # The VM has been freshly created. Set up a boilerplate
-                # configuration and le the actual config be established
+                # configuration and let the actual config be established
                 # through the 'ensure' command.
                 return None
             else:
@@ -344,8 +344,8 @@ class Agent(object):
 
     @classmethod
     def _vm_agents_for_host(cls):
-        for candidate in sorted(glob.glob(self.prefix + "run/qemu.*.pid")):
-            name = candidate.replace(self.prefix + "run/qemu.", "")
+        for candidate in sorted(glob.glob(cls.prefix + "run/qemu.*.pid")):
+            name = candidate.replace(cls.prefix + "run/qemu.", "")
             name = name.replace(".pid", "")
             try:
                 agent = Agent(name)
@@ -783,10 +783,10 @@ class Agent(object):
             )
 
     def _update_from_enc(self):
-        # This copy means we can't manipulate cfg to update ENC data, which is
-        # OK. We did this at some point and we're adding computed data to the
-        # `cfg` structure, that we do not want to accidentally reflect back
-        # into the config file.
+        # This copy means we can't manipulate `self.cfg` to update ENC data,
+        # which is OK. We did this at some point and we're adding computed
+        # data to the `cfg` structure, that we do not want to accidentally
+        # reflect back into the config file.
         self.cfg = copy.copy(self.enc["parameters"])
         self.cfg["name"] = self.enc["name"]
         self.cfg["swap_size"] = swap_size(self.cfg["memory"])
@@ -807,7 +807,6 @@ class Agent(object):
     def __enter__(self):
         # Allow updating our config by exiting/entering after setting new ENC
         # data.
-        self._update_from_enc()
         if self.enc is None:
             return
         self._update_from_enc()
@@ -1179,7 +1178,7 @@ class Agent(object):
                 "consul", service=consul["Service"], address=consul["Address"]
             )
         else:
-            self.log.info("consul", result="no response")
+            self.log.info("consul", service="<not registered>")
         return status
 
     def telnet(self):

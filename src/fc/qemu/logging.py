@@ -24,15 +24,17 @@ _MISSING = (
 _EVENT_WIDTH = 30  # pad the event name to so many characters
 
 
-def _pad(s, l):
+def _pad(s, target_length):
     """
     Pads *s* to length *l*.
     """
-    missing = l - len(s)
+    missing = target_length - len(s)
     return s + " " * (missing if missing > 0 else 0)
 
 
-if sys.stdout.isatty() and colorama:
+if not os.environ.get("FCQEMU_NO_TTY", 0) and sys.stdout.isatty() and colorama:
+    COLORIZED_TTY_OUTPUT = True
+
     RESET_ALL = colorama.Style.RESET_ALL
     BRIGHT = colorama.Style.BRIGHT
     DIM = colorama.Style.DIM
@@ -44,6 +46,8 @@ if sys.stdout.isatty() and colorama:
     YELLOW = colorama.Fore.YELLOW
     GREEN = colorama.Fore.GREEN
 else:
+    COLORIZED_TTY_OUTPUT = False
+
     RESET_ALL = ""
     BRIGHT = ""
     DIM = ""
@@ -115,7 +119,7 @@ class MultiConsoleRenderer(object):
             raise SystemError(
                 _MISSING.format(who=self.__class__.__name__, package="colorama")
             )
-        if sys.stdout.isatty():
+        if COLORIZED_TTY_OUTPUT:
             colorama.init()
 
         self._pad_event = pad_event
@@ -160,9 +164,8 @@ class MultiConsoleRenderer(object):
         ts = event_dict.pop("timestamp", None)
         if ts is not None:
             write(
-                # can be a number if timestamp is UNIXy
                 DIM
-                + str(ts)
+                + str(ts)  # can be a number if timestamp is UNIXy
                 + RESET_ALL
                 + " "
             )
@@ -181,37 +184,44 @@ class MultiConsoleRenderer(object):
         if machine:
             write(machine.ljust(20) + " ")
 
-        event = event_dict.pop("event")
-        write(BRIGHT + _pad(event, self._pad_event) + RESET_ALL + " ")
-
-        logger_name = event_dict.pop("logger", None)
-        if logger_name is not None:
-            write("[" + BLUE + BRIGHT + logger_name + RESET_ALL + "] ")
-
         output = event_dict.pop("output", None)
+        output_line = event_dict.pop("output", None)
         args = event_dict.pop("args", None)
         stack = event_dict.pop("stack", None)
         exc = event_dict.pop("exception", None)
-        write(
-            " ".join(
-                CYAN
-                + key
-                + RESET_ALL
-                + "="
-                + MAGENTA
-                + repr(event_dict[key])
-                + RESET_ALL
-                for key in sorted(event_dict.keys())
-            )
-        )
 
-        if args is not None:
+        event = event_dict.pop("event", None)
+        if event:
+            write(BRIGHT + _pad(event, self._pad_event) + RESET_ALL + " ")
+
+            logger_name = event_dict.pop("logger", None)
+            if logger_name is not None:
+                write("[" + BLUE + BRIGHT + logger_name + RESET_ALL + "] ")
+
             write(
-                "\n"
-                + DIM
-                + prefix(machine, event + " " + "".join(args))
-                + RESET_ALL
+                " ".join(
+                    CYAN
+                    + key
+                    + RESET_ALL
+                    + "="
+                    + MAGENTA
+                    + repr(event_dict[key])
+                    + RESET_ALL
+                    for key in sorted(event_dict.keys())
+                )
             )
+
+            if args is not None:
+                write(
+                    "\n"
+                    + DIM
+                    + prefix(machine, event + " " + "".join(args))
+                    + RESET_ALL
+                )
+
+        if output_line:
+            write("\n" + DIM + prefix(machine, output_line) + RESET_ALL)
+
         if output is not None:
             write("\n" + DIM + prefix(machine, output) + RESET_ALL)
 

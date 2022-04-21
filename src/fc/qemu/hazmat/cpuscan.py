@@ -52,6 +52,12 @@ class QemuHost(object):
             raise RuntimeError("Could not determine CPU vendor.")
 
 
+class AbstractHost(QemuHost):
+
+    CPU_MODELS = ["qemu64-v1"]
+    BUG_FLAGS = []
+
+
 class AMDHost(QemuHost):
 
     vendor = "AuthenticAMD"

@@ -6,6 +6,7 @@ import contextlib
 import datetime
 import filecmp
 import os
+import os.path
 import subprocess
 import sys
 import tempfile
@@ -106,13 +107,31 @@ def cmd(cmdline, log):
     args = " ".join(cmdline.split()[1:])
     log.debug(prefix, args=args)
     with open("/dev/null") as null:
-        output = subprocess.check_output(
-            cmdline, shell=True, stdin=null, stderr=subprocess.STDOUT
+        proc = subprocess.Popen(
+            cmdline,
+            shell=True,
+            stdin=null,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
         )
-    output = output.strip()
+        # This allows for more interactive logging and capturing
+        # stdout in unit tests even if we get stuck.
+        stdout = ""
+        while True:
+            line = subprocess._eintr_retry_call(proc.stdout.readline)
+            if line:
+                # This ensures we get partial output in case of test failures
+                log.debug(os.path.basename(prefix), output_line=line)
+                stdout += line
+            else:
+                break
+    returncode = proc.wait()
     # Keep this here for compatibility with tests
-    if output:
-        log.debug(prefix, output=output)
+    output = stdout.strip()
+    log.debug(prefix, returncode=returncode)
+    if returncode:
+        log.warning(prefix, output=output)
+        raise subprocess.CalledProcessError(returncode=returncode, cmd=cmdline)
     return output
 
 

@@ -103,12 +103,12 @@ def test_volume_locking(volume):
     volume.ensure_presence()
     assert volume.lock_status() is None
     volume.lock()
-    assert volume.lock_status()[1] == "localhost"
+    assert volume.lock_status()[1] == "host1"
     # We want to smoothen out that some other process has locked the same image
     # for the same tag already and assume that this is another incarnation of
     # us - for that we have our own lock.
     volume.lock()
-    assert volume.lock_status()[1] == "localhost"
+    assert volume.lock_status()[1] == "host1"
     volume.unlock()
     assert volume.lock_status() is None
     # We can call unlock twice if it isn't locked.
@@ -177,7 +177,8 @@ def test_mount_should_fail_if_not_mapped(volume):
         volume.mount()
 
 
-@pytest.mark.xfail()
+@pytest.mark.timeout(60)
+@pytest.mark.live()
 def test_mount_snapshot(volume):
     volume.ensure_presence()
     volume.ensure_size(40 * 1024 ** 2)

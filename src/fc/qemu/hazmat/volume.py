@@ -93,7 +93,7 @@ class Image(object):
     def umount(self):
         if self.mountpoint is None:
             return
-        cmd('umount "{}"'.format(self.mountpoint), log=self.log)
+        self.cmd('umount "{}"'.format(self.mountpoint))
         remove_empty_dirs(self.mountpoint)
         self.mountpoint = None
 

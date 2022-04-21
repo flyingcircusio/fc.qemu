@@ -186,7 +186,12 @@ class ImageMock(object):
 
 
 @pytest.fixture
-def ceph_mock(monkeypatch, tmpdir):
+def ceph_mock(request, monkeypatch, tmpdir):
+    is_live = request.node.get_closest_marker("live")
+    if is_live is not None:
+        # This is a live test. Do not mock things.
+        return
+
     def image_map(self):
         if self.device:
             return

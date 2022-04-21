@@ -32,10 +32,10 @@ def test_empty_event():
     )
     Agent.handle_consul_event(stdin)
     assert util.log_data == [
-        "count=1 event=start-consul-events",
-        "event=handle-key key=node/test22",
-        "event=ignore-key key=node/test22 reason=empty value",
-        "event=finish-consul-events",
+        "start-consul-events count=1",
+        "handle-key key=node/test22",
+        "ignore-key key=node/test22 reason=empty value",
+        "finish-consul-events",
     ]
 
 
@@ -43,10 +43,10 @@ def test_no_key_event():
     stdin = StringIO('[{"ModifyIndex": 123, "Value": ""}]')
     Agent.handle_consul_event(stdin)
     assert util.log_data == [
-        "count=1 event=start-consul-events",
-        "event=handle-key-failed exc_info=True key=None",
-        "event=finish-handle-key key=None",
-        "event=finish-consul-events",
+        "start-consul-events count=1",
+        "handle-key-failed exc_info=True key=None",
+        "finish-handle-key key=None",
+        "finish-consul-events",
     ]
 
 
@@ -114,10 +114,10 @@ def test_qemu_config_change(clean_config_test22):
     )
     Agent.handle_consul_event(stdin)
     assert util.log_data == [
-        "count=1 event=start-consul-events",
-        "consul_event=node event=processing-consul-event machine=test22",
-        "cmd=['true', '-D', 'ensure', u'test22'] event=launch-ensure machine=test22",
-        "event=finish-consul-events",
+        "start-consul-events count=1",
+        "processing-consul-event consul_event=node machine=test22",
+        "launch-ensure cmd=['true', '-D', 'ensure', u'test22'] machine=test22",
+        "finish-consul-events",
     ]
 
     # The test doesn't really active the config, so we need to mock this.
@@ -137,10 +137,10 @@ def test_qemu_config_change(clean_config_test22):
     Agent.handle_consul_event(stdin)
 
     assert util.log_data == [
-        "count=1 event=start-consul-events",
-        "consul_event=node event=processing-consul-event machine=test22",
-        "event=ignore-consul-event machine=test22 reason=config is unchanged",
-        "event=finish-consul-events",
+        "start-consul-events count=1",
+        "processing-consul-event consul_event=node machine=test22",
+        "ignore-consul-event machine=test22 reason=config is unchanged",
+        "finish-consul-events",
     ]
 
     # Changing the config does cause ensure to be called.
@@ -154,10 +154,10 @@ def test_qemu_config_change(clean_config_test22):
     )
     Agent.handle_consul_event(stdin)
     assert util.log_data == [
-        "count=1 event=start-consul-events",
-        "consul_event=node event=processing-consul-event machine=test22",
-        "cmd=['true', '-D', 'ensure', u'test22'] event=launch-ensure machine=test22",
-        "event=finish-consul-events",
+        "start-consul-events count=1",
+        "processing-consul-event consul_event=node machine=test22",
+        "launch-ensure cmd=['true', '-D', 'ensure', u'test22'] machine=test22",
+        "finish-consul-events",
     ]
 
 
@@ -211,13 +211,13 @@ def test_qemu_config_change_physical():
     )
     Agent.handle_consul_event(stdin)
     assert util.log_data == [
-        "count=1 event=start-consul-events",
-        "event=ignore-consul-event machine=test22 reason=is a physical "
-        "machine",
-        "event=finish-consul-events",
+        "start-consul-events count=1",
+        "ignore-consul-event machine=test22 reason=is a physical machine",
+        "finish-consul-events",
     ]
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.live
 def test_snapshot_online_vm(vm):
     util.test_log_options["show_events"] = [
@@ -242,19 +242,17 @@ def test_snapshot_online_vm(vm):
     assert (
         Ellipsis(
             """\
-count=1 event=start-consul-events
-event=snapshot machine=simplevm snapshot=backy-1234
-event=snapshot-create machine=simplevm name=backy-1234
-event=freeze machine=simplevm volume=root
-action=continue event=freeze-failed machine=simplevm reason=Unable to sync \
-with guest agent after 10 tries.
-event=snapshot-ignore machine=simplevm reason=not frozen
-event=ensure-thawed machine=simplevm volume=root
-event=guest-fsfreeze-thaw-failed exc_info=True machine=simplevm subsystem=qemu
-event=ensure-thawed-failed machine=simplevm reason=Unable to sync with guest \
-agent after 10 tries.
-event=handle-key-failed exc_info=True key=snapshot/7468743
-event=finish-consul-events"""
+start-consul-events count=1
+snapshot machine=simplevm snapshot=backy-1234
+snapshot-create machine=simplevm name=backy-1234
+freeze machine=simplevm volume=root
+freeze-failed action=continue machine=simplevm reason=Unable to sync with guest agent after 10 tries.
+snapshot-ignore machine=simplevm reason=not frozen
+ensure-thawed machine=simplevm volume=root
+guest-fsfreeze-thaw-failed exc_info=True machine=simplevm subsystem=qemu
+ensure-thawed-failed machine=simplevm reason=Unable to sync with guest agent after 10 tries.
+handle-key-failed exc_info=True key=snapshot/7468743
+finish-consul-events"""
         )
         == get_log()
     )
@@ -276,15 +274,15 @@ def test_snapshot_nonexisting_vm():
     assert (
         get_log()
         == """\
-count=1 event=start-consul-events
-event=unknown-vm machine=test77
-event=snapshot-ignore machine=test77 reason=failed loading config \
-snapshot=backy-1234
-event=finish-consul-events"""
+start-consul-events count=1
+unknown-vm machine=test77
+snapshot-ignore machine=test77 reason=failed loading config snapshot=backy-1234
+finish-consul-events"""
     )
 
 
 @pytest.mark.live
+@pytest.mark.timeout(60)
 def test_snapshot_offline_vm(vm):
     util.test_log_options["show_events"] = ["consul", "snapshot"]
 
@@ -307,10 +305,10 @@ def test_snapshot_offline_vm(vm):
     assert (
         get_log()
         == """\
-count=1 event=start-consul-events
-event=snapshot machine=simplevm snapshot=backy-1234
-event=snapshot expected=VM running machine=simplevm
-event=finish-consul-events"""
+start-consul-events count=1
+snapshot machine=simplevm snapshot=backy-1234
+snapshot expected=VM running machine=simplevm
+finish-consul-events"""
     )
 
 
@@ -369,18 +367,18 @@ def test_multiple_events():
     )
     Agent.handle_consul_event(stdin)
     assert util.log_data == [
-        "count=4 event=start-consul-events",
-        "event=handle-key key=node/test22",
-        "event=ignore-consul-event machine=test22 reason=is a physical machine",
-        "event=finish-handle-key key=node/test22",
-        "event=handle-key key=node/test22",
-        "event=ignore-consul-event machine=test22 reason=is a physical machine",
-        "event=finish-handle-key key=node/test22",
-        "event=handle-key key=node/test22",
-        "event=ignore-consul-event machine=test22 reason=is a physical machine",
-        "event=finish-handle-key key=node/test22",
-        "event=handle-key key=node/test22",
-        "event=ignore-consul-event machine=test22 reason=is a physical machine",
-        "event=finish-handle-key key=node/test22",
-        "event=finish-consul-events",
+        "start-consul-events count=4",
+        "handle-key key=node/test22",
+        "ignore-consul-event machine=test22 reason=is a physical machine",
+        "finish-handle-key key=node/test22",
+        "handle-key key=node/test22",
+        "ignore-consul-event machine=test22 reason=is a physical machine",
+        "finish-handle-key key=node/test22",
+        "handle-key key=node/test22",
+        "ignore-consul-event machine=test22 reason=is a physical machine",
+        "finish-handle-key key=node/test22",
+        "handle-key key=node/test22",
+        "ignore-consul-event machine=test22 reason=is a physical machine",
+        "finish-handle-key key=node/test22",
+        "finish-consul-events",
     ]
