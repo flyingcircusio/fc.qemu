@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import textwrap
+import time
 
 import pytest
 import yaml
@@ -559,9 +560,7 @@ def test_vm_migration(vm, kill_vms):
             )
             break
         print("Starting command `{}`".format(cmd))
-        p = subprocess.Popen(
-            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
-        )
+        p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
         if wait:
             stdout, _ = p.communicate()
             print(stdout)
@@ -592,7 +591,7 @@ def test_vm_migration(vm, kill_vms):
         """\
 simplevm             outmigrate
 simplevm             locate-inmigration-service
-simplevm             located-inmigration-service    url='http://host2.mgm.test.fcio.net:...'
+simplevm             located-inmigration-service    url='http://host2.mgm.test.gocept.net:...'
 simplevm             acquire-migration-locks
 simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.root'
 simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.swap'
@@ -638,7 +637,7 @@ simplevm             acquire-lock                   target='/run/qemu.simplevm.l
 simplevm             acquire-lock                   result='locked' target='/run/qemu.simplevm.lock'
 simplevm             lock-status                    count=1
 simplevm             inmigrate
-simplevm             start-server                   type='incoming' url='http://host2.mgm.test.fcio.net:.../'
+simplevm             start-server                   type='incoming' url='http://host2.mgm.test.gocept.net:.../'
 simplevm             setup-incoming-api             cookie='...'
 simplevm             consul-register-inmigrate
 simplevm             received-ping                  timeout=60
@@ -688,6 +687,10 @@ simplevm             release-lock                   result='unlocked' target='/r
 """
     )
     assert inmigrate.returncode == 0
+
+    # The consul check is a bit flaky as it only checks every 5 seconds
+    # and I've seen the test be unreliable.
+    time.sleep(6)
 
     local_status = call("fc-qemu status simplevm")
     assert local_status == Ellipsis(
