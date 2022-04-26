@@ -550,13 +550,14 @@ def kill_vms():
 def test_vm_migration(vm, kill_vms):
     def call(cmd, wait=True, host=None):
         for ssh_cmd in ["scp", "ssh"]:
-            if not ssh_cmd.startswith(ssh_cmd):
+            if not cmd.startswith(ssh_cmd):
                 continue
             cmd = cmd.replace(
                 ssh_cmd,
                 ssh_cmd + " -oStrictHostKeyChecking=no -i/etc/ssh_key ",
                 1,
             )
+            break
         print("Starting command `{}`".format(cmd))
         p = subprocess.Popen(
             cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
