@@ -4,6 +4,7 @@ import os.path
 import re
 import shutil
 import subprocess
+import textwrap
 
 import pytest
 import yaml
@@ -778,4 +779,24 @@ def test_create_vm_shows_error(vm, tmpdir):
     assert (
         "Command 'rbd --id \"host1\" snap ls rbd.hdd/does-not-exist'"
         in get_log()
+    )
+
+
+@pytest.mark.timeout(60)
+@pytest.mark.live
+def test_agent_check(vm, capsys):
+    util.test_log_options["show_events"] = ["vm-status", "rbd-status"]
+    vm.start()
+
+    assert Agent.check() == 0
+
+    captured = capsys.readouterr()
+
+    assert str(captured.out) == Ellipsis(
+        textwrap.dedent(
+            """\
+        ...
+        OK - 1 VMs - ... MiB used - 768 MiB expected
+        """
+        )
     )
