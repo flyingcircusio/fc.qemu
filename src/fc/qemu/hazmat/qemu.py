@@ -215,7 +215,7 @@ class Qemu(object):
 
     def prepare_log(self):
         if not os.path.exists("/var/log/vm"):
-            os.makedirs("/var/log/vm")
+            raise RuntimeError("Expected directory /var/log/vm to exist.")
         logfile = "/var/log/vm/{}.log".format(self.name)
         alternate = "/var/log/vm/{}-{}.log".format(
             self.name, datetime.datetime.now().isoformat()
