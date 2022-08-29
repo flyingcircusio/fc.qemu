@@ -130,6 +130,8 @@ def test_force_unlock(volume):
     assert volume.lock_status() is None
 
 
+# increase timeout from the default of 3s
+@pytest.mark.timeout(6)
 def test_volume_mkswap(volume):
     volume.ensure_presence()
     volume.ensure_size(5 * 1024 ** 2)

@@ -490,7 +490,7 @@ ensure-throttle action=none current_iops=10 device=virtio2 machine=simplevm targ
     )
 
 
-@pytest.mark.timeout(60)
+@pytest.mark.timeout(80)
 @pytest.mark.live
 def test_vm_resize_disk(vm):
     vm.start()
@@ -558,7 +558,7 @@ def kill_vms():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(120)
+@pytest.mark.timeout(180)
 def test_vm_migration(vm, kill_vms):
     def call(cmd, wait=True, host=None):
         for ssh_cmd in ["scp", "ssh"]:
