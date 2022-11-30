@@ -62,11 +62,11 @@ create-vm machine=simplevm subsystem=ceph
 fc-create-vm>
 fc-create-vm> Establishing system identity
 fc-create-vm> ----------------------------
-fc-create-vm> rbd --id "host1" snap ls rbd.hdd/fc-21.05-dev
-fc-create-vm> SNAPID NAME      SIZE
-fc-create-vm> 4 v1   102400 kB
-fc-create-vm> rbd --id "host1" clone rbd.hdd/fc-21.05-dev@v1 rbd.ssd/simplevm.root
-fc-create-vm>
+fc-create-vm> $ rbd --format json --id host1 snap ls rbd.hdd/fc-21.05-dev
+fc-create-vm> Snapshots:
+fc-create-vm> snapid name size
+fc-create-vm> 4 v1 104857600
+fc-create-vm> $ rbd --id host1 clone rbd.hdd/fc-21.05-dev@v1 rbd.ssd/simplevm.root
 fc-create-vm>
 fc-create-vm> Finished
 fc-create-vm> --------
@@ -642,13 +642,9 @@ simplevm             setup-incoming-api             cookie='...'
 simplevm             consul-register-inmigrate
 simplevm             received-ping                  timeout=60
 simplevm             waiting                        interval=0 remaining=...
-simplevm             received-ping                  timeout=...
-simplevm             waiting                        interval=0 remaining=...
 simplevm             received-acquire-migration-lock
 simplevm             acquire-migration-lock         result='success' subsystem='qemu'
 simplevm             reset-timeout
-simplevm             waiting                        interval=0 remaining=...
-simplevm             received-ping                  timeout=60
 simplevm             waiting                        interval=0 remaining=...
 simplevm             received-acquire-ceph-locks
 simplevm             lock                           subsystem='ceph' volume='rbd.ssd/simplevm.root'
@@ -669,10 +665,6 @@ simplevm             global-lock-release            result='unlocked' subsystem=
 simplevm             qmp_capabilities               arguments={} id=None subsystem='qemu/qmp'
 simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
 simplevm             reset-timeout
-simplevm             waiting                        interval=0 remaining=...
-simplevm             received-ping                  timeout=60
-simplevm             waiting                        interval=0 remaining=...
-simplevm             received-ping                  timeout=60
 simplevm             waiting                        interval=0 remaining=...
 simplevm             received-finish-incoming
 simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
@@ -781,8 +773,23 @@ def test_create_vm_shows_error(vm, tmpdir):
         with pytest.raises(subprocess.CalledProcessError):
             vm.ensure()
     assert (
-        "Command 'rbd --id \"host1\" snap ls rbd.hdd/does-not-exist'"
-        in get_log()
+        Ellipsis(
+            """\
+...
+fc-create-vm>\tEstablishing system identity
+fc-create-vm>\t----------------------------
+fc-create-vm>\t$ rbd --format json --id host1 snap ls rbd.hdd/does-not-exist
+fc-create-vm>\t> return code: 2
+fc-create-vm>\t> stdout:
+fc-create-vm>\t
+fc-create-vm>\t> stderr:
+fc-create-vm>\trbd: error opening image does-not-exist: (2) No such file or directory
+...
+fc-create-vm>\tsubprocess.CalledProcessError: Command '('rbd', '--format', 'json', '--id', 'host1', 'snap', 'ls', 'rbd.hdd/does-not-exist')' returned non-zero exit status 2.
+...
+"""
+        )
+        == get_log()
     )
 
 

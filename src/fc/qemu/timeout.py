@@ -34,6 +34,10 @@ class TimeOut(object):
         self.timed_out = remaining <= 0
 
         if self.timed_out:
+            if self.log:
+                self.log.error(
+                    "timeout", interval=int(self.interval), remaining=remaining
+                )
             if self.raise_on_timeout:
                 raise TimeoutError()
             else:
