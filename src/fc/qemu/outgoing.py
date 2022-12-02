@@ -3,7 +3,7 @@ import random
 import threading
 import time
 
-import xmlrpclib
+import xmlrpc.client
 
 from .exc import ConfigChanged
 from .timeout import TimeOut
@@ -158,7 +158,7 @@ class Outgoing(object):
                 )
                 self.log.info("located-inmigration-service", url=url)
                 try:
-                    target = xmlrpclib.ServerProxy(url, allow_none=True)
+                    target = xmlrpc.client.ServerProxy(url, allow_none=True)
                     target.ping(self.cookie)
                 except Exception as e:
                     self.log.info("connect", result="failed", reason=str(e))

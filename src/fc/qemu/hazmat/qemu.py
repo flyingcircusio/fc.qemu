@@ -324,8 +324,8 @@ class Qemu(object):
             # when migrating VMs.
             # We also force the internal stderr log, even though I haven't
             # seen this being useful, yet.
-            args = filter(lambda x: x != "-daemonize", args)
-            args = filter(lambda x: not x.startswith("-D "), args)
+            args = [x for x in args if x != "-daemonize"]
+            args = [x for x in args if not x.startswith("-D ")]
             args.append("-D /var/log/vm/{}.qemu.internal.log".format(self.name))
 
             cmd = "{} {}".format(self.executable, " ".join(args))

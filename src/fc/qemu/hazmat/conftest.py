@@ -65,7 +65,7 @@ class IoctxMock(object):
 
 class RBDMock(object):
     def list(self, ioctx):
-        return ioctx.rbd_images.keys()
+        return list(ioctx.rbd_images.keys())
 
     def create(self, ioctx, name, size):
         ioctx._rbd_create(name, size)
@@ -150,7 +150,7 @@ class ImageMock(object):
     def list_snaps(self):
         assert not self.closed
         result = []
-        for image, data in self.ioctx.rbd_images.items():
+        for image, data in list(self.ioctx.rbd_images.items()):
             if image.startswith(self.name + "@"):
                 snap = {
                     "id": data["snapid"],

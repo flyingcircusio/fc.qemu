@@ -465,11 +465,11 @@ class Agent(object):
             return
 
         if sys.stdout.isatty():
-            print colorama.Fore.RED, "The following VMs will be shut down: ", colorama.Style.RESET_ALL
-            print "\t" + ",".join(vm.name for vm in vms)
-            print
+            print(colorama.Fore.RED, "The following VMs will be shut down: ", colorama.Style.RESET_ALL)
+            print("\t" + ",".join(vm.name for vm in vms))
+            print()
             while True:
-                choice = raw_input(
+                choice = input(
                     colorama.Style.BRIGHT
                     + colorama.Fore.RED
                     + "[DANGER] Are you really sure to shut down all {} VMs? (yes/no)\n".format(
@@ -576,7 +576,7 @@ class Agent(object):
             3, "{:,.0f} MiB expected".format(expected_guest_and_overhead / MiB)
         )
 
-        print (" - ".join(output))
+        print((" - ".join(output)))
 
         return result
 
@@ -1023,7 +1023,7 @@ class Agent(object):
             "iops", self.qemu.throttle_by_pool.get(self.cfg["rbd_pool"], 250)
         )
         devices = self.qemu.block_info()
-        for device in devices.values():
+        for device in list(devices.values()):
             current = device["inserted"]["iops"]
             if current != target:
                 self.log.info(
@@ -1160,7 +1160,7 @@ class Agent(object):
         if self.qemu.is_running():
             status = 0
             self.log.info("vm-status", result="online")
-            for device in self.qemu.block_info().values():
+            for device in list(self.qemu.block_info().values()):
                 self.log.info(
                     "disk-throttle",
                     device=device["device"],

@@ -3,7 +3,7 @@
 # repository for complete details.
 # The ConsoleRenderer is based on structlog.dev.ConsoleRenderer
 
-from __future__ import absolute_import, division, print_function
+
 
 import os
 import sys
@@ -65,7 +65,7 @@ class MultiOptimisticLoggerFactory(object):
         self.factories = factories
 
     def __call__(self, *args):
-        loggers = {k: f() for k, f in self.factories.items()}
+        loggers = {k: f() for k, f in list(self.factories.items())}
         return MultiOptimisticLogger(loggers)
 
 
@@ -79,7 +79,7 @@ class MultiOptimisticLogger(object):
         )
 
     def msg(self, **event_dict):
-        for name, logger in self.loggers.items():
+        for name, logger in list(self.loggers.items()):
             try:
                 line = event_dict.get(name)
                 if line:
@@ -133,10 +133,10 @@ class MultiConsoleRenderer(object):
             "debug": GREEN,
             "notset": BACKRED,
         }
-        for key in self._level_to_color.keys():
+        for key in list(self._level_to_color.keys()):
             self._level_to_color[key] += BRIGHT
         self._longest_level = len(
-            max(self._level_to_color.keys(), key=lambda e: len(e))
+            max(list(self._level_to_color.keys()), key=lambda e: len(e))
         )
 
     def __call__(self, logger, method_name, event_dict):

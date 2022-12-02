@@ -570,7 +570,7 @@ def test_vm_migration(vm, kill_vms):
                 1,
             )
             break
-        print("Starting command `{}`".format(cmd))
+        print(("Starting command `{}`".format(cmd)))
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
         if wait:
             stdout, _ = p.communicate()
@@ -584,7 +584,7 @@ def test_vm_migration(vm, kill_vms):
             line = subprocess._eintr_retry_call(p.stdout.readline)
             if line:
                 # This ensures we get partial output in case of test failures
-                print(line.strip())
+                print((line.strip()))
                 stdout += line
             else:
                 p.wait()

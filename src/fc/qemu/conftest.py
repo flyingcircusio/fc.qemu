@@ -156,7 +156,7 @@ def vm(clean_environment, monkeypatch, tmpdir):
     exc_info = sys.exc_info()
     vm.__exit__(*exc_info)
     if len(exc_info):
-        print(traceback.print_tb(exc_info[2]))
+        print((traceback.print_tb(exc_info[2])))
 
 
 def get_log():

@@ -1,6 +1,6 @@
 """Global helper functions and utilites for fc.qemu."""
 
-from __future__ import print_function
+
 
 import contextlib
 import datetime
