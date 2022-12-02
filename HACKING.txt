@@ -8,7 +8,8 @@ the platform code as well:
 
     local$ ssh hydra01.fcio.net
     hydra01 ~ $ cd fc-nixos
-    hydra01 ~/fc-nixos $ eval $(./dev-setup)
+
+    hydra01 ~/fc-nixos $ nix-shell
     hydra01 ~/fc-nixos $ nix-build --arg useCheckout true tests/kvm_host_ceph-luminous.nix
 
 To run only some tests you can pass arguments to pytest:

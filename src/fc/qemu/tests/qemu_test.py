@@ -65,6 +65,8 @@ def test_proc_empty_pidfile(qemu_with_pidfile):
 
 
 def test_proc_pidfile_with_garbage(qemu_with_pidfile):
+    """pidfiles are allowed to contain trailing lines with garbage,
+    process retrieval must still work then."""
     with open(qemu_with_pidfile.pidfile, "a") as f:
         f.write("trailing line\n")
     assert isinstance(qemu_with_pidfile.proc(), psutil.Process)

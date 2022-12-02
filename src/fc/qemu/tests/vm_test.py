@@ -49,7 +49,18 @@ rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     vm.start()
 
     out = clean_output(get_log())
+    # WORKAROUND: one line might be duplicate in the log output. This is specific
+    # pre-processing to allow both cases and could probably be done in a more
+    # elegant way.
+    possibly_dupl_line = r"qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp"
+    out_lines = out.split("\n")
+    while out_lines.count(possibly_dupl_line) > 1:
+        out_lines.remove(possibly_dupl_line)
+    out = "\n".join(out_lines)
+
     # This is 1 end-to-end logging test to see everything.
+    # FIXME: decide which lines are really necessary to avoid false test-negatives in
+    # case number or order of lines changes
     assert out == Ellipsis(
         """\
 acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
@@ -479,7 +490,7 @@ ensure-throttle action=none current_iops=10 device=virtio2 machine=simplevm targ
     )
 
 
-@pytest.mark.timeout(60)
+@pytest.mark.timeout(80)
 @pytest.mark.live
 def test_vm_resize_disk(vm):
     vm.start()
@@ -547,7 +558,7 @@ def kill_vms():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(120)
+@pytest.mark.timeout(180)
 def test_vm_migration(vm, kill_vms):
     def call(cmd, wait=True, host=None):
         for ssh_cmd in ["scp", "ssh"]:
@@ -773,6 +784,7 @@ def test_create_vm_shows_error(vm, tmpdir):
         with pytest.raises(subprocess.CalledProcessError):
             vm.ensure()
     assert (
+
         Ellipsis(
             """\
 ...
