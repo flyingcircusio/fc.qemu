@@ -424,7 +424,8 @@ class Qemu(object):
             **{
                 "compress-level": 0,
                 "downtime-limit": int(self.max_downtime * 1000),  # ms
-                "max-bandwidth": 0,
+                # 0.8 * 10 Gbit/s in bytes/s
+                "max-bandwidth": int(0.8 * 10 * 10 ** 9 / 8),
             }
         )
         self.qmp.command("migrate", uri=address)

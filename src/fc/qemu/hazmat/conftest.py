@@ -1,4 +1,4 @@
-import os
+import os, errno
 
 import pytest
 import rados
@@ -109,7 +109,7 @@ class ImageMock(object):
         else:
             assert lock["exclusive"]
             if not lock["lockers"][0][1] == cookie:
-                raise rbd.ImageBusy()
+                raise rbd.ImageBusy(errno.EBUSY, "Image is busy")
             return
         raise RuntimeError("unsupported mock path")
 

@@ -8,12 +8,13 @@ the platform code as well:
 
     local$ ssh hydra01.fcio.net
     hydra01 ~ $ cd fc-nixos
+
     hydra01 ~/fc-nixos $ nix-shell
-    hydra01 ~/fc-nixos $ nix-build --arg useCheckout true tests/kvm_host.nix
+    hydra01 ~/fc-nixos $ nix-build --arg useCheckout true tests/kvm_host_ceph-luminous.nix
 
 To run only some tests you can pass arguments to pytest:
 
-    hydra01 ~/fc-nixos $ nix-build --arg useCheckout true --argstr testOpts "-k test_agent_check"  tests/kvm_host.nix
+    hydra01 ~/fc-nixos $ nix-build --arg useCheckout true --argstr testOpts "-k test_agent_check"  tests/kvm_host_ceph-luminous.nix
 
 Real-world testing on FCIO DEV network
 --------------------------------------

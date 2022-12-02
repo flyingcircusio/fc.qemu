@@ -1,10 +1,46 @@
 import pprint
 import random
+import threading
+import time
 
 import xmlrpclib
 
 from .exc import ConfigChanged
 from .timeout import TimeOut
+
+
+class Heartbeat(object):
+    """Continuously ping a target in the background to indicate that
+    we're still here.
+
+    Run this in a separate thread so that blocks from other things (like
+    the Qemu monitor) do not cause the remote side to time out and thus
+    block any chance for recovery.
+
+    """
+
+    def __init__(self):
+        self.thread = threading.Thread(target=self.run)
+        self.running = False
+
+    def start(self):
+        assert self.target is not None
+        if self.running:
+            return
+        self.running = True
+        self.thread.daemon = True
+        self.thread.start()
+
+    def stop(self):
+        self.running = False
+
+    def run(self):
+        while self.running:
+            time.sleep(10)
+            try:
+                self.target.ping()
+            except Exception:
+                self.log.exception("ping-failed", exc_info=True)
 
 
 class Outgoing(object):
@@ -29,6 +65,7 @@ class Outgoing(object):
         self.log = agent.log
         self.name = agent.name
         self.consul = agent.consul
+        self.heartbeat = Heartbeat()
 
     def __call__(self):
         self.cookie = self.agent.ceph.auth_cookie()
@@ -138,6 +175,8 @@ class Outgoing(object):
     def connect(self):
         connection = self.locate_inmigrate_service()
         self.target = connection
+        self.heartbeat.target = connection
+        self.heartbeat.start()
 
     def acquire_migration_locks(self):
         tries = 0
@@ -159,10 +198,6 @@ class Outgoing(object):
             if self.agent.has_new_config():
                 self.target.cancel(self.cookie)
                 raise ConfigChanged()
-            # Keep the remote peer alive by informing it that we're still
-            # alive and working on it. Add additional grace period to our own
-            # interval.
-            self.target.ping(self.cookie, timeout.interval + 60)
 
             # Try to acquire local lock
             if self.agent.qemu.acquire_migration_lock():
@@ -192,8 +227,6 @@ class Outgoing(object):
                 )
                 self.agent.qemu.release_migration_lock()
                 continue
-            # Reset the hard timeout to regular ping timeouts.
-            self.target.ping(self.cookie)
             break
 
     def transfer_ceph_locks(self):
@@ -220,7 +253,6 @@ class Outgoing(object):
                     mbps=mbps,
                     output=pprint.pformat(stat),
                 )
-                self.target.ping(self.cookie)
         except Exception:
             self.log.exception("error-waiting-for-migration", exc_info=True)
             raise
