@@ -576,7 +576,7 @@ class Agent(object):
             3, "{:,.0f} MiB expected".format(expected_guest_and_overhead / MiB)
         )
 
-        print((" - ".join(output)))
+        print(" - ".join(output))
 
         return result
 

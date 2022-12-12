@@ -570,7 +570,7 @@ def test_vm_migration(vm, kill_vms):
                 1,
             )
             break
-        print(("Starting command `{}`".format(cmd)))
+        print(f"Starting command `{cmd}`")
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
         if wait:
             stdout, _ = p.communicate()

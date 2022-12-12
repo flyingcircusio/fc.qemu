@@ -136,7 +136,7 @@ class MultiConsoleRenderer(object):
         for key in list(self._level_to_color.keys()):
             self._level_to_color[key] += BRIGHT
         self._longest_level = len(
-            max(list(self._level_to_color.keys()), key=lambda e: len(e))
+            max(self._level_to_color.keys()), key=lambda e: len(e)
         )
 
     def __call__(self, logger, method_name, event_dict):
