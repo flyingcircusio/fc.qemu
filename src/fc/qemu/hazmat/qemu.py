@@ -11,6 +11,8 @@ import time
 import psutil
 import yaml
 
+from codecs import encode
+
 from ..exc import QemuNotRunning, VMStateInconsistent
 from ..sysconfig import sysconfig
 from ..timeout import TimeOut
@@ -397,7 +399,7 @@ class Qemu(object):
                 guest.cmd(
                     "guest-file-write",
                     handle=handle,
-                    **{"buf-b64": content.encode("base64")}
+                    **{"buf-b64": encode(content,"base64")}
                 )
                 guest.cmd("guest-file-close", handle=handle)
             except ClientError:

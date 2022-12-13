@@ -38,7 +38,7 @@ class GuestAgent(object):
             # ensure that the parser of the guest agent at the other end
             # is reset to a known state. This is recommended for sync.
             # http://wiki.qemu-project.org/index.php/Features/GuestAgent#guest-sync
-            message = b"\xff" + message
+            message = b"\xff" + message.encode("ascii")
         timeout = timeout or self.timeout
         # Allow setting temporary timeouts for operations that are known to be
         # slow.

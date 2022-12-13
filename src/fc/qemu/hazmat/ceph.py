@@ -47,9 +47,9 @@ class Ceph(object):
         self.ioctx = self.rados.open_ioctx(self.pool)
 
         volume_prefix = self.cfg["name"].encode("ascii")
-        self.root = Volume(self, volume_prefix + ".root", "root")
-        self.swap = Volume(self, volume_prefix + ".swap", "swap")
-        self.tmp = Volume(self, volume_prefix + ".tmp", "tmp")
+        self.root = Volume(self, volume_prefix + b".root", b"root")
+        self.swap = Volume(self, volume_prefix + b".swap", b"swap")
+        self.tmp = Volume(self, volume_prefix + b".tmp", b"tmp")
 
         self.volumes = [self.root, self.swap, self.tmp]
 

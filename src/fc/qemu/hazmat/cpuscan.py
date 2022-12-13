@@ -164,7 +164,7 @@ def scan_cpus(host=None):
             stdout=FNULL,
             stderr=FNULL,
         )
-        task.communicate(input="quit\n")
+        task.communicate(input=b"quit\n")
         if not task.wait():
             valid_models.append(variation)
 

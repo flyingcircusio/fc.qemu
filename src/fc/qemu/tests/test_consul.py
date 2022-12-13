@@ -3,6 +3,7 @@ import os.path
 
 import pytest
 from io import StringIO
+from codecs import encode
 
 import fc.qemu.agent
 from fc.qemu import util
@@ -106,7 +107,7 @@ def test_qemu_config_change(clean_config_test22):
             "tmp_size": 5368709120,
         },
     }
-    test22 = json.dumps(cfg).encode("base64")
+    test22 = encode(json.dumps(cfg),"base64")
     test22 = test22.replace("\n", "")
 
     stdin = StringIO(
@@ -146,7 +147,7 @@ def test_qemu_config_change(clean_config_test22):
     # Changing the config does cause ensure to be called.
     util.log_data = []
     cfg["disk"] = 20
-    test22 = json.dumps(cfg).encode("base64")
+    test22 = encode(json.dumps(cfg),"base64")
     test22 = test22.replace("\n", "")
 
     stdin = StringIO(
@@ -164,7 +165,7 @@ def test_qemu_config_change(clean_config_test22):
 def test_qemu_config_change_physical():
     util.test_log_options["show_events"] = ["consul"]
 
-    test22 = json.dumps(
+    test22 = encode(json.dumps(
         {
             "classes": [
                 "role::appserver",
@@ -203,7 +204,7 @@ def test_qemu_config_change_physical():
                 "tmp_size": 5368709120,
             },
         }
-    ).encode("base64")
+    ), "base64")
     test22 = test22.replace("\n", "")
 
     stdin = StringIO(
@@ -236,7 +237,7 @@ def test_snapshot_online_vm(vm):
     snapshot = json.dumps({"vm": "simplevm", "snapshot": "backy-1234"})
     stdin = StringIO(
         '[{"ModifyIndex": 123, "Value": "%s", '
-        '"Key": "snapshot/7468743"}]' % snapshot.encode("base64").strip()
+        '"Key": "snapshot/7468743"}]' % encode(snapshot, "base64").strip()
     )
     Agent.handle_consul_event(stdin)
     assert (
@@ -264,7 +265,7 @@ def test_snapshot_nonexisting_vm():
     get_log()
 
     snapshot = json.dumps({"vm": "test77", "snapshot": "backy-1234"})
-    snapshot = snapshot.encode("base64").replace("\n", "")
+    snapshot = encode(snapshot, "base64").replace("\n", "")
 
     stdin = StringIO(
         '[{"ModifyIndex": 123, "Value": "%s", '
@@ -295,7 +296,7 @@ def test_snapshot_offline_vm(vm):
     get_log()
 
     snapshot = json.dumps({"vm": "simplevm", "snapshot": "backy-1234"})
-    snapshot = snapshot.encode("base64").replace("\n", "")
+    snapshot = encode(snapshot, "base64").replace("\n", "")
 
     stdin = StringIO(
         '[{"ModifyIndex": 123, "Value": "%s", '
@@ -315,7 +316,7 @@ finish-consul-events"""
 def test_multiple_events():
     util.test_log_options["show_events"] = ["consul", "handle-key"]
 
-    test22 = json.dumps(
+    test22 = encode(json.dumps(
         {
             "classes": [
                 "role::appserver",
@@ -354,7 +355,7 @@ def test_multiple_events():
                 "tmp_size": 5368709120,
             },
         }
-    ).encode("base64")
+    ), "base64")
     test22 = test22.replace("\n", "")
 
     stdin = StringIO(
