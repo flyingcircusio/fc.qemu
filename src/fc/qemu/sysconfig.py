@@ -76,8 +76,8 @@ class SysConfig(object):
         self.agent["this_host"] = self.cp.get("ceph", "lock_host")
         self.agent["ceph_id"] = self.cp.get("ceph", "client-id")
 
-        self.ceph["CEPH_CLIENT"] = self.cp.get("ceph", "client-id", "admin")
-        self.ceph["CEPH_CLUSTER"] = self.cp.get("ceph", "cluster", "ceph")
+        self.ceph["CEPH_CLIENT"] = self.cp.get("ceph", "client-id", fallback="admin")
+        self.ceph["CEPH_CLUSTER"] = self.cp.get("ceph", "cluster", fallback="ceph")
         self.ceph["CEPH_CONF"] = self.cp.get("ceph", "ceph-conf")
         self.ceph["CEPH_LOCK_HOST"] = self.cp.get("ceph", "lock_host")
         self.ceph["CREATE_VM"] = self.cp.get("ceph", "create-vm")
