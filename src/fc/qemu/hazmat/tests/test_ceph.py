@@ -2,7 +2,7 @@ import pytest
 import rbd
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def ceph_with_volumes(ceph_inst):
     for vol in ceph_inst.volumes:
         vol.ensure_presence()

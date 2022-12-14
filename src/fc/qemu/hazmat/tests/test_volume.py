@@ -7,7 +7,7 @@ import rbd
 from ..volume import Volume
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def volume(ceph_inst):
     volume = Volume(ceph_inst, "othervolume", "label")
     volume.snapshots.purge()

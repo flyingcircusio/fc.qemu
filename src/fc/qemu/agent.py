@@ -13,6 +13,8 @@ import socket
 import subprocess
 import sys
 import time
+import typing
+from codecs import decode
 from multiprocessing.pool import ThreadPool
 
 import colorama
@@ -49,6 +51,17 @@ OK, WARNING, CRITICAL, UNKNOWN = 0, 1, 2, 3
 EXECUTABLE = sys.argv[0]  # make mockable
 
 
+def unwrap_consul_armour(value: str) -> object:
+    # See test_consul.py:prepare_consul_event.
+    # The directory is providing a somewhat weird (likely historical)
+    # structure with an ASCII armour. Due to Python only encoding/decoding
+    # base64 on binary strings we need to do this little dance here.
+    value = value.encode("ascii")
+    value = decode(value, "base64")
+    value = value.decode("ascii")
+    return json.loads(value)
+
+
 class ConsulEventHandler(object):
     """This is a wrapper that processes various consul events and multiplexes
     them into individual method handlers.
@@ -65,7 +78,7 @@ class ConsulEventHandler(object):
                 log.debug("ignore-key", key=event["Key"], reason="empty value")
                 return
             getattr(self, prefix)(event)
-        except:  # noqa
+        except BaseException as e:  # noqa
             # This must be a bare-except as it protects threads and the main
             # loop from dying. It could be that I'm wrong, but I'm leaving this
             # in for good measure.
@@ -75,7 +88,8 @@ class ConsulEventHandler(object):
         log.debug("finish-handle-key", key=event.get("Key", None))
 
     def node(self, event):
-        config = json.loads(event["Value"].decode("base64"))
+        config = unwrap_consul_armour(event["Value"])
+
         config["consul-generation"] = event["ModifyIndex"]
         vm = config["name"]
         if config["parameters"]["machine"] != "virtual":
@@ -112,9 +126,9 @@ class ConsulEventHandler(object):
             )
 
     def snapshot(self, event):
-        value = json.loads(event["Value"].decode("base64"))
+        value = unwrap_consul_armour(event["Value"])
         vm = value["vm"]
-        snapshot = value["snapshot"].encode("ascii")
+        snapshot = value["snapshot"]
         log_ = log.bind(snapshot=snapshot, machine=vm)
         try:
             agent = Agent(vm)
@@ -329,7 +343,11 @@ class Agent(object):
                 )
 
     @classmethod
-    def handle_consul_event(cls, input=sys.stdin):
+    def handle_consul_event(cls, input: typing.TextIO = sys.stdin):
+        # Python in our environments defaults to UTF-8 and we generally
+        # should be fine expecting a TextIO here as json load also expects
+        # text input. It might be necessary at some point to explicitly
+        # expect BinaryIO input and then enforce UTF-8 at this point.
         events = json.load(input)
         if not events:
             return

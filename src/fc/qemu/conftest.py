@@ -116,7 +116,7 @@ def pytest_assertrepr_compare(op, left, right):
         return right.compare(left).diff
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def clean_environment():
     def clean():
         subprocess.call("pkill -f qemu", shell=True)
@@ -130,7 +130,7 @@ def clean_environment():
     clean()
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def vm(clean_environment, monkeypatch, tmpdir):
     import fc.qemu.hazmat.qemu
 

@@ -20,7 +20,7 @@ class SysConfig(object):
 
     def read_config_files(self):
         """Tries to open fc-qemu.conf at various location."""
-        self.cp = configparser.SafeConfigParser()
+        self.cp = configparser.ConfigParser()
         self.cp.read(os.path.dirname(__file__) + "/default.conf")
         self.cp.read("/etc/qemu/fc-qemu.conf")
         if "qemu" not in self.cp.sections():

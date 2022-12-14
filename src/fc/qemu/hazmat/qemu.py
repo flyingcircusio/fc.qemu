@@ -391,7 +391,9 @@ class Qemu(object):
             self.log.warning("guest-fsfreeze-thaw-failed", exc_info=True)
             raise
 
-    def write_file(self, path, content):
+    def write_file(self, path, content: bytes):
+        if not isinstance(content, bytes):
+            raise TypeError("Expected bytes, got string.")
         with self.guestagent as guest:
             try:
                 handle = guest.cmd("guest-file-open", path=path, mode="w")

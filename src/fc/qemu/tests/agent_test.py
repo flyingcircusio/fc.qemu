@@ -10,7 +10,7 @@ from ..agent import Agent
 from ..exc import VMStateInconsistent
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def cleanup_files():
     files = []
     yield files
@@ -19,7 +19,7 @@ def cleanup_files():
             os.unlink(f)
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def simplevm_cfg(cleanup_files):
     fixtures = pkg_resources.resource_filename(__name__, "fixtures")
     shutil.copy(fixtures + "/simplevm.yaml", "/etc/qemu/vm/simplevm.cfg")

@@ -229,7 +229,7 @@ def ceph_mock(request, monkeypatch, tmpdir):
     monkeypatch.setattr(volume.Image, "unmap", image_unmap)
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def ceph_inst(ceph_mock):
     cfg = {
         "resource_group": "test",

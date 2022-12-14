@@ -542,7 +542,7 @@ def test_tmp_size():
     assert tmp_size(1000) == 31 * GiB
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def kill_vms():
     def _kill_vms():
         subprocess.call("pkill -f qemu", shell=True)

@@ -26,35 +26,6 @@ class ControlledRuntimeException(RuntimeError):
     """
 
 
-@contextlib.contextmanager
-def rewrite(filename):
-    """Rewrite an existing file atomically.
-
-    Clients are allowed to delete the tmpfile to signal that they don't
-    want to have it updated.
-    """
-
-    with tempfile.NamedTemporaryFile(
-        dir=os.path.dirname(filename),
-        delete=False,
-        prefix=os.path.basename(filename) + ".",
-    ) as tf:
-        if os.path.exists(filename):
-            os.chmod(tf.name, os.stat(filename).st_mode & 0o7777)
-        tf.has_changed = False
-        yield tf
-        if not os.path.exists(tf.name):
-            return
-        filename_tmp = tf.name
-    if os.path.exists(filename) and filecmp.cmp(
-        filename, filename_tmp, shallow=False
-    ):
-        os.unlink(filename_tmp)
-    else:
-        os.rename(filename_tmp, filename)
-        tf.has_changed = True
-
-
 def parse_address(addr):
     if addr.startswith("["):
         host, port = addr[1:].split("]:")

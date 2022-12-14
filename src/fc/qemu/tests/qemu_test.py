@@ -8,7 +8,7 @@ import pytest
 from ..hazmat.qemu import Qemu
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def qemu_with_pidfile(tmpdir):
     # The fixture uses a very long name which catches a special case where
     # the proc name is limited to 16 bytes and then we failed to match
