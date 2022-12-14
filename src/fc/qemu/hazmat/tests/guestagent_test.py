@@ -1,8 +1,8 @@
+import io
 import socket
 
 import mock
 import pytest
-import io
 
 from ..guestagent import ClientError, GuestAgent
 

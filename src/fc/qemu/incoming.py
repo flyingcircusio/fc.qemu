@@ -2,9 +2,9 @@ import contextlib
 import functools
 import re
 import time
+import xmlrpc.server
 
 import consulate.models.agent
-import xmlrpc.server
 
 from .exc import ConfigChanged, MigrationError, QemuNotRunning
 from .timeout import TimeOut

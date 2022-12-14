@@ -2,7 +2,6 @@ import pprint
 import random
 import threading
 import time
-
 import xmlrpc.client
 
 from .exc import ConfigChanged
@@ -206,7 +205,7 @@ class Outgoing(object):
             # This means we'll wait up to 80s, 40s on average if everything
             # becomes really busy and we may experience lock contention.
             tries = min([tries + 1, 13])
-            timeout.interval = random.randint(1, 2 ** tries) * 0.01
+            timeout.interval = random.randint(1, 2**tries) * 0.01
             if self.agent.has_new_config():
                 self.target.cancel(self.cookie)
                 raise ConfigChanged()

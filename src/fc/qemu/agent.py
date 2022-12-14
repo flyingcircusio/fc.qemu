@@ -465,7 +465,11 @@ class Agent(object):
             return
 
         if sys.stdout.isatty():
-            print(colorama.Fore.RED, "The following VMs will be shut down: ", colorama.Style.RESET_ALL)
+            print(
+                colorama.Fore.RED,
+                "The following VMs will be shut down: ",
+                colorama.Style.RESET_ALL,
+            )
             print("\t" + ",".join(vm.name for vm in vms))
             print()
             while True:
@@ -482,7 +486,7 @@ class Agent(object):
                 elif choice == "no":
                     return
                 else:
-                    print ("Please type 'yes' or 'no'.")
+                    print("Please type 'yes' or 'no'.")
 
         def stop_vm(vm):
             # Isolate the stop call into separate fc-qemu
@@ -1000,7 +1004,7 @@ class Agent(object):
 
     def ensure_online_disk_size(self):
         """Trigger block resize action for the root disk."""
-        target_size = self.cfg["disk"] * (1024 ** 3)
+        target_size = self.cfg["disk"] * (1024**3)
         if self.ceph.root.size >= target_size:
             self.log.info(
                 "check-disk-size",
@@ -1403,5 +1407,5 @@ class Agent(object):
             machine_type=machine_type,
             disk_cache_mode=self.qemu.disk_cache_mode,
             network="".join(netconfig),
-            **self.cfg
+            **self.cfg,
         )

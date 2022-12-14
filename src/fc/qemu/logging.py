@@ -4,7 +4,6 @@
 # The ConsoleRenderer is based on structlog.dev.ConsoleRenderer
 
 
-
 import os
 import sys
 

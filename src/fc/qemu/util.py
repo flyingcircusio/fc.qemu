@@ -1,7 +1,6 @@
 """Global helper functions and utilites for fc.qemu."""
 
 
-
 import contextlib
 import datetime
 import filecmp
@@ -14,8 +13,8 @@ import time
 
 from structlog import get_logger
 
-MiB = 2 ** 20
-GiB = 2 ** 30
+MiB = 2**20
+GiB = 2**30
 
 
 log = get_logger()

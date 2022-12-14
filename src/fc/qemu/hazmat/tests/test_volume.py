@@ -134,7 +134,7 @@ def test_force_unlock(volume):
 @pytest.mark.timeout(10)
 def test_volume_mkswap(volume):
     volume.ensure_presence()
-    volume.ensure_size(5 * 1024 ** 2)
+    volume.ensure_size(5 * 1024**2)
     with volume.mapped():
         volume.mkswap()
 
@@ -142,7 +142,7 @@ def test_volume_mkswap(volume):
 @pytest.mark.timeout(60)
 def test_volume_mkfs(volume):
     volume.ensure_presence()
-    volume.ensure_size(40 * 1024 ** 2)
+    volume.ensure_size(40 * 1024**2)
     with volume.mapped():
         volume.mkfs()
 
@@ -183,7 +183,7 @@ def test_mount_should_fail_if_not_mapped(volume):
 @pytest.mark.live()
 def test_mount_snapshot(volume):
     volume.ensure_presence()
-    volume.ensure_size(40 * 1024 ** 2)
+    volume.ensure_size(40 * 1024**2)
     with volume.mapped():
         volume.mkfs(fstype="xfs", gptbios=True)
     volume.snapshots.create("s0")

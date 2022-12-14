@@ -1,9 +1,9 @@
 import json
 import os.path
+from codecs import encode
+from io import StringIO
 
 import pytest
-from io import StringIO
-from codecs import encode
 
 import fc.qemu.agent
 from fc.qemu import util
@@ -107,7 +107,7 @@ def test_qemu_config_change(clean_config_test22):
             "tmp_size": 5368709120,
         },
     }
-    test22 = encode(json.dumps(cfg),"base64")
+    test22 = encode(json.dumps(cfg), "base64")
     test22 = test22.replace("\n", "")
 
     stdin = StringIO(
@@ -147,7 +147,7 @@ def test_qemu_config_change(clean_config_test22):
     # Changing the config does cause ensure to be called.
     util.log_data = []
     cfg["disk"] = 20
-    test22 = encode(json.dumps(cfg),"base64")
+    test22 = encode(json.dumps(cfg), "base64")
     test22 = test22.replace("\n", "")
 
     stdin = StringIO(
@@ -165,46 +165,49 @@ def test_qemu_config_change(clean_config_test22):
 def test_qemu_config_change_physical():
     util.test_log_options["show_events"] = ["consul"]
 
-    test22 = encode(json.dumps(
-        {
-            "classes": [
-                "role::appserver",
-                "role::backupclient",
-                "role::generic",
-                "role::postgresql90",
-                "role::pspdf",
-                "role::webproxy",
-            ],
-            "name": "test22",
-            "parameters": {
-                "ceph_id": "admin",
-                "cores": 1,
-                "directory_password": "1jmGYd3dddyjpFlLqg63RHie",
-                "directory_ring": 1,
-                "disk": 15,
-                "environment": "staging",
-                "id": 4097,
-                "interfaces": {},
-                "kvm_host": "host1",
-                "location": "whq",
-                "machine": "physical",
-                "memory": 512,
+    test22 = encode(
+        json.dumps(
+            {
+                "classes": [
+                    "role::appserver",
+                    "role::backupclient",
+                    "role::generic",
+                    "role::postgresql90",
+                    "role::pspdf",
+                    "role::webproxy",
+                ],
                 "name": "test22",
-                "online": False,
-                "production": False,
-                "profile": "generic",
-                "rbd_pool": "rbd.ssd",
-                "resource_group": "test",
-                "resource_group_parent": "",
-                "reverses": {},
-                "service_description": "asdf",
-                "servicing": True,
-                "swap_size": 1073741824,
-                "timezone": "Europe/Berlin",
-                "tmp_size": 5368709120,
-            },
-        }
-    ), "base64")
+                "parameters": {
+                    "ceph_id": "admin",
+                    "cores": 1,
+                    "directory_password": "1jmGYd3dddyjpFlLqg63RHie",
+                    "directory_ring": 1,
+                    "disk": 15,
+                    "environment": "staging",
+                    "id": 4097,
+                    "interfaces": {},
+                    "kvm_host": "host1",
+                    "location": "whq",
+                    "machine": "physical",
+                    "memory": 512,
+                    "name": "test22",
+                    "online": False,
+                    "production": False,
+                    "profile": "generic",
+                    "rbd_pool": "rbd.ssd",
+                    "resource_group": "test",
+                    "resource_group_parent": "",
+                    "reverses": {},
+                    "service_description": "asdf",
+                    "servicing": True,
+                    "swap_size": 1073741824,
+                    "timezone": "Europe/Berlin",
+                    "tmp_size": 5368709120,
+                },
+            }
+        ),
+        "base64",
+    )
     test22 = test22.replace("\n", "")
 
     stdin = StringIO(
@@ -316,46 +319,49 @@ finish-consul-events"""
 def test_multiple_events():
     util.test_log_options["show_events"] = ["consul", "handle-key"]
 
-    test22 = encode(json.dumps(
-        {
-            "classes": [
-                "role::appserver",
-                "role::backupclient",
-                "role::generic",
-                "role::postgresql90",
-                "role::pspdf",
-                "role::webproxy",
-            ],
-            "name": "test22",
-            "parameters": {
-                "ceph_id": "admin",
-                "cores": 1,
-                "directory_password": "1jmGYd3dddyjpFlLqg63RHie",
-                "directory_ring": 1,
-                "disk": 15,
-                "environment": "staging",
-                "id": 4097,
-                "interfaces": {},
-                "kvm_host": "host1",
-                "location": "whq",
-                "machine": "physical",
-                "memory": 512,
+    test22 = encode(
+        json.dumps(
+            {
+                "classes": [
+                    "role::appserver",
+                    "role::backupclient",
+                    "role::generic",
+                    "role::postgresql90",
+                    "role::pspdf",
+                    "role::webproxy",
+                ],
                 "name": "test22",
-                "online": False,
-                "production": False,
-                "profile": "generic",
-                "rbd_pool": "rbd.ssd",
-                "resource_group": "test",
-                "resource_group_parent": "",
-                "reverses": {},
-                "service_description": "asdf",
-                "servicing": True,
-                "swap_size": 1073741824,
-                "timezone": "Europe/Berlin",
-                "tmp_size": 5368709120,
-            },
-        }
-    ), "base64")
+                "parameters": {
+                    "ceph_id": "admin",
+                    "cores": 1,
+                    "directory_password": "1jmGYd3dddyjpFlLqg63RHie",
+                    "directory_ring": 1,
+                    "disk": 15,
+                    "environment": "staging",
+                    "id": 4097,
+                    "interfaces": {},
+                    "kvm_host": "host1",
+                    "location": "whq",
+                    "machine": "physical",
+                    "memory": 512,
+                    "name": "test22",
+                    "online": False,
+                    "production": False,
+                    "profile": "generic",
+                    "rbd_pool": "rbd.ssd",
+                    "resource_group": "test",
+                    "resource_group_parent": "",
+                    "reverses": {},
+                    "service_description": "asdf",
+                    "servicing": True,
+                    "swap_size": 1073741824,
+                    "timezone": "Europe/Berlin",
+                    "tmp_size": 5368709120,
+                },
+            }
+        ),
+        "base64",
+    )
     test22 = test22.replace("\n", "")
 
     stdin = StringIO(

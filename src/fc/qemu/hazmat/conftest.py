@@ -1,4 +1,5 @@
-import os, errno
+import errno
+import os
 
 import pytest
 import rados

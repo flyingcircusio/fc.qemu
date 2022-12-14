@@ -1,6 +1,5 @@
 import json
 import os.path
-
 import urllib.parse
 import xmlrpc.client
 

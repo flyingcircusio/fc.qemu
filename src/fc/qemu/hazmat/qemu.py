@@ -7,11 +7,10 @@ import os.path
 import socket
 import subprocess
 import time
+from codecs import encode
 
 import psutil
 import yaml
-
-from codecs import encode
 
 from ..exc import QemuNotRunning, VMStateInconsistent
 from ..sysconfig import sysconfig
@@ -399,7 +398,7 @@ class Qemu(object):
                 guest.cmd(
                     "guest-file-write",
                     handle=handle,
-                    **{"buf-b64": encode(content,"base64")}
+                    **{"buf-b64": encode(content, "base64")},
                 )
                 guest.cmd("guest-file-close", handle=handle)
             except ClientError:
@@ -601,7 +600,7 @@ class Qemu(object):
     def watchdog_action(self, action):
         self.qmp.command(
             "human-monitor-command",
-            **{"command-line": "watchdog_action action={}".format(action)}
+            **{"command-line": "watchdog_action action={}".format(action)},
         )
 
     def clean_run_files(self):
@@ -629,7 +628,7 @@ class Qemu(object):
                 monitor_port=self.monitor_port,
                 vnc=self.vnc.format(**self.cfg),
                 chroot=chroot,
-                **self.cfg
+                **self.cfg,
             )
 
         self.local_args = [format(a) for a in self.args]
