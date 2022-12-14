@@ -71,7 +71,7 @@ def remove_empty_dirs(d):
         d = os.path.dirname(d)
 
 
-def cmd(cmdline, log):
+def cmd(cmdline, log, encoding="ascii", errors="replace"):
     """Execute cmdline with stdin closed to avoid questions on terminal"""
     prefix = cmdline.split()[0]
     args = " ".join(cmdline.split()[1:])
@@ -83,6 +83,8 @@ def cmd(cmdline, log):
             stdin=null,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            encoding=encoding,
+            errors=errors,
         )
         # This allows for more interactive logging and capturing
         # stdout in unit tests even if we get stuck.
