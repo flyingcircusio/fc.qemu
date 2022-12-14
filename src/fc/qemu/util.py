@@ -90,7 +90,7 @@ def cmd(cmdline, log, encoding="ascii", errors="replace"):
         # stdout in unit tests even if we get stuck.
         stdout = ""
         while True:
-            line = subprocess._eintr_retry_call(proc.stdout.readline)
+            line = proc.stdout.readline()
             if line:
                 # This ensures we get partial output in case of test failures
                 log.debug(os.path.basename(prefix), output_line=line)
