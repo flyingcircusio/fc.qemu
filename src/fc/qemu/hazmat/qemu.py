@@ -34,13 +34,13 @@ class InvalidMigrationStatus(Exception):
     pass
 
 
-def detect_current_machine_type(prefix):
+def detect_current_machine_type(prefix: str, encoding="ascii", errors="replace"):
     """Given a machine type prefix, e.g. 'pc-i440fx-' return the newest
     current machine on the available Qemu system.
 
     Newest in this case means the first item in the list as given by Qemu.
     """
-    result = subprocess.check_output([Qemu.executable, "-machine", "help"])
+    result = subprocess.check_output([Qemu.executable, "-machine", "help"], encoding=encoding, errors=errors)
     for line in result.splitlines():
         if line.startswith(prefix):
             return line.split()[0]
