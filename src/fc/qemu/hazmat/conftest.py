@@ -33,8 +33,10 @@ class RadosMock(object):
 class IoctxMock(object):
     """Mock access to a pool."""
 
-    def __init__(self, name):
-        self.name = name
+    def __init__(self, name: str):
+        # the rados implementation takes the name as a str, but later returns
+        # that attribute as bytes
+        self.name = name.encode("ascii")
         self.rbd_images = {}
         self._snapids = 0
 

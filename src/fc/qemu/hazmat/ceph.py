@@ -32,7 +32,7 @@ class Ceph(object):
         self.swap = None
         self.tmp = None
         self.volumes = []
-        self.pool = self.cfg["rbd_pool"].encode("ascii")
+        self.pool = self.cfg["rbd_pool"]
 
     def __enter__(self):
         # Not sure whether it makes sense that we configure the client ID
