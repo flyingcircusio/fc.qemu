@@ -6,7 +6,6 @@ import glob
 import os.path
 import socket
 import subprocess
-import sys
 import time
 
 import psutil
@@ -93,6 +92,9 @@ class Qemu(object):
     require_kvm = True
     migration_address = None
     max_downtime = 1.0  # seconds
+    # 0.8 * 10 Gbit/s in bytes/s
+    migration_bandwidth = int(0.8 * 10 * 10 ** 9 / 8)
+
     guestagent_timeout = 3.0
     # QMP runs in the main thread and can block. Our original 15s timeout
     # is definitely too short. Many discussions mention that 5 minutes have
@@ -424,8 +426,7 @@ class Qemu(object):
             **{
                 "compress-level": 0,
                 "downtime-limit": int(self.max_downtime * 1000),  # ms
-                # 0.8 * 10 Gbit/s in bytes/s
-                "max-bandwidth": int(0.8 * 10 * 10 ** 9 / 8),
+                "max-bandwidth": self.migration_bandwidth,
             }
         )
         self.qmp.command("migrate", uri=address)

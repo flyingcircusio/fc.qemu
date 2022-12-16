@@ -558,7 +558,7 @@ def kill_vms():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(240)
 def test_vm_migration(vm, kill_vms):
     def call(cmd, wait=True, host=None):
         for ssh_cmd in ["scp", "ssh"]:
@@ -595,45 +595,88 @@ def test_vm_migration(vm, kill_vms):
     call("scp /etc/qemu/vm/simplevm.cfg host2:/etc/qemu/vm/")
 
     inmigrate = call("ssh host2 'fc-qemu -v inmigrate simplevm'", wait=False)
-    outmigrate = call("fc-qemu outmigrate simplevm", wait=False)
+    outmigrate = call("fc-qemu -v outmigrate simplevm", wait=False)
 
     outmigrate_result = communicate_progress(outmigrate)
     assert outmigrate_result == Ellipsis(
         """\
+/nix/store/.../bin/fc-qemu -v outmigrate simplevm
+load-system-config
+simplevm             connect-rados                  subsystem='ceph'
+simplevm             acquire-lock                   target='/run/qemu.simplevm.lock'
+simplevm             acquire-lock                   result='locked' target='/run/qemu.simplevm.lock'
+simplevm             lock-status                    count=1
+simplevm             qmp_capabilities               arguments={} id=None subsystem='qemu/qmp'
+simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
 simplevm             outmigrate
+simplevm             consul-register
+simplevm             heartbeat-initialized
 simplevm             locate-inmigration-service
+simplevm             check-staging-config           result='none'
 simplevm             located-inmigration-service    url='http://host2.mgm.test.gocept.net:...'
 simplevm             acquire-migration-locks
+simplevm             check-staging-config           result='none'
+simplevm             acquire-migration-lock         result='success' subsystem='qemu'
+simplevm             acquire-local-migration-lock   result='success'
+simplevm             acquire-remote-migration-lock
+simplevm             started-heartbeat-ping
+simplevm             heartbeat-ping
+simplevm             acquire-remote-migration-lock  result='success'
 simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.root'
 simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.swap'
 simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.tmp'
 simplevm             prepare-remote-environment
 simplevm             start-migration                target='tcp:192.168.4.7:...'
+simplevm             migrate                        subsystem='qemu'
+simplevm             migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None subsystem='qemu/qmp'
+simplevm             migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None subsystem='qemu/qmp'
+simplevm             migrate                        arguments={'uri': 'tcp:192.168.4.7:...'} id=None subsystem='qemu/qmp'
+simplevm             query-migrate-parameters       arguments={} id=None subsystem='qemu/qmp'
+simplevm             migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression=u'none' multifd-zlib-level=1 multifd-zstd-level=1 subsystem='qemu' throttle-trigger-threshold=50 tls-authz=u'' tls-creds=u'' tls-hostname=u'' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
 simplevm             migration-status               mbps='-' remaining='0' status=u'setup'
 simplevm> {u'blocked': False, u'status': u'setup'}
-simplevm             migration-status               mbps=... remaining='0' status=u'completed'
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=... remaining='...' status=u'active'
 simplevm> {u'blocked': False,
-simplevm>  u'downtime': ...,
-simplevm>  u'ram': {u'dirty-pages-rate': ...,
-simplevm>           u'dirty-sync-count': ...,
-simplevm>           u'duplicate': ...,
-simplevm>           u'mbps': ...,
-simplevm>           u'multifd-bytes': 0,
-simplevm>           u'normal': ...,
-simplevm>           u'normal-bytes': ...,
-simplevm>           u'page-size': 4096,
-simplevm>           u'pages-per-second': ...,
-simplevm>           u'postcopy-requests': 0,
-simplevm>           u'remaining': 0,
-simplevm>           u'skipped': 0,
-simplevm>           u'total': ...,
-simplevm>           u'transferred': ...},
-simplevm>  u'setup-time': ...,
+simplevm>  u'expected-downtime': 4000,
+...
+simplevm>  u'status': u'active',
+simplevm>  u'total-time': ...}
+...
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=... remaining='...' status=u'active'
+...
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=... remaining='...' status=u'active'
+...
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=... remaining='...' status=u'active'
+...
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=... remaining='...' status=u'active'
+...
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=... remaining='...' status=u'active'
+...
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=... remaining='...' status=u'active'
+...
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=... remaining='...' status=u'completed'
+...
 simplevm>  u'status': u'completed',
 simplevm>  u'total-time': ...}
+simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
 simplevm             finish-migration
 simplevm             consul-deregister
 simplevm             outmigrate-finished            exitcode=0
+simplevm             lock-status                    count=0
+simplevm             release-lock                   target='/run/qemu.simplevm.lock'
+simplevm             release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
 """
     )
     assert outmigrate.returncode == 0
@@ -652,22 +695,24 @@ simplevm             start-server                   type='incoming' url='http://
 simplevm             setup-incoming-api             cookie='...'
 simplevm             consul-register-inmigrate
 simplevm             received-ping                  timeout=60
-simplevm             waiting                        interval=0 remaining=...
+simplevm             waiting                        interval=0 remaining=59
 simplevm             received-acquire-migration-lock
 simplevm             acquire-migration-lock         result='success' subsystem='qemu'
 simplevm             reset-timeout
-simplevm             waiting                        interval=0 remaining=...
+simplevm             waiting                        interval=0 remaining=59
+simplevm             received-ping                  timeout=60
+simplevm             waiting                        interval=0 remaining=59
 simplevm             received-acquire-ceph-locks
 simplevm             lock                           subsystem='ceph' volume='rbd.ssd/simplevm.root'
 simplevm             lock                           subsystem='ceph' volume='rbd.ssd/simplevm.swap'
 simplevm             lock                           subsystem='ceph' volume='rbd.ssd/simplevm.tmp'
 simplevm             reset-timeout
-simplevm             waiting                        interval=0 remaining=...
+simplevm             waiting                        interval=0 remaining=59
 simplevm             received-prepare-incoming
 simplevm             acquire-global-lock            subsystem='qemu' target='/run/fc-qemu.lock'
 simplevm             global-lock-acquire            result='locked' subsystem='qemu' target='/run/fc-qemu.lock'
 simplevm             global-lock-status             count=1 subsystem='qemu' target='/run/fc-qemu.lock'
-simplevm             sufficient-host-memory         available_real=... bookable=2000 required=768 subsystem='qemu'
+simplevm             sufficient-host-memory         available_real=... bookable=... required=768 subsystem='qemu'
 simplevm             start-qemu                     subsystem='qemu'
 simplevm             qemu-system-x86_64             additional_args=['-incoming tcp:192.168.4.7:...'] local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-chroot /srv/vm/simplevm', '-runas nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg'] subsystem='qemu'
 simplevm             global-lock-status             count=0 subsystem='qemu' target='/run/fc-qemu.lock'
@@ -676,7 +721,23 @@ simplevm             global-lock-release            result='unlocked' subsystem=
 simplevm             qmp_capabilities               arguments={} id=None subsystem='qemu/qmp'
 simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
 simplevm             reset-timeout
-simplevm             waiting                        interval=0 remaining=...
+simplevm             waiting                        interval=0 remaining=59
+simplevm             received-ping                  timeout=60
+simplevm             waiting                        interval=0 remaining=59
+simplevm             received-ping                  timeout=60
+simplevm             waiting                        interval=0 remaining=59
+simplevm             received-ping                  timeout=60
+simplevm             waiting                        interval=0 remaining=59
+simplevm             received-ping                  timeout=60
+simplevm             waiting                        interval=0 remaining=59
+simplevm             received-ping                  timeout=60
+simplevm             waiting                        interval=0 remaining=59
+simplevm             received-ping                  timeout=60
+simplevm             waiting                        interval=0 remaining=59
+simplevm             received-ping                  timeout=60
+simplevm             waiting                        interval=0 remaining=59
+simplevm             received-ping                  timeout=60
+simplevm             waiting                        interval=0 remaining=59
 simplevm             received-finish-incoming
 simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
 simplevm             reset-timeout
@@ -784,7 +845,6 @@ def test_create_vm_shows_error(vm, tmpdir):
         with pytest.raises(subprocess.CalledProcessError):
             vm.ensure()
     assert (
-
         Ellipsis(
             """\
 ...

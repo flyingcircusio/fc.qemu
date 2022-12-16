@@ -19,14 +19,20 @@ class Heartbeat(object):
 
     """
 
-    def __init__(self):
+    cookie = None
+
+    def __init__(self, log):
         self.thread = threading.Thread(target=self.run)
         self.running = False
+        self.url = None
+        self.log = log
+        self.log.debug("heartbeat-initialized")
 
     def start(self):
-        assert self.target is not None
+        assert self.url is not None
         if self.running:
             return
+        self.connection = xmlrpclib.ServerProxy(self.url, allow_none=True)
         self.running = True
         self.thread.daemon = True
         self.thread.start()
@@ -35,12 +41,17 @@ class Heartbeat(object):
         self.running = False
 
     def run(self):
-        while self.running:
-            time.sleep(10)
-            try:
-                self.target.ping()
-            except Exception:
-                self.log.exception("ping-failed", exc_info=True)
+        self.log.debug("started-heartbeat-ping")
+        try:
+            while self.running:
+                try:
+                    self.log.debug("heartbeat-ping")
+                    self.connection.ping(self.cookie)
+                except Exception:
+                    self.log.exception("ping-failed", exc_info=True)
+                time.sleep(10)
+        finally:
+            self.log.debug("stopped-heartbeat-ping")
 
 
 class Outgoing(object):
@@ -65,7 +76,7 @@ class Outgoing(object):
         self.log = agent.log
         self.name = agent.name
         self.consul = agent.consul
-        self.heartbeat = Heartbeat()
+        self.heartbeat = Heartbeat(self.log)
 
     def __call__(self):
         self.cookie = self.agent.ceph.auth_cookie()
@@ -169,13 +180,14 @@ class Outgoing(object):
             else:
                 # We did not find a viable target - continue waiting
                 continue
-            return target
+            return target, url
         raise RuntimeError("failed to locate inmigrate service", service_name)
 
     def connect(self):
-        connection = self.locate_inmigrate_service()
+        connection, url = self.locate_inmigrate_service()
         self.target = connection
-        self.heartbeat.target = connection
+        self.heartbeat.url = url
+        self.heartbeat.cookie = self.cookie
         self.heartbeat.start()
 
     def acquire_migration_locks(self):

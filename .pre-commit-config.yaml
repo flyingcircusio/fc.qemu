@@ -22,7 +22,9 @@ repos:
         name: isort (python)
         args: ["--profile", "black", "--filter-files"]
 
--   repo: https://github.com/psf/black
-    rev: 21.12b0
-    hooks:
-    -   id: black
+# disabled because of a dependency glitch and we can't update as we're still
+# on python 2, will be fixed when switching to nautilus
+#-   repo: https://github.com/psf/black
+#    rev: 21.12b0
+#    hooks:
+#   -   id: black

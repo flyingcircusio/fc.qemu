@@ -38,6 +38,9 @@ class SysConfig(object):
         self.qemu["require_kvm"] = bool(self.cp.get("qemu", "accelerator"))
         self.qemu["vnc"] = self.cp.get("qemu", "vnc")
         self.qemu["max_downtime"] = self.cp.getfloat("qemu", "max-downtime")
+        self.qemu["migration_bandwidth"] = self.cp.getint(
+            "qemu", "migration-bandwidth"
+        )
         self.qemu["vm_max_total_memory"] = self.cp.getint(
             "qemu", "vm-max-total-memory"
         )
