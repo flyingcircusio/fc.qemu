@@ -346,6 +346,11 @@ class Qemu(object):
                 stderr=subprocess.PIPE,
             )
             stdout, stderr = p.communicate()
+            # FIXME: prettier logging
+            #self.log.debug("supervised-qemu-stdout", output=stdout)
+            #self.log.debug("supervised-qemu-stderr", output=stderr)
+            self.log.debug("supervised-qemu-stdout", output=stdout.decode("ascii") if isinstance(stdout, bytes) else stdout)
+            self.log.debug("supervised-qemu-stderr", output=stderr.decode("ascii") if isinstance(stderr, bytes) else stderr)
             if p.returncode != 0:
                 raise QemuNotRunning(p.returncode, stdout, stderr)
         except QemuNotRunning:
