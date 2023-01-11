@@ -4,12 +4,12 @@ import subprocess
 import sys
 
 from fc.qemu.main import daemonize
-from fc.qemu.util import ensure_separate_cgroup
+from fc.qemu.util import ensure_separate_cgroup, FlushingStream
 
 
 def run_supervised(cmd, name, logfile):
     daemonize()
-    log = open(logfile, "a+", buffering=0)
+    log = FlushingStream(open(logfile, "a+", buffering=0))
     now = datetime.datetime.now().isoformat()
     log.write("{} - starting command {}\n".format(now, cmd))
     s = subprocess.Popen(

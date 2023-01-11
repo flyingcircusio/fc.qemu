@@ -1,7 +1,7 @@
 import os.path
 import sys
 
-from .util import ControlledRuntimeException, ensure_separate_cgroup
+from .util import ControlledRuntimeException, ensure_separate_cgroup, FlushingStream
 
 
 def daemonize():
@@ -48,8 +48,8 @@ def daemonize():
     sys.stdout.flush()
     sys.stderr.flush()
     si = open("/dev/null", "r")
-    so = open("/dev/null", "a+", 0)
-    se = open("/dev/null", "a+", 0)
+    so = FlushingStream(open("/dev/null", "a+", 0))
+    se = FlushingStream(open("/dev/null", "a+", 0))
     os.dup2(si.fileno(), sys.stdin.fileno())
     os.dup2(so.fileno(), sys.stdout.fileno())
     os.dup2(se.fileno(), sys.stderr.fileno())

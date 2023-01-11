@@ -20,6 +20,16 @@ GiB = 2**30
 log = get_logger()
 
 
+# workaround for ValueError: can't have unbuffered text I/O
+class FlushingStream(object):
+    def __init__(self, stream):
+        self.stream = stream
+
+    def write(self, data):
+        self.stream.write(data)
+        self.stream.flush()
+
+
 class ControlledRuntimeException(RuntimeError):
     """An exception that is used for flow control but doesn't have to be logged
     as it is handled properly inside.
