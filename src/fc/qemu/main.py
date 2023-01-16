@@ -64,6 +64,7 @@ def main():
     import argparse
 
     a = argparse.ArgumentParser(description="Qemu VM agent")
+    a.set_defaults(func=a.print_usage)
 
     a.add_argument(
         "--verbose",
@@ -179,6 +180,11 @@ def main():
 
     args = a.parse_args()
     func = args.func
+
+    if func.__name__ == "print_usage":
+        func()
+        sys.exit(1)
+
     vm = getattr(args, "vm", None)
     kwargs = dict(args._get_kwargs())
     del kwargs["func"]
