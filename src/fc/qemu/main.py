@@ -1,7 +1,11 @@
 import os.path
 import sys
 
-from .util import ControlledRuntimeException, ensure_separate_cgroup, FlushingStream
+from .util import (
+    ControlledRuntimeException,
+    FlushingStream,
+    ensure_separate_cgroup,
+)
 
 
 def daemonize():

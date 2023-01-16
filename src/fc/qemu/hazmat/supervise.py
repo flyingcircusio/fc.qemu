@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 from fc.qemu.main import daemonize
-from fc.qemu.util import ensure_separate_cgroup, FlushingStream
+from fc.qemu.util import FlushingStream, ensure_separate_cgroup
 
 
 def run_supervised(cmd, name, logfile):
