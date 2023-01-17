@@ -33,6 +33,8 @@ def run_supervised(cmd, name, logfile):
         stdin=None,
         stdout=log,
         stderr=log,
+        encoding="ascii",
+        errors="replace",
     )
     exit_code = s.wait()
     now = datetime.datetime.now().isoformat()

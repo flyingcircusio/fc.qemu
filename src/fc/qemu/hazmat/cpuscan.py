@@ -164,6 +164,7 @@ def scan_cpus(host=None):
             stdout=FNULL,
             stderr=FNULL,
             encoding="ascii",
+            errors="replace",
         )
         task.communicate(input="quit\n")
         if not task.wait():

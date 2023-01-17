@@ -351,6 +351,7 @@ class Qemu(object):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 encoding="ascii",
+                errors="replace",
             )
             stdout, stderr = p.communicate()
             # FIXME: prettier logging
