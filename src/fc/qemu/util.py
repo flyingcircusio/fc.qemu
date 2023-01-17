@@ -3,12 +3,10 @@
 
 import contextlib
 import datetime
-import filecmp
 import os
 import os.path
 import subprocess
 import sys
-import tempfile
 import time
 
 from structlog import get_logger
@@ -28,6 +26,9 @@ class FlushingStream(object):
     def write(self, data):
         self.stream.write(data)
         self.stream.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.stream, name)
 
 
 class ControlledRuntimeException(RuntimeError):

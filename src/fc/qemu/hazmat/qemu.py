@@ -98,7 +98,7 @@ class Qemu(object):
     migration_address = None
     max_downtime = 1.0  # seconds
     # 0.8 * 10 Gbit/s in bytes/s
-    migration_bandwidth = int(0.8 * 10 * 10 ** 9 / 8)
+    migration_bandwidth = int(0.8 * 10 * 10**9 / 8)
 
     guestagent_timeout = 3.0
     # QMP runs in the main thread and can block. Our original 15s timeout
@@ -343,28 +343,19 @@ class Qemu(object):
             # We explicitly close all fds for the child to avoid inheriting fd
             # locks accidentally and indefinitely.
             qemu_log = "/var/log/vm/{}.supervisor.log".format(self.name)
+            cmdline = ["supervised-qemu", cmd, self.name, qemu_log]
+            self.log.debug("exec", cmd=" ".join(cmdline))
             p = subprocess.Popen(
-                ["supervised-qemu", cmd, self.name, qemu_log],
+                cmdline,
                 close_fds=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                encoding="ascii",
             )
             stdout, stderr = p.communicate()
             # FIXME: prettier logging
-            # self.log.debug("supervised-qemu-stdout", output=stdout)
-            # self.log.debug("supervised-qemu-stderr", output=stderr)
-            self.log.debug(
-                "supervised-qemu-stdout",
-                output=stdout.decode("ascii")
-                if isinstance(stdout, bytes)
-                else stdout,
-            )
-            self.log.debug(
-                "supervised-qemu-stderr",
-                output=stderr.decode("ascii")
-                if isinstance(stderr, bytes)
-                else stderr,
-            )
+            self.log.debug("supervised-qemu-stdout", output=stdout)
+            self.log.debug("supervised-qemu-stderr", output=stderr)
             if p.returncode != 0:
                 raise QemuNotRunning(p.returncode, stdout, stderr)
         except QemuNotRunning:
@@ -449,7 +440,7 @@ class Qemu(object):
                 "compress-level": 0,
                 "downtime-limit": int(self.max_downtime * 1000),  # ms
                 "max-bandwidth": self.migration_bandwidth,
-            }
+            },
         )
         self.qmp.command("migrate", uri=address)
         self.log.debug(

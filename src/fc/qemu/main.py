@@ -1,14 +1,10 @@
 import os.path
 import sys
 
-from .util import (
-    ControlledRuntimeException,
-    FlushingStream,
-    ensure_separate_cgroup,
-)
+from .util import ControlledRuntimeException, ensure_separate_cgroup
 
 
-def daemonize():
+def daemonize(log=None):
     """
         Copyright/License abberation:
 
@@ -20,6 +16,9 @@ def daemonize():
         do the UNIX double-fork magic, see Stevens' "Advanced
         Programming in the UNIX Environment" for details (ISBN 0201563177)
         http://www.erlenstar.demon.co.uk/unix/faq_2.html#SEC16
+
+        With adjustments towards optional redirections of stdout and stderr
+        to a specific file.
     """
     import os
     import os.path
@@ -52,8 +51,11 @@ def daemonize():
     sys.stdout.flush()
     sys.stderr.flush()
     si = open("/dev/null", "r")
-    so = open("/dev/null", "a+")
-    se = open("/dev/null", "a+")
+    if log:
+        so = se = log
+    else:
+        so = open("/dev/null", "a+")
+        se = open("/dev/null", "a+")
     os.dup2(si.fileno(), sys.stdin.fileno())
     os.dup2(so.fileno(), sys.stdout.fileno())
     os.dup2(se.fileno(), sys.stderr.fileno())
@@ -64,7 +66,7 @@ def main():
     import argparse
 
     a = argparse.ArgumentParser(description="Qemu VM agent")
-    a.set_defaults(func=a.print_usage)
+    a.set_defaults(func="print_usage")
 
     a.add_argument(
         "--verbose",
@@ -181,8 +183,8 @@ def main():
     args = a.parse_args()
     func = args.func
 
-    if func.__name__ == "print_usage":
-        func()
+    if func == "print_usage":
+        a.print_usage()
         sys.exit(1)
 
     vm = getattr(args, "vm", None)

@@ -1015,7 +1015,7 @@ class Agent(object):
         try:
             self.qemu.write_file(
                 "/run/qemu-binary-generation-current",
-                str(self.binary_generation) + "\n",
+                (str(self.binary_generation) + "\n").encode("ascii"),
             )
         except Exception as e:
             self.log.error("mark-qemu-binary-generation", reason=str(e))

@@ -167,5 +167,6 @@ class Ceph(object):
             lock = vol.lock_status()
             if lock:
                 status.extend(lock)
-            c.update("\0".join(status) + "\0")
+            status = ("\0".join(status) + "\0").encode("ascii")
+            c.update(status)
         return c.hexdigest()

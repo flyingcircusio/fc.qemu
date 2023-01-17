@@ -31,7 +31,7 @@ class Heartbeat(object):
         assert self.url is not None
         if self.running:
             return
-        self.connection = xmlrpclib.ServerProxy(self.url, allow_none=True)
+        self.connection = xmlrpc.client.ServerProxy(self.url, allow_none=True)
         self.running = True
         self.thread.daemon = True
         self.thread.start()
@@ -297,6 +297,7 @@ class Outgoing(object):
                     action="destroy remote",
                 )
                 try:
+                    self.heartbeat.stop()
                     self.target.destroy(self.cookie)
                 except Exception:
                     self.log.exception("destroy-remote-failed", exc_info=True)

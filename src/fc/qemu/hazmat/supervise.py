@@ -8,8 +8,8 @@ from fc.qemu.util import FlushingStream, ensure_separate_cgroup
 
 
 def run_supervised(cmd, name, logfile):
-    daemonize()
-    log = FlushingStream(open(logfile, "a+", buffering=0))
+    log = FlushingStream(open(logfile, "a+"))
+    daemonize(log)
     now = datetime.datetime.now().isoformat()
     log.write("{} - starting command {}\n".format(now, cmd))
     s = subprocess.Popen(

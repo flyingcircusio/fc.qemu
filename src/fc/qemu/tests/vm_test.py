@@ -130,6 +130,9 @@ global-lock-status count=1 machine=simplevm subsystem=qemu target=/run/fc-qemu.l
 sufficient-host-memory available_real=... bookable=2000 machine=simplevm required=384 subsystem=qemu
 start-qemu machine=simplevm subsystem=qemu
 qemu-system-x86_64 additional_args=() local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-chroot /srv/vm/simplevm', '-runas nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg'] machine=simplevm subsystem=qemu
+exec cmd=supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -chroot /srv/vm/simplevm -runas nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log machine=simplevm subsystem=qemu
+supervised-qemu-stdout machine=simplevm subsystem=qemu
+supervised-qemu-stderr machine=simplevm subsystem=qemu
 global-lock-status count=0 machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 global-lock-release machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 global-lock-release machine=simplevm result=unlocked subsystem=qemu
@@ -138,11 +141,11 @@ query-status arguments={} id=None machine=simplevm subsystem=qemu/qmp
 consul-register machine=simplevm
 query-block arguments={} id=None machine=simplevm subsystem=qemu/qmp
 ensure-throttle action=throttle current_iops=0 device=virtio0 machine=simplevm target_iops=10000
-block_set_io_throttle arguments={'bps_rd': 0, 'bps_wr': 0, 'bps': 0, 'iops': 10000, 'iops_rd': 0, 'device': u'virtio0', 'iops_wr': 0} id=None machine=simplevm subsystem=qemu/qmp
+block_set_io_throttle arguments={'device': 'virtio0', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
 ensure-throttle action=throttle current_iops=0 device=virtio1 machine=simplevm target_iops=10000
-block_set_io_throttle arguments={'bps_rd': 0, 'bps_wr': 0, 'bps': 0, 'iops': 10000, 'iops_rd': 0, 'device': u'virtio1', 'iops_wr': 0} id=None machine=simplevm subsystem=qemu/qmp
+block_set_io_throttle arguments={'device': 'virtio1', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
 ensure-throttle action=throttle current_iops=0 device=virtio2 machine=simplevm target_iops=10000
-block_set_io_throttle arguments={'bps_rd': 0, 'bps_wr': 0, 'bps': 0, 'iops': 10000, 'iops_rd': 0, 'device': u'virtio2', 'iops_wr': 0} id=None machine=simplevm subsystem=qemu/qmp
+block_set_io_throttle arguments={'device': 'virtio2', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
 ensure-watchdog action=none machine=simplevm
 human-monitor-command arguments={'command-line': 'watchdog_action action=none'} id=None machine=simplevm subsystem=qemu/qmp
 lock-status count=0 machine=simplevm
@@ -163,9 +166,9 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     )
 
     vm.stop()
@@ -215,9 +218,9 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     )
 
     vm.enc["parameters"]["online"] = False
@@ -305,9 +308,9 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     )
 
     p = vm.qemu.proc()
@@ -319,9 +322,9 @@ rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simpl
     assert get_log() == Ellipsis(
         """\
 vm-status machine=simplevm result=offline
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     )
 
     vm.ensure()
@@ -336,9 +339,9 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=(u'client...', u'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     )
 
     util.test_log_options["show_events"] = [
@@ -472,11 +475,11 @@ ensure-throttle action=none current_iops=10000 device=virtio2 machine=simplevm t
         == """\
 query-block arguments={} id=None machine=simplevm subsystem=qemu/qmp
 ensure-throttle action=throttle current_iops=10000 device=virtio0 machine=simplevm target_iops=10
-block_set_io_throttle arguments={'bps_rd': 0, 'bps_wr': 0, 'bps': 0, 'iops': 10, 'iops_rd': 0, 'device': u'virtio0', 'iops_wr': 0} id=None machine=simplevm subsystem=qemu/qmp
+block_set_io_throttle arguments={'device': 'virtio0', 'iops': 10, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
 ensure-throttle action=throttle current_iops=10000 device=virtio1 machine=simplevm target_iops=10
-block_set_io_throttle arguments={'bps_rd': 0, 'bps_wr': 0, 'bps': 0, 'iops': 10, 'iops_rd': 0, 'device': u'virtio1', 'iops_wr': 0} id=None machine=simplevm subsystem=qemu/qmp
+block_set_io_throttle arguments={'device': 'virtio1', 'iops': 10, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
 ensure-throttle action=throttle current_iops=10000 device=virtio2 machine=simplevm target_iops=10
-block_set_io_throttle arguments={'bps_rd': 0, 'bps_wr': 0, 'bps': 0, 'iops': 10, 'iops_rd': 0, 'device': u'virtio2', 'iops_wr': 0} id=None machine=simplevm subsystem=qemu/qmp"""
+block_set_io_throttle arguments={'device': 'virtio2', 'iops': 10, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp"""
     )
 
     vm.ensure_online_disk_throttle()
@@ -616,13 +619,13 @@ simplevm             heartbeat-initialized
 simplevm             locate-inmigration-service
 simplevm             check-staging-config           result='none'
 simplevm             located-inmigration-service    url='http://host2.mgm.test.gocept.net:...'
+simplevm             started-heartbeat-ping
 simplevm             acquire-migration-locks
+simplevm             heartbeat-ping
 simplevm             check-staging-config           result='none'
 simplevm             acquire-migration-lock         result='success' subsystem='qemu'
 simplevm             acquire-local-migration-lock   result='success'
 simplevm             acquire-remote-migration-lock
-simplevm             started-heartbeat-ping
-simplevm             heartbeat-ping
 simplevm             acquire-remote-migration-lock  result='success'
 simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.root'
 simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.swap'
@@ -634,44 +637,46 @@ simplevm             migrate-set-capabilities       arguments={'capabilities': [
 simplevm             migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None subsystem='qemu/qmp'
 simplevm             migrate                        arguments={'uri': 'tcp:192.168.4.7:...'} id=None subsystem='qemu/qmp'
 simplevm             query-migrate-parameters       arguments={} id=None subsystem='qemu/qmp'
-simplevm             migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression=u'none' multifd-zlib-level=1 multifd-zstd-level=1 subsystem='qemu' throttle-trigger-threshold=50 tls-authz=u'' tls-creds=u'' tls-hostname=u'' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
+simplevm             migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 subsystem='qemu' throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
 simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps='-' remaining='0' status=u'setup'
-simplevm> {u'blocked': False, u'status': u'setup'}
+simplevm             migration-status               mbps='-' remaining='0' status='setup'
+simplevm> {'blocked': False, 'status': 'setup'}
 simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status=u'active'
-simplevm> {u'blocked': False,
-simplevm>  u'expected-downtime': 4000,
+simplevm             migration-status               mbps=... remaining='...' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
 ...
-simplevm>  u'status': u'active',
-simplevm>  u'total-time': ...}
-...
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status=u'active'
+simplevm>  'status': 'active',
+simplevm>  'total-time': ...}
 ...
 simplevm             heartbeat-ping
 simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status=u'active'
+simplevm             migration-status               mbps=... remaining='...' status='active'
 ...
 simplevm             heartbeat-ping
 simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status=u'active'
+simplevm             migration-status               mbps=... remaining='...' status='active'
+...
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=... remaining='...' status='active'
 ...
 simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status=u'active'
+simplevm             migration-status               mbps=... remaining='...' status='active'
 ...
 simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status=u'active'
+simplevm             migration-status               mbps=... remaining='...' status='active'
 ...
 simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status=u'active'
+simplevm             migration-status               mbps=... remaining='...' status='active'
 ...
 simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status=u'completed'
+simplevm             migration-status               mbps=... remaining='...' status='completed'
+simplevm> {'blocked': False,
+simplevm>  'downtime': ...,
 ...
-simplevm>  u'status': u'completed',
-simplevm>  u'total-time': ...}
+simplevm>  'status': 'completed',
+simplevm>  'total-time': ...}
 simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
 simplevm             finish-migration
 simplevm             consul-deregister
@@ -717,6 +722,11 @@ simplevm             global-lock-status             count=1 subsystem='qemu' tar
 simplevm             sufficient-host-memory         available_real=... bookable=... required=768 subsystem='qemu'
 simplevm             start-qemu                     subsystem='qemu'
 simplevm             qemu-system-x86_64             additional_args=['-incoming tcp:192.168.4.7:...'] local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-chroot /srv/vm/simplevm', '-runas nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg'] subsystem='qemu'
+simplevm             exec                           cmd='supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -chroot /srv/vm/simplevm -runas nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -incoming tcp:192.168.4.7:2345 -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log' subsystem='qemu'
+simplevm             supervised-qemu-stdout         subsystem='qemu'
+simplevm>
+simplevm             supervised-qemu-stderr         subsystem='qemu'
+simplevm>
 simplevm             global-lock-status             count=0 subsystem='qemu' target='/run/fc-qemu.lock'
 simplevm             global-lock-release            subsystem='qemu' target='/run/fc-qemu.lock'
 simplevm             global-lock-release            result='unlocked' subsystem='qemu'
@@ -762,10 +772,10 @@ simplevm             release-lock                   result='unlocked' target='/r
     assert local_status == Ellipsis(
         """\
 simplevm             vm-status                      result='offline'
-simplevm             rbd-status                     locker=(u'client...', u'host2') volume='rbd.ssd/simplevm.root'
-simplevm             rbd-status                     locker=(u'client...', u'host2') volume='rbd.ssd/simplevm.swap'
-simplevm             rbd-status                     locker=(u'client...', u'host2') volume='rbd.ssd/simplevm.tmp'
-simplevm             consul                         address=u'host2' service=u'qemu-simplevm'
+simplevm             rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.root'
+simplevm             rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.swap'
+simplevm             rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.tmp'
+simplevm             consul                         address='host2' service='qemu-simplevm'
 """
     )
 
@@ -773,13 +783,13 @@ simplevm             consul                         address=u'host2' service=u'q
     assert remote_status == Ellipsis(
         """\
 simplevm             vm-status                      result='online'
-simplevm             disk-throttle                  device=u'virtio0' iops=0
-simplevm             disk-throttle                  device=u'virtio1' iops=0
-simplevm             disk-throttle                  device=u'virtio2' iops=0
-simplevm             rbd-status                     locker=(u'client...', u'host2') volume='rbd.ssd/simplevm.root'
-simplevm             rbd-status                     locker=(u'client...', u'host2') volume='rbd.ssd/simplevm.swap'
-simplevm             rbd-status                     locker=(u'client...', u'host2') volume='rbd.ssd/simplevm.tmp'
-simplevm             consul                         address=u'host2' service=u'qemu-simplevm'
+simplevm             disk-throttle                  device='virtio0' iops=0
+simplevm             disk-throttle                  device='virtio1' iops=0
+simplevm             disk-throttle                  device='virtio2' iops=0
+simplevm             rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.root'
+simplevm             rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.swap'
+simplevm             rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.tmp'
+simplevm             consul                         address='host2' service='qemu-simplevm'
 """
     )
 
