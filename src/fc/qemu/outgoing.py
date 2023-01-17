@@ -2,8 +2,7 @@ import pprint
 import random
 import threading
 import time
-
-import xmlrpclib
+import xmlrpc.client
 
 from .exc import ConfigChanged
 from .timeout import TimeOut
@@ -32,7 +31,7 @@ class Heartbeat(object):
         assert self.url is not None
         if self.running:
             return
-        self.connection = xmlrpclib.ServerProxy(self.url, allow_none=True)
+        self.connection = xmlrpc.client.ServerProxy(self.url, allow_none=True)
         self.running = True
         self.thread.daemon = True
         self.thread.start()
@@ -158,7 +157,7 @@ class Outgoing(object):
                 )
                 self.log.info("located-inmigration-service", url=url)
                 try:
-                    target = xmlrpclib.ServerProxy(url, allow_none=True)
+                    target = xmlrpc.client.ServerProxy(url, allow_none=True)
                     target.ping(self.cookie)
                 except Exception as e:
                     self.log.info("connect", result="failed", reason=str(e))
@@ -206,7 +205,7 @@ class Outgoing(object):
             # This means we'll wait up to 80s, 40s on average if everything
             # becomes really busy and we may experience lock contention.
             tries = min([tries + 1, 13])
-            timeout.interval = random.randint(1, 2 ** tries) * 0.01
+            timeout.interval = random.randint(1, 2**tries) * 0.01
             if self.agent.has_new_config():
                 self.target.cancel(self.cookie)
                 raise ConfigChanged()
@@ -274,6 +273,7 @@ class Outgoing(object):
         assert status["status"] == "postmigrate", status
         self.log.info("finish-migration")
         try:
+            self.heartbeat.stop()
             self.target.finish_incoming(self.cookie)
         except Exception:
             self.log.exception("error-finish-remote", exc_info=True)
@@ -298,6 +298,7 @@ class Outgoing(object):
                     action="destroy remote",
                 )
                 try:
+                    self.heartbeat.stop()
                     self.target.destroy(self.cookie)
                 except Exception:
                     self.log.exception("destroy-remote-failed", exc_info=True)

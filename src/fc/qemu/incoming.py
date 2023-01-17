@@ -2,9 +2,9 @@ import contextlib
 import functools
 import re
 import time
+import xmlrpc.server
 
 import consulate.models.agent
-import SimpleXMLRPCServer
 
 from .exc import ConfigChanged, MigrationError, QemuNotRunning
 from .timeout import TimeOut
@@ -94,7 +94,7 @@ class IncomingServer(object):
             self.consul.agent.service.deregister(svcname)
 
     def run(self):
-        s = SimpleXMLRPCServer.SimpleXMLRPCServer(
+        s = xmlrpc.server.SimpleXMLRPCServer(
             self.bind_address, logRequests=False, allow_none=True
         )
         # Support ephemeral ports (specifying 0 as the bind port)

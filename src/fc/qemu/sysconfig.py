@@ -1,6 +1,5 @@
+import configparser
 import os.path
-
-import ConfigParser
 
 
 class SysConfig(object):
@@ -21,7 +20,7 @@ class SysConfig(object):
 
     def read_config_files(self):
         """Tries to open fc-qemu.conf at various location."""
-        self.cp = ConfigParser.SafeConfigParser()
+        self.cp = configparser.ConfigParser()
         self.cp.read(os.path.dirname(__file__) + "/default.conf")
         self.cp.read("/etc/qemu/fc-qemu.conf")
         if "qemu" not in self.cp.sections():
@@ -76,8 +75,12 @@ class SysConfig(object):
         self.agent["this_host"] = self.cp.get("ceph", "lock_host")
         self.agent["ceph_id"] = self.cp.get("ceph", "client-id")
 
-        self.ceph["CEPH_CLIENT"] = self.cp.get("ceph", "client-id", "admin")
-        self.ceph["CEPH_CLUSTER"] = self.cp.get("ceph", "cluster", "ceph")
+        self.ceph["CEPH_CLIENT"] = self.cp.get(
+            "ceph", "client-id", fallback="admin"
+        )
+        self.ceph["CEPH_CLUSTER"] = self.cp.get(
+            "ceph", "cluster", fallback="ceph"
+        )
         self.ceph["CEPH_CONF"] = self.cp.get("ceph", "ceph-conf")
         self.ceph["CEPH_LOCK_HOST"] = self.cp.get("ceph", "lock_host")
         self.ceph["CREATE_VM"] = self.cp.get("ceph", "create-vm")

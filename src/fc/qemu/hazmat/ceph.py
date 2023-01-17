@@ -32,7 +32,7 @@ class Ceph(object):
         self.swap = None
         self.tmp = None
         self.volumes = []
-        self.pool = self.cfg["rbd_pool"].encode("ascii")
+        self.pool = self.cfg["rbd_pool"]
 
     def __enter__(self):
         # Not sure whether it makes sense that we configure the client ID
@@ -46,7 +46,7 @@ class Ceph(object):
 
         self.ioctx = self.rados.open_ioctx(self.pool)
 
-        volume_prefix = self.cfg["name"].encode("ascii")
+        volume_prefix = self.cfg["name"]
         self.root = Volume(self, volume_prefix + ".root", "root")
         self.swap = Volume(self, volume_prefix + ".swap", "swap")
         self.tmp = Volume(self, volume_prefix + ".tmp", "tmp")
@@ -167,5 +167,6 @@ class Ceph(object):
             lock = vol.lock_status()
             if lock:
                 status.extend(lock)
-            c.update("\0".join(status) + "\0")
+            status = ("\0".join(status) + "\0").encode("ascii")
+            c.update(status)
         return c.hexdigest()

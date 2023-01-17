@@ -13,6 +13,8 @@ import socket
 import subprocess
 import sys
 import time
+import typing
+from codecs import decode
 from multiprocessing.pool import ThreadPool
 
 import colorama
@@ -49,6 +51,17 @@ OK, WARNING, CRITICAL, UNKNOWN = 0, 1, 2, 3
 EXECUTABLE = sys.argv[0]  # make mockable
 
 
+def unwrap_consul_armour(value: str) -> object:
+    # See test_consul.py:prepare_consul_event.
+    # The directory is providing a somewhat weird (likely historical)
+    # structure with an ASCII armour. Due to Python only encoding/decoding
+    # base64 on binary strings we need to do this little dance here.
+    value = value.encode("ascii")
+    value = decode(value, "base64")
+    value = value.decode("ascii")
+    return json.loads(value)
+
+
 class ConsulEventHandler(object):
     """This is a wrapper that processes various consul events and multiplexes
     them into individual method handlers.
@@ -65,7 +78,7 @@ class ConsulEventHandler(object):
                 log.debug("ignore-key", key=event["Key"], reason="empty value")
                 return
             getattr(self, prefix)(event)
-        except:  # noqa
+        except BaseException as e:  # noqa
             # This must be a bare-except as it protects threads and the main
             # loop from dying. It could be that I'm wrong, but I'm leaving this
             # in for good measure.
@@ -75,7 +88,8 @@ class ConsulEventHandler(object):
         log.debug("finish-handle-key", key=event.get("Key", None))
 
     def node(self, event):
-        config = json.loads(event["Value"].decode("base64"))
+        config = unwrap_consul_armour(event["Value"])
+
         config["consul-generation"] = event["ModifyIndex"]
         vm = config["name"]
         if config["parameters"]["machine"] != "virtual":
@@ -112,9 +126,9 @@ class ConsulEventHandler(object):
             )
 
     def snapshot(self, event):
-        value = json.loads(event["Value"].decode("base64"))
+        value = unwrap_consul_armour(event["Value"])
         vm = value["vm"]
-        snapshot = value["snapshot"].encode("ascii")
+        snapshot = value["snapshot"]
         log_ = log.bind(snapshot=snapshot, machine=vm)
         try:
             agent = Agent(vm)
@@ -329,7 +343,11 @@ class Agent(object):
                 )
 
     @classmethod
-    def handle_consul_event(cls, input=sys.stdin):
+    def handle_consul_event(cls, input: typing.TextIO = sys.stdin):
+        # Python in our environments defaults to UTF-8 and we generally
+        # should be fine expecting a TextIO here as json load also expects
+        # text input. It might be necessary at some point to explicitly
+        # expect BinaryIO input and then enforce UTF-8 at this point.
         events = json.load(input)
         if not events:
             return
@@ -465,11 +483,15 @@ class Agent(object):
             return
 
         if sys.stdout.isatty():
-            print colorama.Fore.RED, "The following VMs will be shut down: ", colorama.Style.RESET_ALL
-            print "\t" + ",".join(vm.name for vm in vms)
-            print
+            print(
+                colorama.Fore.RED,
+                "The following VMs will be shut down: ",
+                colorama.Style.RESET_ALL,
+            )
+            print("\t" + ",".join(vm.name for vm in vms))
+            print()
             while True:
-                choice = raw_input(
+                choice = input(
                     colorama.Style.BRIGHT
                     + colorama.Fore.RED
                     + "[DANGER] Are you really sure to shut down all {} VMs? (yes/no)\n".format(
@@ -482,7 +504,7 @@ class Agent(object):
                 elif choice == "no":
                     return
                 else:
-                    print ("Please type 'yes' or 'no'.")
+                    print("Please type 'yes' or 'no'.")
 
         def stop_vm(vm):
             # Isolate the stop call into separate fc-qemu
@@ -576,7 +598,7 @@ class Agent(object):
             3, "{:,.0f} MiB expected".format(expected_guest_and_overhead / MiB)
         )
 
-        print (" - ".join(output))
+        print(" - ".join(output))
 
         return result
 
@@ -993,14 +1015,14 @@ class Agent(object):
         try:
             self.qemu.write_file(
                 "/run/qemu-binary-generation-current",
-                str(self.binary_generation) + "\n",
+                (str(self.binary_generation) + "\n").encode("ascii"),
             )
         except Exception as e:
             self.log.error("mark-qemu-binary-generation", reason=str(e))
 
     def ensure_online_disk_size(self):
         """Trigger block resize action for the root disk."""
-        target_size = self.cfg["disk"] * (1024 ** 3)
+        target_size = self.cfg["disk"] * (1024**3)
         if self.ceph.root.size >= target_size:
             self.log.info(
                 "check-disk-size",
@@ -1023,7 +1045,7 @@ class Agent(object):
             "iops", self.qemu.throttle_by_pool.get(self.cfg["rbd_pool"], 250)
         )
         devices = self.qemu.block_info()
-        for device in devices.values():
+        for device in list(devices.values()):
             current = device["inserted"]["iops"]
             if current != target:
                 self.log.info(
@@ -1160,7 +1182,7 @@ class Agent(object):
         if self.qemu.is_running():
             status = 0
             self.log.info("vm-status", result="online")
-            for device in self.qemu.block_info().values():
+            for device in list(self.qemu.block_info().values()):
                 self.log.info(
                     "disk-throttle",
                     device=device["device"],
@@ -1403,5 +1425,5 @@ class Agent(object):
             machine_type=machine_type,
             disk_cache_mode=self.qemu.disk_cache_mode,
             network="".join(netconfig),
-            **self.cfg
+            **self.cfg,
         )

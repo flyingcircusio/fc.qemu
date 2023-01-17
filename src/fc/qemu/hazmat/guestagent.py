@@ -33,6 +33,7 @@ class GuestAgent(object):
     def cmd(self, cmd, flush_ga_parser=False, timeout=None, **args):
         """Issues GA command and returns the result."""
         message = json.dumps({"execute": cmd, "arguments": args})
+        message = message.encode("ascii")
         if flush_ga_parser:
             # \xff is an invalid utf-8 character and recommended to safely
             # ensure that the parser of the guest agent at the other end

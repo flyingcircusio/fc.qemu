@@ -163,6 +163,8 @@ def scan_cpus(host=None):
             stdin=subprocess.PIPE,
             stdout=FNULL,
             stderr=FNULL,
+            encoding="ascii",
+            errors="replace",
         )
         task.communicate(input="quit\n")
         if not task.wait():

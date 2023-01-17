@@ -7,6 +7,7 @@ import os.path
 import socket
 import subprocess
 import time
+from codecs import encode
 
 import psutil
 import yaml
@@ -33,13 +34,17 @@ class InvalidMigrationStatus(Exception):
     pass
 
 
-def detect_current_machine_type(prefix):
+def detect_current_machine_type(
+    prefix: str, encoding="ascii", errors="replace"
+):
     """Given a machine type prefix, e.g. 'pc-i440fx-' return the newest
     current machine on the available Qemu system.
 
     Newest in this case means the first item in the list as given by Qemu.
     """
-    result = subprocess.check_output([Qemu.executable, "-machine", "help"])
+    result = subprocess.check_output(
+        [Qemu.executable, "-machine", "help"], encoding=encoding, errors=errors
+    )
     for line in result.splitlines():
         if line.startswith(prefix):
             return line.split()[0]
@@ -93,7 +98,7 @@ class Qemu(object):
     migration_address = None
     max_downtime = 1.0  # seconds
     # 0.8 * 10 Gbit/s in bytes/s
-    migration_bandwidth = int(0.8 * 10 * 10 ** 9 / 8)
+    migration_bandwidth = int(0.8 * 10 * 10**9 / 8)
 
     guestagent_timeout = 3.0
     # QMP runs in the main thread and can block. Our original 15s timeout
@@ -324,8 +329,8 @@ class Qemu(object):
             # when migrating VMs.
             # We also force the internal stderr log, even though I haven't
             # seen this being useful, yet.
-            args = filter(lambda x: x != "-daemonize", args)
-            args = filter(lambda x: not x.startswith("-D "), args)
+            args = [x for x in args if x != "-daemonize"]
+            args = [x for x in args if not x.startswith("-D ")]
             args.append("-D /var/log/vm/{}.qemu.internal.log".format(self.name))
 
             cmd = "{} {}".format(self.executable, " ".join(args))
@@ -338,13 +343,20 @@ class Qemu(object):
             # We explicitly close all fds for the child to avoid inheriting fd
             # locks accidentally and indefinitely.
             qemu_log = "/var/log/vm/{}.supervisor.log".format(self.name)
+            cmdline = ["supervised-qemu", cmd, self.name, qemu_log]
+            self.log.debug("exec", cmd=" ".join(cmdline))
             p = subprocess.Popen(
-                ["supervised-qemu", cmd, self.name, qemu_log],
+                cmdline,
                 close_fds=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                encoding="ascii",
+                errors="replace",
             )
             stdout, stderr = p.communicate()
+            # FIXME: prettier logging
+            self.log.debug("supervised-qemu-stdout", output=stdout)
+            self.log.debug("supervised-qemu-stderr", output=stderr)
             if p.returncode != 0:
                 raise QemuNotRunning(p.returncode, stdout, stderr)
         except QemuNotRunning:
@@ -390,14 +402,16 @@ class Qemu(object):
             self.log.warning("guest-fsfreeze-thaw-failed", exc_info=True)
             raise
 
-    def write_file(self, path, content):
+    def write_file(self, path, content: bytes):
+        if not isinstance(content, bytes):
+            raise TypeError("Expected bytes, got string.")
         with self.guestagent as guest:
             try:
                 handle = guest.cmd("guest-file-open", path=path, mode="w")
                 guest.cmd(
                     "guest-file-write",
                     handle=handle,
-                    **{"buf-b64": content.encode("base64")}
+                    **{"buf-b64": encode(content, "base64")},
                 )
                 guest.cmd("guest-file-close", handle=handle)
             except ClientError:
@@ -427,7 +441,7 @@ class Qemu(object):
                 "compress-level": 0,
                 "downtime-limit": int(self.max_downtime * 1000),  # ms
                 "max-bandwidth": self.migration_bandwidth,
-            }
+            },
         )
         self.qmp.command("migrate", uri=address)
         self.log.debug(
@@ -599,7 +613,7 @@ class Qemu(object):
     def watchdog_action(self, action):
         self.qmp.command(
             "human-monitor-command",
-            **{"command-line": "watchdog_action action={}".format(action)}
+            **{"command-line": "watchdog_action action={}".format(action)},
         )
 
     def clean_run_files(self):
@@ -627,7 +641,7 @@ class Qemu(object):
                 monitor_port=self.monitor_port,
                 vnc=self.vnc.format(**self.cfg),
                 chroot=chroot,
-                **self.cfg
+                **self.cfg,
             )
 
         self.local_args = [format(a) for a in self.args]

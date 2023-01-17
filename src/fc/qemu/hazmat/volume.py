@@ -177,7 +177,13 @@ class Snapshot(Image):
 
     @property
     def fullname(self):
-        return self.ioctx.name + "/" + self.name + "@" + self.snapname
+        return (
+            self.ioctx.name.decode("ascii")
+            + "/"
+            + self.name
+            + "@"
+            + self.snapname
+        )
 
     def remove(self):
         """Destroy myself."""
@@ -219,7 +225,7 @@ class Volume(Image):
 
     @property
     def fullname(self):
-        return self.ioctx.name + "/" + self.name
+        return self.ioctx.name.decode("ascii") + "/" + self.name
 
     @property
     def size(self):

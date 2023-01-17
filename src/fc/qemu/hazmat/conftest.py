@@ -1,4 +1,5 @@
-import os, errno
+import errno
+import os
 
 import pytest
 import rados
@@ -32,8 +33,10 @@ class RadosMock(object):
 class IoctxMock(object):
     """Mock access to a pool."""
 
-    def __init__(self, name):
-        self.name = name
+    def __init__(self, name: str):
+        # the rados implementation takes the name as a str, but later returns
+        # that attribute as bytes
+        self.name = name.encode("ascii")
         self.rbd_images = {}
         self._snapids = 0
 
@@ -65,7 +68,7 @@ class IoctxMock(object):
 
 class RBDMock(object):
     def list(self, ioctx):
-        return ioctx.rbd_images.keys()
+        return list(ioctx.rbd_images.keys())
 
     def create(self, ioctx, name, size):
         ioctx._rbd_create(name, size)
@@ -150,7 +153,7 @@ class ImageMock(object):
     def list_snaps(self):
         assert not self.closed
         result = []
-        for image, data in self.ioctx.rbd_images.items():
+        for image, data in list(self.ioctx.rbd_images.items()):
             if image.startswith(self.name + "@"):
                 snap = {
                     "id": data["snapid"],
@@ -228,7 +231,7 @@ def ceph_mock(request, monkeypatch, tmpdir):
     monkeypatch.setattr(volume.Image, "unmap", image_unmap)
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def ceph_inst(ceph_mock):
     cfg = {
         "resource_group": "test",

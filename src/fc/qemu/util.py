@@ -1,59 +1,40 @@
 """Global helper functions and utilites for fc.qemu."""
 
-from __future__ import print_function
 
 import contextlib
 import datetime
-import filecmp
 import os
 import os.path
 import subprocess
 import sys
-import tempfile
 import time
 
 from structlog import get_logger
 
-MiB = 2 ** 20
-GiB = 2 ** 30
+MiB = 2**20
+GiB = 2**30
 
 
 log = get_logger()
+
+
+# workaround for ValueError: can't have unbuffered text I/O
+class FlushingStream(object):
+    def __init__(self, stream):
+        self.stream = stream
+
+    def write(self, data):
+        self.stream.write(data)
+        self.stream.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.stream, name)
 
 
 class ControlledRuntimeException(RuntimeError):
     """An exception that is used for flow control but doesn't have to be logged
     as it is handled properly inside.
     """
-
-
-@contextlib.contextmanager
-def rewrite(filename):
-    """Rewrite an existing file atomically.
-
-    Clients are allowed to delete the tmpfile to signal that they don't
-    want to have it updated.
-    """
-
-    with tempfile.NamedTemporaryFile(
-        dir=os.path.dirname(filename),
-        delete=False,
-        prefix=os.path.basename(filename) + ".",
-    ) as tf:
-        if os.path.exists(filename):
-            os.chmod(tf.name, os.stat(filename).st_mode & 0o7777)
-        tf.has_changed = False
-        yield tf
-        if not os.path.exists(tf.name):
-            return
-        filename_tmp = tf.name
-    if os.path.exists(filename) and filecmp.cmp(
-        filename, filename_tmp, shallow=False
-    ):
-        os.unlink(filename_tmp)
-    else:
-        os.rename(filename_tmp, filename)
-        tf.has_changed = True
 
 
 def parse_address(addr):
@@ -101,7 +82,7 @@ def remove_empty_dirs(d):
         d = os.path.dirname(d)
 
 
-def cmd(cmdline, log):
+def cmd(cmdline, log, encoding="ascii", errors="replace"):
     """Execute cmdline with stdin closed to avoid questions on terminal"""
     prefix = cmdline.split()[0]
     args = " ".join(cmdline.split()[1:])
@@ -113,12 +94,14 @@ def cmd(cmdline, log):
             stdin=null,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            encoding=encoding,
+            errors=errors,
         )
         # This allows for more interactive logging and capturing
         # stdout in unit tests even if we get stuck.
         stdout = ""
         while True:
-            line = subprocess._eintr_retry_call(proc.stdout.readline)
+            line = proc.stdout.readline()
             if line:
                 # This ensures we get partial output in case of test failures
                 log.debug(os.path.basename(prefix), output_line=line)
@@ -153,6 +136,12 @@ def ensure_separate_cgroup():
     "Move this process to a separate fc-qemu cgroup."
     CGROUP = "/sys/fs/cgroup/fc-qemu"
     if not os.path.exists(CGROUP):
-        os.mkdir(CGROUP)
+        try:
+            os.mkdir(CGROUP)
+        except OSError:
+            if not os.path.isdir(CGROUP):
+                raise
+            # The directory exists now. We've run into a race condition.
+            # Keep going.
     with open("{}/cgroup.procs".format(CGROUP), "w") as f:
         f.write(str(os.getpid()))

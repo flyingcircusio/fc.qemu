@@ -62,7 +62,7 @@ class QEMUMonitorProtocol:
 
     def __negotiate_capabilities(self):
         greeting = self.__json_read()
-        if greeting is None or not greeting.has_key("QMP"):
+        if greeting is None or "QMP" not in greeting:
             raise QMPConnectError
         # Greeting seems ok, negotiate capabilities
         resp = self.cmd("qmp_capabilities")
@@ -78,7 +78,7 @@ class QEMUMonitorProtocol:
             resp = json.loads(data)
             if "event" in resp:
                 if self._debug:
-                    print >>sys.stderr, "QMP:<<< %s" % resp
+                    print("QMP:<<< %s" % resp, file=sys.stderr)
                 self.__events.append(resp)
                 if not only_event:
                     continue
@@ -103,10 +103,8 @@ class QEMUMonitorProtocol:
         self.__sock.setblocking(0)
         try:
             self.__json_read()
-        except socket.error as err:
-            if err[0] == errno.EAGAIN:
-                # No data available
-                pass
+        except BlockingIOError:
+            pass
         self.__sock.setblocking(1)
 
         # Wait for new events, if needed.
@@ -118,7 +116,7 @@ class QEMUMonitorProtocol:
                 ret = self.__json_read(only_event=True)
             except socket.timeout:
                 raise QMPTimeoutError("Timeout waiting for event")
-            except:
+            except Exception:
                 raise QMPConnectError("Error while reading from socket")
             if ret is None:
                 raise QMPConnectError("Error while reading from socket")
@@ -166,16 +164,14 @@ class QEMUMonitorProtocol:
             id=qmp_cmd.get("id", None),
         )
         if self._debug:
-            print >>sys.stderr, "QMP:>>> %s" % qmp_cmd
+            print("QMP:>>> %s" % qmp_cmd, file=sys.stderr)
         try:
-            self.__sock.sendall(json.dumps(qmp_cmd))
-        except socket.error as err:
-            if err[0] == errno.EPIPE:
-                return
-            raise socket.error(err)
+            self.__sock.sendall(json.dumps(qmp_cmd).encode("ascii"))
+        except BrokenPipeError:
+            return
         resp = self.__json_read()
         if self._debug:
-            print >>sys.stderr, "QMP:<<< %s" % resp
+            print("QMP:<<< %s" % resp, file=sys.stderr)
         return resp
 
     def cmd(self, name, args=None, id=None):
@@ -197,7 +193,7 @@ class QEMUMonitorProtocol:
         ret = self.cmd(cmd, kwds)
         if ret is None:
             raise QMPConnectError("Connection went away.")
-        if ret.has_key("error"):
+        if "error" in ret:
             raise Exception(ret["error"]["desc"])
         return ret["return"]
 

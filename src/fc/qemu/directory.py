@@ -1,8 +1,7 @@
 import json
 import os.path
-
-import urlparse
-import xmlrpclib
+import urllib.parse
+import xmlrpc.client
 
 
 def load_default_enc_json():
@@ -35,7 +34,7 @@ def connect(enc=None, ring=1):
     base_url = enc["parameters"].get(
         "directory_url", "https://directory.fcio.net/v2/api"
     )
-    url_parts = urlparse.urlsplit(base_url)
+    url_parts = urllib.parse.urlsplit(base_url)
 
     url = (
         # fmt: off
@@ -47,4 +46,4 @@ def connect(enc=None, ring=1):
     if ring == 1:
         url += "/rg-" + enc["parameters"]["resource_group"]
 
-    return xmlrpclib.ServerProxy(url, allow_none=True, use_datetime=True)
+    return xmlrpc.client.ServerProxy(url, allow_none=True, use_datetime=True)
