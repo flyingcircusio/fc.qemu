@@ -273,6 +273,7 @@ class Outgoing(object):
         assert status["status"] == "postmigrate", status
         self.log.info("finish-migration")
         try:
+            self.heartbeat.stop()
             self.target.finish_incoming(self.cookie)
         except Exception:
             self.log.exception("error-finish-remote", exc_info=True)
