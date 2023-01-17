@@ -1,8 +1,8 @@
 Release notes
 =============
 
-1.3.0 (not released yet)
-------------------------
+1.3.0 (2023-01-17)
+------------------
 
 - porting to python3
 - Ceph Nautilus compatibility
