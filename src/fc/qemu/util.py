@@ -136,6 +136,12 @@ def ensure_separate_cgroup():
     "Move this process to a separate fc-qemu cgroup."
     CGROUP = "/sys/fs/cgroup/fc-qemu"
     if not os.path.exists(CGROUP):
-        os.mkdir(CGROUP)
+        try:
+            os.mkdir(CGROUP)
+        except OSError:
+            if not os.path.isdir(CGROUP):
+                raise
+            # The directory exists now. We've run into a race condition.
+            # Keep going.
     with open("{}/cgroup.procs".format(CGROUP), "w") as f:
         f.write(str(os.getpid()))
