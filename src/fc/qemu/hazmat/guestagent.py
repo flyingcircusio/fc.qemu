@@ -31,7 +31,10 @@ class GuestAgent(object):
         return result["return"]
 
     def cmd(self, cmd, flush_ga_parser=False, timeout=None, **args):
-        """Issues GA command and returns the result."""
+        """Issues GA command and returns the result.
+        All **args need to be serialisable to JSON, that implies that `bytes` are *not*
+        valid.
+        """
         message = json.dumps({"execute": cmd, "arguments": args})
         message = message.encode("ascii")
         if flush_ga_parser:
