@@ -1,12 +1,17 @@
 import errno
+import io
 import os
+import socket
+import typing
 
+import mock
 import pytest
 import rados
 import rbd
 
 from . import volume
 from .ceph import Ceph
+from .guestagent import GuestAgent
 
 
 class RadosMock(object):
@@ -247,3 +252,34 @@ def ceph_inst(ceph_mock):
         yield ceph
     finally:
         ceph.__exit__(None, None, None)
+
+
+@pytest.fixture
+def guest_agent(monkeypatch):
+    guest_agent = GuestAgent("testvm", 0.1)
+    guest_agent.file = io.StringIO()
+
+    class ClientStub(object):
+        timeout: int = 0
+        messages: typing.List[bytes]
+
+        def __init__(self):
+            self.messages = []
+
+        def settimeout(self, timeout):
+            self.timeout = timeout
+
+        def send(self, msg: bytes):
+            self.messages.append(msg)
+
+    guest_agent.client = ClientStub()
+    randint = mock.Mock(return_value=87643)
+    monkeypatch.setattr("random.randint", randint)
+
+    monkeypatch.setattr(socket, "socket", mock.MagicMock(socket.socket))
+    with open(str(tmpdir / "socket"), "w") as f:
+        f.write('{"return": 87643}\n')
+    f = open(str(tmpdir / "socket"), "r")
+    socket.socket().makefile.return_value = f
+
+    return guest_agent
