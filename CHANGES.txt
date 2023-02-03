@@ -1,8 +1,15 @@
 Release notes
 =============
 
-1.3.0 (not released yet)
-------------------------
+1.3.1 (2023-02-03)
+------------------
+
+- fix regression in guestagent Qemu.write_file, causing the
+  mark-qemu-binary-generation calls to fail
+- improve guestagent test coverage and mocking
+
+1.3.0 (2023-01-17)
+------------------
 
 - porting to python3
 - Ceph Nautilus compatibility
