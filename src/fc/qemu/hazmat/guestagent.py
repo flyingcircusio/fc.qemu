@@ -13,11 +13,13 @@ class ClientError(RuntimeError):
 class GuestAgent(object):
     """Wraps qemu guest agent wire protocol."""
 
-    def __init__(self, machine, timeout):
+    def __init__(self, machine, timeout, client_factory=socket.socket):
         self.machine = machine
         self.timeout = timeout
         self.log = log.bind(machine=machine)
         self.file = None
+
+        self.client_factory = client_factory
         self.client = None
 
     def read(self):
@@ -31,7 +33,10 @@ class GuestAgent(object):
         return result["return"]
 
     def cmd(self, cmd, flush_ga_parser=False, timeout=None, **args):
-        """Issues GA command and returns the result."""
+        """Issues GA command and returns the result.
+        All **args need to be serialisable to JSON, that implies that `bytes` are *not*
+        valid.
+        """
         message = json.dumps({"execute": cmd, "arguments": args})
         message = message.encode("ascii")
         if flush_ga_parser:
@@ -79,7 +84,7 @@ class GuestAgent(object):
         )
 
     def __enter__(self):
-        self.client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.client = self.client_factory(socket.AF_UNIX, socket.SOCK_STREAM)
         self.client.settimeout(self.timeout)
         self.client.connect("/run/qemu.{}.gqa.sock".format(self.machine))
         self.file = self.client.makefile()

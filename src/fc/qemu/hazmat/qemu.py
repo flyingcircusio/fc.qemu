@@ -411,7 +411,9 @@ class Qemu(object):
                 guest.cmd(
                     "guest-file-write",
                     handle=handle,
-                    **{"buf-b64": encode(content, "base64")},
+                    # The ASCII armour needs to be turned into text again, because the
+                    # JSON encoder doesn't handle bytes-like objects.
+                    **{"buf-b64": encode(content, "base64").decode("ascii")},
                 )
                 guest.cmd("guest-file-close", handle=handle)
             except ClientError:
