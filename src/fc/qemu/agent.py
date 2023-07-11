@@ -50,6 +50,12 @@ OK, WARNING, CRITICAL, UNKNOWN = 0, 1, 2, 3
 
 EXECUTABLE = sys.argv[0]  # make mockable
 
+MAINTENANCE_TEMPFAIL = 75  # Retry shortly
+MAINTENANCE_POSTPONE = 69  # Retry when the directory schedules a new window
+MAINTENANCE_VOLUME = "rbd/.fc-qemu.maintenance"
+LOCKTOOL_TIMEOUT_SECS = 30
+UNLOCK_MAX_RETRIES = 5
+
 
 def unwrap_consul_armour(value: str) -> object:
     # See test_consul.py:prepare_consul_event.
@@ -419,11 +425,64 @@ class Agent(object):
                     log.info("offline", machine=vm.name)
 
     @classmethod
+    def _ensure_maintenance_volume(self):
+        try:
+            log.debug("ensure-maintenance-volume")
+            subprocess.run(
+                ["rbd-locktool", "-q", "-i", MAINTENANCE_VOLUME],
+                check=True,
+                timeout=LOCKTOOL_TIMEOUT_SECS,
+            )
+        except subprocess.CalledProcessError:
+            log.debug("creating maintenance volume")
+            subprocess.run(["rbd", "create", "--size", "1", MAINTENANCE_VOLUME])
+
+    @classmethod
+    def _get_maintenance_lock_info(self):
+        try:
+            return subprocess.check_output(
+                ["rbd-locktool", "-i", MAINTENANCE_VOLUME]
+            ).decode("utf-8", errors="replace")
+        except Exception as e:
+            return f"<unknown due to error: {e}>"
+
+    @classmethod
     def maintenance_enter(cls):
         """Prepare the host for maintenance mode.
 
         process exit codes signal success or (temporary) failure
         """
+        log.debug("enter-maintenance")
+        try:
+            cls._ensure_maintenance_volume()
+            log.debug("acquire-maintenance-lock")
+            subprocess.run(
+                ["rbd-locktool", "-l", MAINTENANCE_VOLUME],
+                check=True,
+                timeout=LOCKTOOL_TIMEOUT_SECS,
+            )
+        # locking can block on a busy cluster, causing the whole agent (and all
+        # other agent operations waiting for the global agent lock) to be
+        # stuck
+        except subprocess.TimeoutExpired:
+            # We cannot know whether the lock has succeeded despite the
+            # timeout, so attempt an unlock again.
+            log.debug(
+                "acquire-maintenance-lock",
+                result="timeout",
+                lock_info=cls._get_maintenance_lock_info(),
+            )
+            cls.maintenance_leave()
+            sys.exit(MAINTENANCE_TEMPFAIL)
+        # already locked by someone else
+        except subprocess.CalledProcessError:
+            log.debug(
+                "acquire-maintenance-lock",
+                result="already locked",
+                lock_info=cls._get_maintenance_lock_info(),
+            )
+            sys.exit(MAINTENANCE_TEMPFAIL)
+
         d = directory.connect()
         host = socket.gethostname()
         for attempt in range(3):
@@ -460,8 +519,42 @@ class Agent(object):
                 sys.exit(0)
             time.sleep(10)
 
-        log.info("evacuation-timeout", action="postpone maintenance")
-        sys.exit(75)
+        log.info("evacuation-timeout", action="retry maintenance")
+        sys.exit(MAINTENANCE_TEMPFAIL)
+
+    @classmethod
+    def maintenance_leave(cls):
+        log.debug("leave-maintenance")
+        last_exc = None
+        for _ in range(UNLOCK_MAX_RETRIES):
+            try:
+                cls._ensure_maintenance_volume()
+                log.debug("release-maintenance-lock")
+                subprocess.run(
+                    ["rbd-locktool", "-q", "-u", MAINTENANCE_VOLUME],
+                    check=True,
+                    timeout=LOCKTOOL_TIMEOUT_SECS,
+                )
+            except subprocess.TimeoutExpired as e:
+                print(f"WARNING: Maintenance leave timed out at {e.cmd}.")
+                last_exc = e
+                time.sleep(
+                    LOCKTOOL_TIMEOUT_SECS / 5
+                )  # cooldown time for cluster
+                continue
+            break
+        else:
+            print(
+                "WARNING: All maintenance leave attempts have timed out, "
+                "the fc.qemu maintenance lock might not be properly unlocked."
+            )
+            # deliberately re-raise the exception, as this situation shall be checked by
+            # an operator
+            raise (
+                last_exc
+                if last_exc
+                else RuntimeError("fc-qemu maintenance unlock failed")
+            )
 
     @classmethod
     def shutdown_all(cls):
