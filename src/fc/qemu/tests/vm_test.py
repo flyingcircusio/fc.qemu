@@ -560,6 +560,622 @@ def kill_vms():
     _kill_vms()
 
 
+def assert_outmigrate_log(log):
+    filtered_log = []
+    for line in log.split("\n"):
+        # The heartbeat pings show up in varying places. We need to filter
+        # those out. Note the leading space to avoid eliminating the
+        # heartbeat-initialized message.
+        if " heartbeat-ping" in line:
+            continue
+        if "stopped-heartbeat-ping" in line:
+            continue
+        filtered_log.append(line)
+    filtered_log = "\n".join(filtered_log)
+
+    assert filtered_log == Ellipsis(
+        """\
+/nix/store/.../bin/fc-qemu -v outmigrate simplevm
+load-system-config
+simplevm             connect-rados                  subsystem='ceph'
+simplevm             acquire-lock                   target='/run/qemu.simplevm.lock'
+simplevm             acquire-lock                   result='locked' target='/run/qemu.simplevm.lock'
+simplevm             lock-status                    count=1
+simplevm             qmp_capabilities               arguments={} id=None subsystem='qemu/qmp'
+simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
+simplevm             outmigrate
+simplevm             consul-register
+simplevm             heartbeat-initialized
+simplevm             locate-inmigration-service
+simplevm             check-staging-config           result='none'
+simplevm             located-inmigration-service    url='http://host2.mgm.test.gocept.net:...'
+simplevm             started-heartbeat-ping
+simplevm             acquire-migration-locks
+simplevm             check-staging-config           result='none'
+simplevm             acquire-migration-lock         result='success' subsystem='qemu'
+simplevm             acquire-local-migration-lock   result='success'
+simplevm             acquire-remote-migration-lock
+simplevm             acquire-remote-migration-lock  result='success'
+simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.root'
+simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.swap'
+simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.tmp'
+simplevm             prepare-remote-environment
+simplevm             start-migration                target='tcp:192.168.4.7:...'
+simplevm             migrate                        subsystem='qemu'
+simplevm             migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None subsystem='qemu/qmp'
+simplevm             migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None subsystem='qemu/qmp'
+simplevm             migrate                        arguments={'uri': 'tcp:192.168.4.7:...'} id=None subsystem='qemu/qmp'
+simplevm             query-migrate-parameters       arguments={} id=None subsystem='qemu/qmp'
+simplevm             migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 subsystem='qemu' throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps='-' remaining='0' status='setup'
+simplevm> {'blocked': False, 'status': 'setup'}
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=... remaining='...' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+...
+simplevm>  'status': 'active',
+simplevm>  'total-time': ...}
+...
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=... remaining='...' status='active'
+...
+simplevm             migration-status               mbps=... remaining='...' status='completed'
+simplevm> {'blocked': False,
+simplevm>  'downtime': ...,
+...
+simplevm>  'status': 'completed',
+simplevm>  'total-time': ...}
+simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
+simplevm             finish-migration
+simplevm             consul-deregister
+simplevm             outmigrate-finished            exitcode=0
+simplevm             lock-status                    count=0
+simplevm             release-lock                   target='/run/qemu.simplevm.lock'
+simplevm             release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
+"""
+    )
+
+
+def test_vm_migration_pattern():
+    # This is a variety of outputs we have seen that are valid and where we want to be
+    # sure that the Ellipsis matches them properly.
+    assert_outmigrate_log(
+        """\
+/nix/store/c5kfr1yx6920s7lcswsv9dn61g8dc5xk-python3.8-fc.qemu-dev/bin/fc-qemu -v outmigrate simplevm
+load-system-config
+simplevm             connect-rados                  subsystem='ceph'
+simplevm             acquire-lock                   target='/run/qemu.simplevm.lock'
+simplevm             acquire-lock                   result='locked' target='/run/qemu.simplevm.lock'
+simplevm             lock-status                    count=1
+simplevm             qmp_capabilities               arguments={} id=None subsystem='qemu/qmp'
+simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
+simplevm             outmigrate
+simplevm             consul-register
+simplevm             heartbeat-initialized
+simplevm             locate-inmigration-service
+simplevm             check-staging-config           result='none'
+simplevm             located-inmigration-service    url='http://host2.mgm.test.gocept.net:36573'
+simplevm             started-heartbeat-ping
+simplevm             acquire-migration-locks
+simplevm             heartbeat-ping
+simplevm             check-staging-config           result='none'
+simplevm             acquire-migration-lock         result='success' subsystem='qemu'
+simplevm             acquire-local-migration-lock   result='success'
+simplevm             acquire-remote-migration-lock
+simplevm             acquire-remote-migration-lock  result='success'
+simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.root'
+simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.swap'
+simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.tmp'
+simplevm             prepare-remote-environment
+simplevm             heartbeat-ping
+simplevm             start-migration                target='tcp:192.168.4.7:2345'
+simplevm             migrate                        subsystem='qemu'
+simplevm             migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None subsystem='qemu/qmp'
+simplevm             migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None subsystem='qemu/qmp'
+simplevm             migrate                        arguments={'uri': 'tcp:192.168.4.7:2345'} id=None subsystem='qemu/qmp'
+simplevm             query-migrate-parameters       arguments={} id=None subsystem='qemu/qmp'
+simplevm             migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 subsystem='qemu' throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps='-' remaining='0' status='setup'
+simplevm> {'blocked': False, 'status': 'setup'}
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.32976 remaining='285,528,064' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 182,
+simplevm>          'mbps': 0.32976,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 15,
+simplevm>          'normal-bytes': 61440,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 10,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 285528064,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 63317},
+simplevm>  'setup-time': 3,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 1419}
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.32976 remaining='285,331,456' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 210,
+simplevm>          'mbps': 0.32976,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 35,
+simplevm>          'normal-bytes': 143360,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 10,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 285331456,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 145809},
+simplevm>  'setup-time': 3,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 3423}
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.18144 remaining='267,878,400' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 4460,
+simplevm>          'mbps': 0.18144,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 46,
+simplevm>          'normal-bytes': 188416,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 2500,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 267878400,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 229427},
+simplevm>  'setup-time': 3,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 6255}
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.17964356435643564 remaining='226,918,400' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 14460,
+simplevm>          'mbps': 0.17964356435643564,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 46,
+simplevm>          'normal-bytes': 188416,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 2475,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 226918400,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 319747},
+simplevm>  'setup-time': 3,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 10261}
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.18144 remaining='169,574,400' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 28460,
+simplevm>          'mbps': 0.18144,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 46,
+simplevm>          'normal-bytes': 188416,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 2500,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 169574400,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 446195},
+simplevm>  'setup-time': 3,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 15925}
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.18144 remaining='87,654,400' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 48460,
+simplevm>          'mbps': 0.18144,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 46,
+simplevm>          'normal-bytes': 188416,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 2500,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 87654400,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 626835},
+simplevm>  'setup-time': 3,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 23935}
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.32976 remaining='18,825,216' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 65218,
+simplevm>          'mbps': 0.32976,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 92,
+simplevm>          'normal-bytes': 376832,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 10,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 18825216,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 967345},
+simplevm>  'setup-time': 3,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 35261}
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.3264950495049505 remaining='839,680' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 69511,
+simplevm>          'mbps': 0.3264950495049505,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 190,
+simplevm>          'normal-bytes': 778240,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 9,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 839680,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 1409137},
+simplevm>  'setup-time': 3,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 46586}
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.32976 remaining='1,118,208' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 4,
+simplevm>          'dirty-sync-count': 2,
+simplevm>          'duplicate': 69591,
+simplevm>          'mbps': 0.32976,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 303,
+simplevm>          'normal-bytes': 1241088,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 10,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 1118208,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 1874605},
+simplevm>  'setup-time': 3,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 57908}
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.34057172924857854 remaining='0' status='completed'
+simplevm> {'blocked': False,
+simplevm>  'downtime': 8,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 5,
+simplevm>          'duplicate': 69724,
+simplevm>          'mbps': 0.34057172924857854,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 447,
+simplevm>          'normal-bytes': 1830912,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 10,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 0,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 2467703},
+simplevm>  'setup-time': 3,
+simplevm>  'status': 'completed',
+simplevm>  'total-time': 68420}
+simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
+simplevm             finish-migration
+simplevm             stopped-heartbeat-ping
+simplevm             consul-deregister
+simplevm             outmigrate-finished            exitcode=0
+simplevm             lock-status                    count=0
+simplevm             release-lock                   target='/run/qemu.simplevm.lock'
+simplevm             release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
+"""
+    )
+
+    # This one is missing the "stopped-heartbeat-ping". This can happen
+    # because the heartbeat has a sleep cycle of 10s and only finishes with
+    # this log output when it actually triggers at the right moment.
+    assert_outmigrate_log(
+        """\
+/nix/store/kj63j38ji0c8yk037yvzj9c5f27mzh58-python3.8-fc.qemu-d26a0eae29efd95fe5c328d8a9978eb5a6a4529e/bin/fc-qemu -v outmigrate simplevm
+load-system-config
+simplevm             connect-rados                  subsystem='ceph'
+simplevm             acquire-lock                   target='/run/qemu.simplevm.lock'
+simplevm             acquire-lock                   result='locked' target='/run/qemu.simplevm.lock'
+simplevm             lock-status                    count=1
+simplevm             qmp_capabilities               arguments={} id=None subsystem='qemu/qmp'
+simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
+simplevm             outmigrate
+simplevm             consul-register
+simplevm             heartbeat-initialized
+simplevm             locate-inmigration-service
+simplevm             check-staging-config           result='none'
+simplevm             located-inmigration-service    url='http://host2.mgm.test.gocept.net:35241'
+simplevm             started-heartbeat-ping
+simplevm             acquire-migration-locks
+simplevm             heartbeat-ping
+simplevm             check-staging-config           result='none'
+simplevm             acquire-migration-lock         result='success' subsystem='qemu'
+simplevm             acquire-local-migration-lock   result='success'
+simplevm             acquire-remote-migration-lock
+simplevm             acquire-remote-migration-lock  result='success'
+simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.root'
+simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.swap'
+simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.tmp'
+simplevm             prepare-remote-environment
+simplevm             start-migration                target='tcp:192.168.4.7:2345'
+simplevm             migrate                        subsystem='qemu'
+simplevm             migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None subsystem='qemu/qmp'
+simplevm             migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None subsystem='qemu/qmp'
+simplevm             migrate                        arguments={'uri': 'tcp:192.168.4.7:2345'} id=None subsystem='qemu/qmp'
+simplevm             query-migrate-parameters       arguments={} id=None subsystem='qemu/qmp'
+simplevm             migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 subsystem='qemu' throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps='-' remaining='0' status='setup'
+simplevm> {'blocked': False, 'status': 'setup'}
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.32976 remaining='285,528,064' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 182,
+simplevm>          'mbps': 0.32976,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 15,
+simplevm>          'normal-bytes': 61440,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 10,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 285528064,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 63317},
+simplevm>  'setup-time': 1,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 1418}
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.32976 remaining='285,331,456' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 210,
+simplevm>          'mbps': 0.32976,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 35,
+simplevm>          'normal-bytes': 143360,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 10,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 285331456,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 145809},
+simplevm>  'setup-time': 1,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 3422}
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.18144 remaining='267,878,400' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 4460,
+simplevm>          'mbps': 0.18144,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 46,
+simplevm>          'normal-bytes': 188416,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 2500,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 267878400,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 229427},
+simplevm>  'setup-time': 1,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 6254}
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.18144 remaining='226,918,400' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 14460,
+simplevm>          'mbps': 0.18144,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 46,
+simplevm>          'normal-bytes': 188416,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 2500,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 226918400,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 319747},
+simplevm>  'setup-time': 1,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 10259}
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.18144 remaining='169,574,400' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 28460,
+simplevm>          'mbps': 0.18144,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 46,
+simplevm>          'normal-bytes': 188416,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 2500,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 169574400,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 446195},
+simplevm>  'setup-time': 1,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 15923}
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.18144 remaining='87,654,400' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 48460,
+simplevm>          'mbps': 0.18144,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 46,
+simplevm>          'normal-bytes': 188416,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 2500,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 87654400,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 626835},
+simplevm>  'setup-time': 1,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 23932}
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.32976 remaining='18,825,216' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 65218,
+simplevm>          'mbps': 0.32976,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 92,
+simplevm>          'normal-bytes': 376832,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 10,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 18825216,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 967345},
+simplevm>  'setup-time': 1,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 35258}
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.32976 remaining='843,776' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 1,
+simplevm>          'duplicate': 69511,
+simplevm>          'mbps': 0.32976,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 189,
+simplevm>          'normal-bytes': 774144,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 10,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 843776,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 1405025},
+simplevm>  'setup-time': 1,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 46582}
+simplevm             heartbeat-ping
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.32976 remaining='1,118,208' status='active'
+simplevm> {'blocked': False,
+simplevm>  'expected-downtime': 4000,
+simplevm>  'ram': {'dirty-pages-rate': 4,
+simplevm>          'dirty-sync-count': 2,
+simplevm>          'duplicate': 69591,
+simplevm>          'mbps': 0.32976,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 303,
+simplevm>          'normal-bytes': 1241088,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 10,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 1118208,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 1874605},
+simplevm>  'setup-time': 1,
+simplevm>  'status': 'active',
+simplevm>  'total-time': 57908}
+simplevm             heartbeat-ping
+simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
+simplevm             migration-status               mbps=0.3400370667639548 remaining='0' status='completed'
+simplevm> {'blocked': False,
+simplevm>  'downtime': 11,
+simplevm>  'ram': {'dirty-pages-rate': 0,
+simplevm>          'dirty-sync-count': 5,
+simplevm>          'duplicate': 69724,
+simplevm>          'mbps': 0.3400370667639548,
+simplevm>          'multifd-bytes': 0,
+simplevm>          'normal': 447,
+simplevm>          'normal-bytes': 1830912,
+simplevm>          'page-size': 4096,
+simplevm>          'pages-per-second': 10,
+simplevm>          'postcopy-requests': 0,
+simplevm>          'remaining': 0,
+simplevm>          'skipped': 0,
+simplevm>          'total': 286334976,
+simplevm>          'transferred': 2467711},
+simplevm>  'setup-time': 1,
+simplevm>  'status': 'completed',
+simplevm>  'total-time': 68526}
+simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
+simplevm             finish-migration
+simplevm             consul-deregister
+simplevm             outmigrate-finished            exitcode=0
+simplevm             lock-status                    count=0
+simplevm             release-lock                   target='/run/qemu.simplevm.lock'
+simplevm             release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
+"""
+    )
+
+
 @pytest.mark.live
 @pytest.mark.timeout(240)
 def test_vm_migration(vm, kill_vms):
@@ -592,12 +1208,16 @@ def test_vm_migration(vm, kill_vms):
         while True:
             line = p.stdout.readline()
             if line:
-                # This ensures we get partial output in case of test failures
-                print((line.strip()))
+                # This ensures we get partial output e.g. during timeouts.
+                print(line)
                 stdout += line
             else:
                 p.wait()
-                return clean_output(stdout)
+                output = clean_output(stdout)
+                # This ensures we get the output the ellipsis sees.
+                print("Cleaned output for test consumption:")
+                print(output)
+                return output
 
     call("fc-qemu start simplevm")
     call("sed -i -e 's/host1/host2/' /etc/qemu/vm/simplevm.cfg")
@@ -607,89 +1227,7 @@ def test_vm_migration(vm, kill_vms):
     outmigrate = call("fc-qemu -v outmigrate simplevm", wait=False)
 
     outmigrate_result = communicate_progress(outmigrate)
-    assert outmigrate_result == Ellipsis(
-        """\
-/nix/store/.../bin/fc-qemu -v outmigrate simplevm
-load-system-config
-simplevm             connect-rados                  subsystem='ceph'
-simplevm             acquire-lock                   target='/run/qemu.simplevm.lock'
-simplevm             acquire-lock                   result='locked' target='/run/qemu.simplevm.lock'
-simplevm             lock-status                    count=1
-simplevm             qmp_capabilities               arguments={} id=None subsystem='qemu/qmp'
-simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
-simplevm             outmigrate
-simplevm             consul-register
-simplevm             heartbeat-initialized
-simplevm             locate-inmigration-service
-simplevm             check-staging-config           result='none'
-simplevm             located-inmigration-service    url='http://host2.mgm.test.gocept.net:...'
-simplevm             started-heartbeat-ping
-simplevm             acquire-migration-locks
-simplevm             heartbeat-ping
-simplevm             check-staging-config           result='none'
-simplevm             acquire-migration-lock         result='success' subsystem='qemu'
-simplevm             acquire-local-migration-lock   result='success'
-simplevm             acquire-remote-migration-lock
-simplevm             acquire-remote-migration-lock  result='success'
-simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.root'
-simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.swap'
-simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.tmp'
-simplevm             prepare-remote-environment
-simplevm             start-migration                target='tcp:192.168.4.7:...'
-simplevm             migrate                        subsystem='qemu'
-simplevm             migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None subsystem='qemu/qmp'
-simplevm             migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None subsystem='qemu/qmp'
-simplevm             migrate                        arguments={'uri': 'tcp:192.168.4.7:...'} id=None subsystem='qemu/qmp'
-simplevm             query-migrate-parameters       arguments={} id=None subsystem='qemu/qmp'
-simplevm             migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 subsystem='qemu' throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps='-' remaining='0' status='setup'
-simplevm> {'blocked': False, 'status': 'setup'}
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status='active'
-simplevm> {'blocked': False,
-simplevm>  'expected-downtime': 4000,
-...
-simplevm>  'status': 'active',
-simplevm>  'total-time': ...}
-...
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status='active'
-...
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status='active'
-...
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status='active'
-...
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status='active'
-...
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status='active'
-...
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status='active'
-...
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status='completed'
-simplevm> {'blocked': False,
-simplevm>  'downtime': ...,
-...
-simplevm>  'status': 'completed',
-simplevm>  'total-time': ...}
-simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
-simplevm             finish-migration
-simplevm             consul-deregister
-simplevm             outmigrate-finished            exitcode=0
-simplevm             lock-status                    count=0
-simplevm             release-lock                   target='/run/qemu.simplevm.lock'
-simplevm             release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
-"""
-    )
+    assert_outmigrate_log(outmigrate_result)
     assert outmigrate.returncode == 0
 
     inmigrate_result = communicate_progress(inmigrate)
@@ -741,19 +1279,7 @@ simplevm             waiting                        interval=0 remaining=59
 simplevm             received-ping                  timeout=60
 simplevm             waiting                        interval=0 remaining=59
 simplevm             received-ping                  timeout=60
-simplevm             waiting                        interval=0 remaining=59
-simplevm             received-ping                  timeout=60
-simplevm             waiting                        interval=0 remaining=59
-simplevm             received-ping                  timeout=60
-simplevm             waiting                        interval=0 remaining=59
-simplevm             received-ping                  timeout=60
-simplevm             waiting                        interval=0 remaining=59
-simplevm             received-ping                  timeout=60
-simplevm             waiting                        interval=0 remaining=59
-simplevm             received-ping                  timeout=60
-simplevm             waiting                        interval=0 remaining=59
-simplevm             received-ping                  timeout=60
-simplevm             waiting                        interval=0 remaining=59
+...
 simplevm             received-finish-incoming
 simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
 simplevm             reset-timeout

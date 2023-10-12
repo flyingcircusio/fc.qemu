@@ -95,6 +95,11 @@ def main():
     )
     parser_enter.set_defaults(func="maintenance_enter")
 
+    parser_leave = maint_sub.add_parser(
+        "leave", help="Let this host leave maintenance mode."
+    )
+    parser_leave.set_defaults(func="maintenance_leave")
+
     p = sub.add_parser("check", help="Perform health check for this host.")
     p.set_defaults(func="check")
 

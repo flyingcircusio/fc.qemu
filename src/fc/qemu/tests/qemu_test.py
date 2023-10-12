@@ -32,6 +32,8 @@ def qemu_with_pidfile(tmpdir):
     while not os.path.exists(pidfile):
         time.sleep(0.01)
     q = Qemu(dict(name="testvmwithverylongname", id=1234))
+    while not q.proc():
+        time.sleep(0.01)
     try:
         yield q
     finally:
