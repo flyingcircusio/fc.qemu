@@ -565,7 +565,7 @@ def assert_outmigrate_log(log):
     for line in log.split("\n"):
         # The heartbeat pings show up in varying places. We need to filter
         # those out. Note the leading space to avoid eliminating the
-        # heratbeat-initialized message.
+        # heartbeat-initialized message.
         if " heartbeat-ping" in line:
             continue
         if "stopped-heartbeat-ping" in line:
