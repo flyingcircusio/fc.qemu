@@ -43,12 +43,21 @@ def test_empty_event():
 def test_no_key_event():
     stdin = StringIO('[{"ModifyIndex": 123, "Value": ""}]')
     Agent.handle_consul_event(stdin)
-    assert util.log_data == [
-        "start-consul-events count=1",
-        "handle-key-failed exc_info=True key=None",
-        "finish-handle-key key=None",
-        "finish-consul-events",
-    ]
+
+    assert (
+        Ellipsis(
+            """\
+start-consul-events count=1
+handle-key-failed key=None
+Traceback (most recent call last):
+  File "/nix/store/...-python3-...-env/lib/python3.8/site-packages/fc/qemu/agent.py", line ..., in handle
+    log.debug("handle-key", key=event["Key"])
+KeyError: 'Key'
+finish-handle-key key=None
+finish-consul-events"""
+        )
+        == get_log()
+    )
 
 
 @pytest.fixture
@@ -260,9 +269,24 @@ freeze machine=simplevm volume=root
 freeze-failed action=continue machine=simplevm reason=Unable to sync with guest agent after 10 tries.
 snapshot-ignore machine=simplevm reason=not frozen
 ensure-thawed machine=simplevm volume=root
-guest-fsfreeze-thaw-failed exc_info=True machine=simplevm subsystem=qemu
+guest-fsfreeze-thaw-failed machine=simplevm subsystem=qemu
+Traceback (most recent call last):
+...
+    raise RuntimeError("VM not frozen, not making snapshot.")
+RuntimeError: VM not frozen, not making snapshot.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+...
+    raise ClientError(
+fc.qemu.hazmat.guestagent.ClientError: Unable to sync with guest agent after 10 tries.
 ensure-thawed-failed machine=simplevm reason=Unable to sync with guest agent after 10 tries.
-handle-key-failed exc_info=True key=snapshot/7468743
+handle-key-failed key=snapshot/7468743
+Traceback (most recent call last):
+...
+    raise RuntimeError("VM not frozen, not making snapshot.")
+RuntimeError: VM not frozen, not making snapshot.
 finish-consul-events"""
         )
         == get_log()
@@ -290,15 +314,14 @@ finish-consul-events"""
 @pytest.mark.live
 @pytest.mark.timeout(60)
 def test_snapshot_offline_vm(vm):
-    util.test_log_options["show_events"] = ["consul", "snapshot"]
-
     vm.enc["parameters"]["kvm_host"] = "foobar"
     vm.stage_new_config()
     vm.activate_new_config()
 
     vm.ceph.ensure_root_volume()
     vm.ensure_offline()
-    get_log()
+
+    print(get_log())
 
     snapshot = {"vm": "simplevm", "snapshot": "backy-1234"}
     event = prepare_consul_event("snapshot/7468743", snapshot, 123)
@@ -307,8 +330,15 @@ def test_snapshot_offline_vm(vm):
         get_log()
         == """\
 start-consul-events count=1
+handle-key key=snapshot/7468743
+connect-rados machine=simplevm subsystem=ceph
 snapshot machine=simplevm snapshot=backy-1234
+acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
+acquire-lock count=1 machine=simplevm result=locked target=/run/qemu.simplevm.lock
 snapshot expected=VM running machine=simplevm
+release-lock count=0 machine=simplevm target=/run/qemu.simplevm.lock
+release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
+finish-handle-key key=snapshot/7468743
 finish-consul-events"""
     )
 

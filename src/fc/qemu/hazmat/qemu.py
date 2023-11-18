@@ -53,6 +53,7 @@ def detect_current_machine_type(
 
 def locked_global(f):
     LOCK = "/run/fc-qemu.lock"
+
     # This is thread-safe *AS LONG* as every thread uses a separate instance
     # of the agent. Using multiple file descriptors will guarantee that the
     # lock can only be held once even within a single process.
@@ -85,7 +86,6 @@ def locked_global(f):
 
 
 class Qemu(object):
-
     prefix = ""
     executable = "qemu-system-x86_64"
 
@@ -576,20 +576,43 @@ class Qemu(object):
             ],
         )
 
-    def destroy(self):
+    def destroy(self, kill_supervisor=False):
         # We use this destroy command in "fire-and-forget"-style because
         # sometimes the init script will complain even if we achieve what
         # we want: that the VM isn't running any longer. We check this
         # by contacting the monitor instead.
-        timeout = TimeOut(100, interval=1, raise_on_timeout=True)
         p = self.proc()
         if not p:
             return
+
+        # Check whether the parent is the supervising process.
+        # Kill that one first so we avoid immediate restarts.
+        if kill_supervisor:
+            parent = p.parent()
+            if "supervised-qemu-wrapped" in parent.cmdline()[1]:
+                # Do not raise on timeout so we get a chance to actually kill
+                # the VM even if killing the supervisor fails.
+                timeout = TimeOut(100, interval=2, raise_on_timeout=False)
+                attempt = 0
+                while parent.is_running() and timeout.tick():
+                    attempt += 1
+                    self.log.debug(
+                        "vm-destroy-kill-supervisor", attempt=attempt
+                    )
+                    try:
+                        parent.terminate()
+                    except psutil.NoSuchProcess:
+                        break
+
+        timeout = TimeOut(100, interval=2, raise_on_timeout=True)
+        attempt = 0
         while p.is_running() and timeout.tick():
+            attempt += 1
+            self.log.debug("vm-destroy-kill-vm", attempt=attempt)
             try:
                 p.terminate()
             except psutil.NoSuchProcess:
-                pass
+                break
 
     def resize_root(self, size):
         self.qmp.command("block_resize", device="virtio0", size=size)

@@ -19,6 +19,7 @@ class Heartbeat(object):
     """
 
     cookie = None
+    failed = False
 
     def __init__(self, log):
         self.thread = threading.Thread(target=self.run)
@@ -48,13 +49,18 @@ class Heartbeat(object):
                     self.connection.ping(self.cookie)
                 except Exception:
                     self.log.exception("ping-failed", exc_info=True)
+                    self.failed = True
                 time.sleep(10)
         finally:
             self.log.debug("stopped-heartbeat-ping")
 
+    def propagate(self):
+        if self.failed:
+            self.log.warning("heartbeat-propagate")
+            raise RuntimeError("Heartbeat failed.")
+
 
 class Outgoing(object):
-
     migration_exitcode = None
     target = None
     cookie = None
@@ -209,6 +215,7 @@ class Outgoing(object):
             if self.agent.has_new_config():
                 self.target.cancel(self.cookie)
                 raise ConfigChanged()
+            self.heartbeat.propagate()
 
             # Try to acquire local lock
             if self.agent.qemu.acquire_migration_lock():
@@ -230,6 +237,7 @@ class Outgoing(object):
                 self.log.debug(
                     "acquire-remote-migration-lock", result="success"
                 )
+                self.heartbeat.propagate()
             except Exception:
                 self.log.exception(
                     "acquire-remote-migration-lock",
@@ -264,6 +272,7 @@ class Outgoing(object):
                     mbps=mbps,
                     output=pprint.pformat(stat),
                 )
+                self.heartbeat.propagate()
         except Exception:
             self.log.exception("error-waiting-for-migration", exc_info=True)
             raise
@@ -272,12 +281,13 @@ class Outgoing(object):
         assert not status["running"], status
         assert status["status"] == "postmigrate", status
         self.log.info("finish-migration")
+        self.destroy(kill_supervisor=True)
         try:
-            self.heartbeat.stop()
+            self.log.info("finish-remote")
             self.target.finish_incoming(self.cookie)
         except Exception:
             self.log.exception("error-finish-remote", exc_info=True)
-        self.agent.qemu.destroy()
+        self.heartbeat.stop()
 
     def rescue(self):
         """Outgoing rescue: try to rescue the remote side first."""
@@ -287,7 +297,7 @@ class Outgoing(object):
                 self.target.rescue(self.cookie)
                 self.target.finish_incoming(self.cookie)
                 self.log.info("rescue-remote-success", action="destroy local")
-                self.destroy()
+                self.destroy(kill_supervisor=True)
                 # We managed to rescue on the remote side - hooray!
                 self.migration_exitcode = 0
                 return
@@ -317,6 +327,6 @@ class Outgoing(object):
         else:
             self.log.info("continue-locally", result="success")
 
-    def destroy(self):
-        self.agent.qemu.destroy()
+    def destroy(self, kill_supervisor=False):
+        self.agent.qemu.destroy(kill_supervisor)
         self.agent.qemu.clean_run_files()

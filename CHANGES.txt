@@ -4,8 +4,25 @@ Release notes
 1.4.1 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Live migration: fix crash due to failed heartbeats not propagating
+tests: reduce test flakiness.
 
+- Introduce `pytest-patterns` as a replacement for the current
+  use of Ellipsis.
+
+- Increase general test timeouts so tests are a bit less flaky.
+
+- Improve some lock logging to make it easier to understand and
+  debug when reading the locks and I think this also fixes some race
+  conditions.
+
+  This also removes a file descriptor leak that was found in testing.
+
+- Fix VM kill handling to include our little supervisor process and
+  selectively decide whether to kill it or not.
+
+- Add more testing output about the environment in case something goes
+  wrong in the tests and we need to debug it.
 
 1.4.0 (2023-10-12)
 ------------------

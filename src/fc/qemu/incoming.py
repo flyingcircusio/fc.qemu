@@ -139,6 +139,9 @@ class IncomingServer(object):
         if self.finished == "success":
             return 0
         else:
+            # Do not kill the supervisor. We will be giving up here, but the
+            # supervisor will restart the process, potentially with updated
+            # config data so we get a "free" retry.
             self.qemu.destroy()
             return 1
 
@@ -229,6 +232,9 @@ class IncomingServer(object):
         log.info("destroying", machine=self.name)
         self.finished = "destroyed"
         try:
+            # Do not kill the supervisor. We will be giving up here, but the
+            # supervisor will restart the process, potentially with updated
+            # config data so we get a "free" retry.
             self.qemu.destroy()
         except QemuNotRunning:
             pass

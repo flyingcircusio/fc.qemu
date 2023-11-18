@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import traceback
 
 import pkg_resources
@@ -38,7 +39,7 @@ def setup_structlog():
     from . import util
 
     # set to True to temporarily get detailed tracebacks
-    log_exceptions = False
+    log_exceptions = True
 
     def test_logger(logger, method_name, event):
         stack = event.pop("stack", None)
@@ -119,15 +120,69 @@ def pytest_assertrepr_compare(op, left, right):
 @pytest.fixture
 def clean_environment():
     def clean():
-        subprocess.call("pkill -f qemu", shell=True)
+        subprocess.call(["pkill", "-f", "supervised-qemu"])
+        subprocess.call(["pkill", "-f", "qemu-system-x86_64"])
         subprocess.call("rbd rm rbd.ssd/simplevm.swap", shell=True)
         subprocess.call("rbd snap purge rbd.ssd/simplevm.root", shell=True)
         subprocess.call("rbd rm rbd.ssd/simplevm.root", shell=True)
         subprocess.call("rbd rm rbd.ssd/simplevm.tmp", shell=True)
+        time.sleep(1)
 
     clean()
+
+    print(
+        subprocess.check_output(
+            "rbd ls rbd.ssd",
+            shell=True,
+        ).decode("ascii")
+    )
+
     yield
     clean()
+
+    print(
+        subprocess.check_output(
+            "free && sync && echo 3 > /proc/sys/vm/drop_caches && free",
+            shell=True,
+        ).decode("ascii")
+    )
+    print(
+        subprocess.check_output(
+            "ceph df",
+            shell=True,
+        ).decode("ascii")
+    )
+    print(
+        subprocess.check_output(
+            "ps auxf",
+            shell=True,
+        ).decode("ascii")
+    )
+    print(
+        subprocess.check_output(
+            "df -h",
+            shell=True,
+        ).decode("ascii")
+    )
+    print(
+        subprocess.check_output(
+            "rbd showmapped",
+            shell=True,
+        ).decode("ascii")
+    )
+
+
+@pytest.fixture(autouse=True)
+def clean_tmpdir_with_flakefinder(tmpdir, pytestconfig):
+    """The `tmpdir` is normally not cleaned out for debugging purposes.
+
+    Running with flakefinder causes the tmpdir to quickly grow too big.
+    So, if flakefinder is active, we clean it out to avoid running out of
+    disk space.
+    """
+    yield
+    if pytestconfig.getoption("flake_finder_enable") > 0:
+        shutil.rmtree(tmpdir)
 
 
 @pytest.fixture
@@ -146,7 +201,7 @@ def vm(clean_environment, monkeypatch, tmpdir):
     vm.qemu.vm_expected_overhead = 128
     for snapshot in vm.ceph.root.snapshots:
         snapshot.remove()
-    vm.qemu.destroy()
+    vm.qemu.destroy(kill_supervisor=True)
     vm.unlock()
     get_log()
     yield vm
