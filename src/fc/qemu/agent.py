@@ -203,22 +203,24 @@ def locked(blocking=True):
                     mode="nonblocking",
                 )
                 return os.EX_TEMPFAIL
-            self.log.debug(
-                "acquire-lock", target=self.lockfile, result="locked"
-            )
-
             self._lock_count += 1
-            self.log.debug("lock-status", count=self._lock_count)
+            self.log.debug(
+                "acquire-lock",
+                target=self.lockfile,
+                result="locked",
+                count=self._lock_count,
+            )
             try:
                 return f(self, *args, **kw)
             finally:
                 self._lock_count -= 1
-                self.log.debug("lock-status", count=self._lock_count)
-
+                self.log.debug(
+                    "release-lock",
+                    target=self.lockfile,
+                    count=self._lock_count,
+                )
                 if self._lock_count == 0:
-                    # New
                     try:
-                        self.log.debug("release-lock", target=self.lockfile)
                         fcntl.flock(self._lockfile_fd, fcntl.LOCK_UN)
                         self.log.debug(
                             "release-lock",
@@ -232,7 +234,8 @@ def locked(blocking=True):
                             target=self.lockfile,
                             result="error",
                         )
-                        pass
+                    os.close(self._lockfile_fd)
+                    self._lockfile_fd = None
 
         return locked_func
 
@@ -1005,7 +1008,7 @@ class Agent(object):
                 self.log.error(
                     "inconsistent-state", action="destroy", exc_info=True
                 )
-                self.qemu.destroy()
+                self.qemu.destroy(kill_supervisor=True)
 
     def ensure_offline(self):
         if self.qemu.is_running():
@@ -1335,7 +1338,7 @@ class Agent(object):
     def kill(self):
         self.log.info("kill-vm")
         timeout = TimeOut(15, interval=1, raise_on_timeout=True)
-        self.qemu.destroy()
+        self.qemu.destroy(kill_supervisor=True)
         while timeout.tick():
             if not self.qemu.is_running():
                 self.log.info("killed-vm")
@@ -1396,6 +1399,8 @@ class Agent(object):
         client = Outgoing(self)
         exitcode = client()
         if not exitcode:
+            # XXX I think this can lead to inconsistent behaviour
+            # if the local VM is destroyed during migration?
             self.consul_deregister()
         self.log.info("outmigrate-finished", exitcode=exitcode)
         return exitcode

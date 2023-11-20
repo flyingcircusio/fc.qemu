@@ -35,6 +35,9 @@ setup(
         "setuptools",
         "structlog>=16.1.0",
     ],
+    tests_require=[
+        "pytest-patterns",
+    ],
     entry_points={
         "console_scripts": [
             "fc-qemu = fc.qemu.main:main",
