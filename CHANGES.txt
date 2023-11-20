@@ -1,7 +1,7 @@
 Release notes
 =============
 
-1.4.1 (unreleased)
+1.4.1 (2023-11-20)
 ------------------
 
 - Live migration: fix crash due to failed heartbeats not propagating
