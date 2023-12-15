@@ -1,7 +1,7 @@
 Release notes
 =============
 
-1.4.2 (unreleased)
+1.4.2 (2023-12-15)
 ------------------
 
 - Introduce a testing mechanism that ensures that we do not miss direct
