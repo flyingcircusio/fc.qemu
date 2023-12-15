@@ -541,37 +541,44 @@ ensure-throttle action=none current_iops=10 device=virtio2 machine=simplevm targ
 
 @pytest.mark.timeout(80)
 @pytest.mark.live
-def test_vm_resize_disk(vm):
+def test_vm_resize_disk(vm, patterns):
     vm.start()
     get_log()
 
     # The cloned image is smaller than the initial desired
     # disk so we immediately get a resize.
     vm.ensure_online_disk_size()
-    assert (
-        get_log()
-        == """\
+    resize_1 = patterns.resize_1
+    resize_1.in_order(
+        """
 check-disk-size action=resize found=104857600 machine=simplevm wanted=2147483648
-block_resize arguments={'device': 'virtio0', 'size': 2147483648} id=None machine=simplevm subsystem=qemu/qmp"""
+block_resize arguments={'device': 'virtio0', 'size': 2147483648} id=None machine=simplevm subsystem=qemu/qmp
+"""
     )
+    assert get_log() == resize_1
 
     # Increasing the desired disk size also triggers a change.
     vm.cfg["disk"] *= 2
     vm.ensure_online_disk_size()
-    assert (
-        get_log()
-        == """\
+    resize_2 = patterns.resize_2
+    resize_2.in_order(
+        """
 check-disk-size action=resize found=2147483648 machine=simplevm wanted=4294967296
-block_resize arguments={'device': 'virtio0', 'size': 4294967296} id=None machine=simplevm subsystem=qemu/qmp"""
+block_resize arguments={'device': 'virtio0', 'size': 4294967296} id=None machine=simplevm subsystem=qemu/qmp
+"""
     )
+    assert get_log() == resize_2
 
     # The disk image is of the right size and thus nothing happens.
     vm.ensure_online_disk_size()
-    assert (
-        get_log()
-        == """\
-check-disk-size action=none found=4294967296 machine=simplevm wanted=4294967296"""
+    resize_noop = patterns.resize_noop
+    resize_noop.in_order(
+        """
+check-disk-size action=none found=4294967296 machine=simplevm wanted=4294967296
+"""
     )
+
+    assert get_log() == resize_noop
 
 
 def test_swap_size():

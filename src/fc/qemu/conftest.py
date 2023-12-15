@@ -117,6 +117,37 @@ def pytest_assertrepr_compare(op, left, right):
         return right.compare(left).diff
 
 
+CALLED_BINARIES = set([])
+
+
+@pytest.fixture(autouse=True)
+def record_subprocess_calls(monkeypatch):
+    original = subprocess.Popen.__init__
+
+    def Popen_recording_init(self, *args, **kw):
+        binary = args[0][0]
+        if kw.get("shell"):
+            binary = args[0].split()[0]
+        CALLED_BINARIES.add(binary)
+        return original(self, *args, **kw)
+
+    monkeypatch.setattr(subprocess.Popen, "__init__", Popen_recording_init)
+
+
+@pytest.fixture(autouse=True)
+def record_subprocess_run(monkeypatch):
+    subprocess_run_orig = subprocess.run
+
+    def recording_subprocess_run(*args, **kw):
+        binary = args[0][0]
+        if kw.get("shell"):
+            binary = args[0].split()[0]
+        CALLED_BINARIES.add(binary)
+        return subprocess_run_orig(*args, **kw)
+
+    monkeypatch.setattr(subprocess, "run", recording_subprocess_run)
+
+
 @pytest.fixture
 def clean_environment():
     def clean():

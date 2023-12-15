@@ -114,3 +114,11 @@ def test_ensure_inconsistent_state_detected(simplevm_cfg):
         a.ceph.locked_by_me = mock.Mock(return_value=False)
         with pytest.raises(VMStateInconsistent):
             a.raise_if_inconsistent()
+
+
+@pytest.mark.timeout(60)
+@pytest.mark.live
+def test_maintenance():
+    with pytest.raises(SystemExit, match="0"):
+        Agent.maintenance_enter()
+    Agent.maintenance_leave()

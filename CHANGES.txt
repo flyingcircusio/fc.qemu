@@ -4,7 +4,8 @@ Release notes
 1.4.2 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Introduce a testing mechanism that ensures that we do not miss direct
+  binary dependencies during packaging. (PL-132010)
 
 
 1.4.1 (2023-11-20)
