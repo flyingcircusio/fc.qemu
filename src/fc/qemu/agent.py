@@ -411,11 +411,6 @@ class Agent(object):
                 if running:
                     vm_mem = vm.qemu.proc().memory_full_info()
 
-                    expected_size = (
-                        vm.cfg["memory"] * 1024 * 1024
-                        + vm.qemu.vm_expected_overhead * 1024 * 1024
-                    )
-
                     log.info(
                         "online",
                         machine=vm.name,
