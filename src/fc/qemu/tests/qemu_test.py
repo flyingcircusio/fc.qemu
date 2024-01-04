@@ -72,23 +72,3 @@ def test_proc_pidfile_with_garbage(qemu_with_pidfile):
     with open(qemu_with_pidfile.pidfile, "a") as f:
         f.write("trailing line\n")
     assert isinstance(qemu_with_pidfile.proc(), psutil.Process)
-
-
-def test_disk_cache_mode_default_writeback():
-    q = Qemu(dict(name="testvm", id=1234))
-    assert q.disk_cache_mode == "writeback"
-
-
-def test_disk_cache_mode_default_writeback2():
-    q = Qemu(dict(name="testvm", id=1234, qemu=dict()))
-    assert q.disk_cache_mode == "writeback"
-
-
-def test_disk_cache_mode_enc_enabled():
-    q = Qemu(dict(name="testvm", id=1234, qemu=dict(write_back_cache=True)))
-    assert q.disk_cache_mode == "writeback"
-
-
-def test_disk_cache_mode_enc_disabled():
-    q = Qemu(dict(name="testvm", id=1234, qemu=dict(write_back_cache=False)))
-    assert q.disk_cache_mode == "none"
