@@ -20,7 +20,7 @@
   format = "rbd"
   file = "rbd:{rbd_pool}/{name}.root:id={{ceph_id}}"
   aio = "threads"
-  cache = "{disk_cache_mode}"
+  cache = "none"
 
 [drive]
   index = "1"
@@ -29,7 +29,7 @@
   format = "rbd"
   file = "rbd:{rbd_pool}/{name}.swap:id={{ceph_id}}"
   aio = "threads"
-  cache = "{disk_cache_mode}"
+  cache = "none"
 
 [drive]
   index = "2"
@@ -38,7 +38,7 @@
   format = "rbd"
   file = "rbd:{rbd_pool}/{name}.tmp:id={{ceph_id}}"
   aio = "threads"
-  cache = "{disk_cache_mode}"
+  cache = "none"
 
 [device]
   driver = "virtio-rng-pci"

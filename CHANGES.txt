@@ -4,8 +4,7 @@ Release notes
 1.4.3 (unreleased)
 ------------------
 
-- Nothing changed yet.
-
+- Disable the writeback cache (DIR-919)
 
 1.4.2 (2023-12-15)
 ------------------

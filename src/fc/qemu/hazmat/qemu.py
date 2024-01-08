@@ -146,17 +146,6 @@ class Qemu(object):
         ]:
             setattr(self, f, getattr(self, f).format(**vm_cfg))
 
-        # prepare qemu-specific config settings
-        self.qemu_cfg = self.cfg.get("qemu", {})
-
-        # The default if nothing is set is to enable "writeback" for backwards
-        # compatability: before introducing this option everything used
-        # writeback.
-        if self.qemu_cfg.get("write_back_cache", True):
-            self.disk_cache_mode = "writeback"
-        else:
-            self.disk_cache_mode = "none"
-
         # We are running qemu with chroot which causes us to not be able to
         # resolve names. :( See #13837.
         a = self.migration_address.split(":")
