@@ -1,7 +1,7 @@
 Release notes
 =============
 
-1.4.4 (unreleased)
+1.4.4 (2024-08-18)
 ------------------
 
 - Reduce maximum delay to acquire local migration locks to 20 seconds.
