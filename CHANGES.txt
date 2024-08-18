@@ -4,12 +4,15 @@ Release notes
 1.4.4 (unreleased)
 ------------------
 
-- Nothing changed yet
+- Reduce maximum delay to acquire local migration locks to 20 seconds.
+
+- Regenerate XFS UUIDs when cold-starting a VM.
 
 1.4.3 (2024-01-17)
 ------------------
 
 - Disable the writeback cache (DIR-919)
+
 - We have moved to python-3.10 as the target runtime, marking this in package metadata.
 
 1.4.2 (2023-12-15)
