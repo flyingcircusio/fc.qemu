@@ -208,9 +208,9 @@ class Outgoing(object):
             # In case that there are multiple processes waiting, randomize to
             # avoid steplock retries. We us CSMA/CD-based exponential backoff,
             # timeslot 10ms but with a max of 13 instead of 16.
-            # This means we'll wait up to 80s, 40s on average if everything
+            # This means we'll wait up to 20s, 10s on average if everything
             # becomes really busy and we may experience lock contention.
-            tries = min([tries + 1, 13])
+            tries = min([tries + 1, 11])
             timeout.interval = random.randint(1, 2**tries) * 0.01
             if self.agent.has_new_config():
                 self.target.cancel(self.cookie)
