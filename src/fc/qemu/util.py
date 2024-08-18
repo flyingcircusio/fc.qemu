@@ -8,6 +8,7 @@ import os.path
 import subprocess
 import sys
 import time
+from typing import Dict
 
 from structlog import get_logger
 
@@ -145,3 +146,26 @@ def ensure_separate_cgroup():
             # Keep going.
     with open("{}/cgroup.procs".format(CGROUP), "w") as f:
         f.write(str(os.getpid()))
+
+
+def parse_export_format(data: str) -> Dict[str, str]:
+    """Parses formats intended for shell exports into a dict.
+
+    ASDF=foo
+    BSDF=bar
+
+    Introduced to support output from `blkid`.
+
+    """
+    result = {}
+    for line in data.splitlines():
+        try:
+            k, v = line.strip().split("=")
+        except ValueError:
+            continue
+        k = k.strip()
+        if not k:
+            continue
+        v = v.strip("'\"")
+        result[k] = v
+    return result

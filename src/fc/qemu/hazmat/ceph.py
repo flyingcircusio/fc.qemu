@@ -74,6 +74,7 @@ class Ceph(object):
             self.log.info("create-vm")
             cmd(self.CREATE_VM.format(**self.cfg), self.log)
         self.root.lock()
+        self.root.regen_xfs_uuid()
 
     def ensure_swap_volume(self):
         self.log.info("ensure-swap")
