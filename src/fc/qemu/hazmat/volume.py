@@ -13,7 +13,8 @@ import time
 
 import rbd
 
-from ..util import cmd, remove_empty_dirs
+from ..timeout import TimeOut, TimeoutError
+from ..util import cmd, parse_export_format, remove_empty_dirs
 
 
 class Image(object):
@@ -26,6 +27,7 @@ class Image(object):
         self.ceph = ceph
         self.ioctx = ceph.ioctx
         self.name = name
+        self.log = ceph.log.bind(image=self.name)
         self.rbd = rbd.RBD()
 
     def __str__(self):
@@ -45,6 +47,12 @@ class Image(object):
             return None
         return self.device + "-part1"
 
+    def wait_for_part1dev(self):
+        timeout = TimeOut(5, interval=0.1, raise_on_timeout=True, log=self.log)
+        while timeout.tick():
+            if os.path.exists(self.part1dev):
+                break
+
     def map(self):
         if self.device is not None:
             return
@@ -53,8 +61,10 @@ class Image(object):
                 self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.fullname
             )
         )
-        time.sleep(0.1)
-        self.device = "/dev/rbd/" + self.fullname
+        device = "/dev/rbd/" + self.fullname
+        while not os.path.exists(device):
+            time.sleep(0.1)
+        self.device = device
 
     def unmap(self):
         if self.device is None:
@@ -69,6 +79,11 @@ class Image(object):
     @contextlib.contextmanager
     def mapped(self):
         """Maps the image to a block device and yields the device name."""
+        if self.device:
+            # Re-entrant version - do not map/unmap
+            yield self.device
+            return
+        # Non-reentrant version: actually do the work
         self.map()
         try:
             yield self.device
@@ -87,6 +102,7 @@ class Image(object):
             os.makedirs(mountpoint)
         except OSError:  # pragma: no cover
             pass
+        self.wait_for_part1dev()
         self.cmd('mount "{}" "{}"'.format(self.part1dev, mountpoint))
         self.mountpoint = mountpoint
 
@@ -351,15 +367,43 @@ class Volume(Image):
                 )
             )
         self.cmd("partprobe {}".format(self.device))
-        time.sleep(0.2)
-        while not p.exists(self.part1dev):  # pragma: no cover
-            time.sleep(0.1)
+        self.wait_for_part1dev()
         options = getattr(self.ceph, "MKFS_" + fstype.upper())
         self.cmd(
             self.MKFS_CMD[fstype].format(
                 options=options, device=self.part1dev, label=self.label
             )
         )
+
+    def regen_xfs_uuid(self):
+        """Regenerate the UUID of the XFS filesystem on partition 1."""
+        with self.mapped():
+            try:
+                self.wait_for_part1dev()
+            except TimeoutError:
+                self.log.warn(
+                    "regenerate-xfs-uuid",
+                    status="skipped",
+                    reason="no partition found",
+                )
+                return
+            output = self.cmd(f"blkid {self.part1dev} -o export")
+            values = parse_export_format(output)
+            fs_type = values.get("TYPE")
+            if fs_type != "xfs":
+                self.log.info(
+                    "regenerate-xfs-uuid",
+                    device=self.part1dev,
+                    status="skipped",
+                    fs_type=fs_type,
+                    reason="filesystem type != xfs",
+                )
+                return
+            with self.mounted():
+                # Mount once to ensure a clean log.
+                pass
+            self.log.info("regenerate-xfs-uuid", device=self.part1dev)
+            self.cmd(f"xfs_admin -U generate {self.part1dev}")
 
     def seed(self, enc, generation):
         self.log.info("seed")

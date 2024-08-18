@@ -82,6 +82,30 @@ fc-create-vm> Finished
 fc-create-vm> --------
 /nix/store/.../bin/fc-create-vm machine=simplevm returncode=0 subsystem=ceph
 lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd> /dev/rbd0
+rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.root
+blkid args=/dev/rbd/rbd.ssd/simplevm.root-part1 -o export machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+blkid> DEVNAME=/dev/rbd/rbd.ssd/simplevm.root-part1
+blkid> UUID=...
+blkid> BLOCK_SIZE=512
+blkid> TYPE=xfs
+blkid> PARTLABEL=ROOT
+blkid> PARTUUID=...
+blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+mount args="/dev/rbd/rbd.ssd/simplevm.root-part1" "/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+umount args="/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+regenerate-xfs-uuid device=/dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+xfs_admin args=-U generate /dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+xfs_admin> Clearing log and setting UUID
+xfs_admin> writing all SBs
+xfs_admin> new UUID = ...
+xfs_admin machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 ensure-tmp machine=simplevm subsystem=ceph
 lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -99,6 +123,7 @@ sgdisk> The operation has completed successfully.
 sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mkfs.xfs args=-q -f -K -m crc=1,finobt=1 -d su=4m,sw=1 -L "tmp" "/dev/rbd/rbd.ssd/simplevm.tmp-part1" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mkfs.xfs> mkfs.xfs: Specified data stripe unit 8192 is not the same as the volume stripe unit 128
 mkfs.xfs> mkfs.xfs: Specified data stripe width 8192 is not the same as the volume stripe width 128
