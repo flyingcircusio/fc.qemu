@@ -1,7 +1,7 @@
 Release notes
 =============
 
-1.4.5 (unreleased)
+1.4.5 (2024-09-26)
 ------------------
 
 - Only regenerate XFS UUIDs when bootstrapping a VM.
