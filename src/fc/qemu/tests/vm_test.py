@@ -81,7 +81,6 @@ fc-create-vm>
 fc-create-vm> Finished
 fc-create-vm> --------
 /nix/store/.../bin/fc-create-vm machine=simplevm returncode=0 subsystem=ceph
-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd> /dev/rbd0
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
@@ -106,6 +105,7 @@ xfs_admin> new UUID = ...
 xfs_admin machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 ensure-tmp machine=simplevm subsystem=ceph
 lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp

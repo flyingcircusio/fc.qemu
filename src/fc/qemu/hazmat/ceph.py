@@ -13,7 +13,6 @@ from .volume import Volume
 
 
 class Ceph(object):
-
     # Attributes on this class can be overriden in a controlled fashion
     # from the sysconfig module. See __init__(). The defaults are here to
     # support testing.
@@ -73,8 +72,8 @@ class Ceph(object):
         if not self.root.exists():
             self.log.info("create-vm")
             cmd(self.CREATE_VM.format(**self.cfg), self.log)
+            self.root.regen_xfs_uuid()
         self.root.lock()
-        self.root.regen_xfs_uuid()
 
     def ensure_swap_volume(self):
         self.log.info("ensure-swap")
