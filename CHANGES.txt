@@ -1,7 +1,7 @@
 Release notes
 =============
 
-1.4.6 (unreleased)
+1.4.6 (2024-09-26)
 ------------------
 
 - Improve test flakiness.
