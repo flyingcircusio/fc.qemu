@@ -4,7 +4,7 @@ Release notes
 1.4.6 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Improve test flakiness.
 
 
 1.4.5 (2024-09-26)

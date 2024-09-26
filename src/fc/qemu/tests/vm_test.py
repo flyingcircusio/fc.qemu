@@ -30,81 +30,35 @@ def clean_output(output):
 
 @pytest.mark.timeout(90)
 @pytest.mark.live
-def test_simple_vm_lifecycle_start_stop(vm):
-    util.test_log_options["show_events"] = ["vm-status", "rbd-status"]
-
-    vm.status()
-
-    status = get_log()
-    assert (
-        status
-        == """\
+def test_simple_vm_lifecycle_start_stop(vm, patterns):
+    status = patterns.status
+    status.continuous(
+        """
 vm-status machine=simplevm result=offline
 rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp
+"""
     )
+
+    util.test_log_options["show_events"] = ["vm-status", "rbd-status"]
+    vm.status()
+    assert status == get_log()
 
     util.test_log_options["show_events"] = []
     vm.start()
-
     out = clean_output(get_log())
-    # WORKAROUND: one line might be duplicate in the log output. This is specific
-    # pre-processing to allow both cases and could probably be done in a more
-    # elegant way.
-    possibly_dupl_line = r"qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp"
-    out_lines = out.split("\n")
-    while out_lines.count(possibly_dupl_line) > 1:
-        out_lines.remove(possibly_dupl_line)
-    out = "\n".join(out_lines)
 
-    # This is 1 end-to-end logging test to see everything.
-    # FIXME: decide which lines are really necessary to avoid false test-negatives in
-    # case number or order of lines changes
-    assert out == Ellipsis(
-        """\
+    # This is 1 end-to-end logging test to see everything. FIXME: decide which
+    # lines are really necessary to avoid false test-negatives in case number
+    # or order of lines changes
+    start = patterns.start
+    start.in_order(
+        """
 acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
 acquire-lock count=1 machine=simplevm result=locked target=/run/qemu.simplevm.lock
 generate-config machine=simplevm
 ensure-root machine=simplevm subsystem=ceph
-create-vm machine=simplevm subsystem=ceph
-/nix/store/.../bin/fc-create-vm args=-I simplevm machine=simplevm subsystem=ceph
-fc-create-vm>
-fc-create-vm> Establishing system identity
-fc-create-vm> ----------------------------
-fc-create-vm> $ rbd --format json --id host1 snap ls rbd.hdd/fc-21.05-dev
-fc-create-vm> Snapshots:
-fc-create-vm> snapid name size
-fc-create-vm> 4 v1 104857600
-fc-create-vm> $ rbd --id host1 clone rbd.hdd/fc-21.05-dev@v1 rbd.ssd/simplevm.root
-fc-create-vm>
-fc-create-vm> Finished
-fc-create-vm> --------
-/nix/store/.../bin/fc-create-vm machine=simplevm returncode=0 subsystem=ceph
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd> /dev/rbd0
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
-waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.root
-blkid args=/dev/rbd/rbd.ssd/simplevm.root-part1 -o export machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-blkid> DEVNAME=/dev/rbd/rbd.ssd/simplevm.root-part1
-blkid> UUID=...
-blkid> BLOCK_SIZE=512
-blkid> TYPE=xfs
-blkid> PARTLABEL=ROOT
-blkid> PARTUUID=...
-blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
-mount args="/dev/rbd/rbd.ssd/simplevm.root-part1" "/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
-umount args="/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
-regenerate-xfs-uuid device=/dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-xfs_admin args=-U generate /dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-xfs_admin> Clearing log and setting UUID
-xfs_admin> writing all SBs
-xfs_admin> new UUID = ...
-xfs_admin machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 ensure-tmp machine=simplevm subsystem=ceph
 lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -113,7 +67,6 @@ rbd> /dev/rbd0
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 create-fs machine=simplevm subsystem=ceph type=xfs volume=rbd.ssd/simplevm.tmp
 sgdisk args=-o "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-sgdisk> Creating new GPT entries in memory.
 sgdisk> The operation has completed successfully.
 sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 sgdisk args=-a 8192 -n 1:8192:0 -c "1:tmp" -t 1:8300 "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -173,8 +126,72 @@ block_set_io_throttle arguments={'device': 'virtio2', 'iops': 10000, 'iops_rd': 
 ensure-watchdog action=none machine=simplevm
 human-monitor-command arguments={'command-line': 'watchdog_action action=none'} id=None machine=simplevm subsystem=qemu/qmp
 release-lock count=0 machine=simplevm target=/run/qemu.simplevm.lock
-release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock"""
+release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
+"""
     )
+    start.optional(
+        """
+sgdisk> Creating new GPT entries in memory.
+rbd> /dev/rbd0
+"""
+    )
+
+    BOOTSTRAP = """
+create-vm machine=simplevm subsystem=ceph
+/nix/store/.../bin/fc-create-vm args=-I simplevm machine=simplevm subsystem=ceph
+fc-create-vm>
+fc-create-vm> Establishing system identity
+fc-create-vm> ----------------------------
+fc-create-vm> $ rbd --format json --id host1 snap ls rbd.hdd/fc-21.05-dev
+fc-create-vm> Snapshots:
+fc-create-vm> snapid name size
+fc-create-vm> 4 v1 104857600
+fc-create-vm> $ rbd --id host1 clone rbd.hdd/fc-21.05-dev@v1 rbd.ssd/simplevm.root
+fc-create-vm>
+fc-create-vm> Finished
+fc-create-vm> --------
+/nix/store/.../bin/fc-create-vm machine=simplevm returncode=0 subsystem=ceph
+rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd> /dev/rbd0
+rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.root
+blkid args=/dev/rbd/rbd.ssd/simplevm.root-part1 -o export machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+blkid> DEVNAME=/dev/rbd/rbd.ssd/simplevm.root-part1
+blkid> UUID=...
+blkid> BLOCK_SIZE=512
+blkid> TYPE=xfs
+blkid> PARTLABEL=ROOT
+blkid> PARTUUID=...
+blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+mount args="/dev/rbd/rbd.ssd/simplevm.root-part1" "/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+umount args="/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+regenerate-xfs-uuid device=/dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+xfs_admin args=-U generate /dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+xfs_admin> Clearing log and setting UUID
+xfs_admin> writing all SBs
+xfs_admin> new UUID = ...
+xfs_admin machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+"""
+
+    bootstrap = patterns.bootstrap
+    bootstrap.continuous(BOOTSTRAP)
+
+    # Things that happen depending on timing:
+    start.optional(
+        """
+waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
+"""
+    )
+
+    first_start = patterns.first_start
+    first_start.merge("start", "bootstrap")
+
+    assert out == first_start
 
     util.test_log_options["show_events"] = [
         "vm-status",
@@ -206,6 +223,42 @@ rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
 rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
 rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     )
+
+    # Starting a second time doesn't show the bootstrap code!
+
+    util.test_log_options["show_events"] = []
+    vm.start()
+    out = clean_output(get_log())
+
+    no_bootstrap = patterns.no_bootstrap
+    no_bootstrap.refused(
+        """
+create-vm machine=simplevm subsystem=ceph
+/nix/store/.../bin/fc-create-vm args=-I simplevm machine=simplevm subsystem=ceph
+fc-create-vm> ...
+blkid> PARTLABEL=ROOT
+mount args="/dev/rbd/rbd.ssd/simplevm.root-part1" "/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+umount args="/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+regenerate-xfs-uuid device=/dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+xfs_admin args=-U generate /dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+xfs_admin> Clearing log and setting UUID
+xfs_admin> writing all SBs
+xfs_admin> new UUID = ...
+xfs_admin machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+"""
+    )
+
+    second_start = patterns.second_start
+    second_start.merge("start", "no_bootstrap")
+    second_start.in_order(
+        """
+mkswap> mkswap: /dev/rbd/rbd.ssd/simplevm.swap: warning: wiping old swap signature.
+"""
+    )
+
+    assert second_start == out
 
 
 @pytest.mark.timeout(60)
