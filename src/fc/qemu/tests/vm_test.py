@@ -494,6 +494,7 @@ def test_vm_snapshot_with_missing_guest_agent(vm, monkeypatch):
         "snapshot",
         "freeze",
         "thaw",
+        "disconnect",
     ]
 
     monkeypatch.setattr(util, "today", lambda: datetime.date(2010, 1, 1))
@@ -511,30 +512,10 @@ def test_vm_snapshot_with_missing_guest_agent(vm, monkeypatch):
             """\
 snapshot-create machine=simplevm name=asdf-keep-until-20100108
 freeze machine=simplevm volume=root
-freeze-failed action=continue machine=simplevm reason=Unable to sync with guest agent after 10 tries.
-snapshot-ignore machine=simplevm reason=not frozen
-ensure-thawed machine=simplevm volume=root
-guest-fsfreeze-thaw-failed machine=simplevm subsystem=qemu
-Traceback (most recent call last):
-  File "/nix/store/...-python3-.../site-packages/fc/qemu/agent.py", line ..., in frozen_vm
-    yield frozen
-  File "/nix/store/...-python3-.../site-packages/fc/qemu/agent.py", line ..., in snapshot
-    raise RuntimeError("VM not frozen, not making snapshot.")
-RuntimeError: VM not frozen, not making snapshot.
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/nix/store/...-python3-.../site-packages/fc/qemu/hazmat/qemu.py", line ..., in thaw
-    self._thaw_via_guest_agent()
-  File "/nix/store/...-python3-.../site-packages/fc/qemu/hazmat/qemu.py", line ..., in _thaw_via_guest_agent
-    with self.guestagent as guest:
-  File "/nix/store/...-python3-.../site-packages/fc/qemu/hazmat/guestagent.py", line ..., in __enter__
-    self.sync()
-  File "/nix/store/...-python3-.../site-packages/fc/qemu/hazmat/guestagent.py", line ..., in sync
-    raise ClientError(
-fc.qemu.hazmat.guestagent.ClientError: Unable to sync with guest agent after 10 tries.
-ensure-thawed-failed machine=simplevm reason=Unable to sync with guest agent after 10 tries."""
+sync-gratuitous-thaw machine=simplevm subsystem=qemu/guestagent
+disconnect machine=simplevm subsystem=qemu/guestagent
+freeze-failed action=continue machine=simplevm reason=timed out
+snapshot-ignore machine=simplevm reason=not frozen"""
         )
         == get_log()
     )
@@ -546,30 +527,10 @@ ensure-thawed-failed machine=simplevm reason=Unable to sync with guest agent aft
             """\
 snapshot-create machine=simplevm name=asdf
 freeze machine=simplevm volume=root
-freeze-failed action=continue machine=simplevm reason=...
-snapshot-ignore machine=simplevm reason=not frozen
-ensure-thawed machine=simplevm volume=root
-guest-fsfreeze-thaw-failed machine=simplevm subsystem=qemu
-Traceback (most recent call last):
-  File "/nix/store/...-python3-.../site-packages/fc/qemu/agent.py", line ..., in frozen_vm
-    yield frozen
-  File "/nix/store/...-python3-.../site-packages/fc/qemu/agent.py", line ..., in snapshot
-    raise RuntimeError("VM not frozen, not making snapshot.")
-RuntimeError: VM not frozen, not making snapshot.
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/nix/store/...-python3-.../site-packages/fc/qemu/hazmat/qemu.py", line ..., in thaw
-    self._thaw_via_guest_agent()
-  File "/nix/store/...-python3-.../site-packages/fc/qemu/hazmat/qemu.py", line ..., in _thaw_via_guest_agent
-    with self.guestagent as guest:
-  File "/nix/store/...-python3-.../site-packages/fc/qemu/hazmat/guestagent.py", line ..., in __enter__
-    self.sync()
-  File "/nix/store/...-python3-.../site-packages/fc/qemu/hazmat/guestagent.py", line ..., in sync
-    raise ClientError(
-fc.qemu.hazmat.guestagent.ClientError: Unable to sync with guest agent after 10 tries.
-ensure-thawed-failed machine=simplevm reason=Unable to sync with guest agent after 10 tries."""
+sync-gratuitous-thaw machine=simplevm subsystem=qemu/guestagent
+disconnect machine=simplevm subsystem=qemu/guestagent
+freeze-failed action=continue machine=simplevm reason=timed out
+snapshot-ignore machine=simplevm reason=not frozen"""
         )
         == get_log()
     )
@@ -1445,6 +1406,7 @@ simplevm>
 simplevm             received-ping                  timeout=60
 simplevm             reset-timeout
 simplevm             waiting                        interval=0 remaining=...
+simplevm             guest-disconnect
 """
     )
 

@@ -18,43 +18,36 @@ def test_ga_read_error(guest_agent):
 
 def test_ga_sync_immediate(guest_agent):
     guest_agent._client_stub.responses = [
+        "{}",
         '{"return": 87643}',
     ]
 
-    with guest_agent:
-        # This causes an implicit sync and wires up the client stub.
-        assert guest_agent.file.fileno()
-        assert guest_agent.client is not None
+    guest_agent.connect()
+
+    # This causes an implicit sync and wires up the client stub.
+    assert guest_agent.file.fileno()
+    assert guest_agent.client is not None
 
     assert guest_agent.client.messages_sent == [
-        b'\xff{"execute": "guest-sync", "arguments": {"id": 87643}}'
+        b'{"execute": "guest-fsfreeze-thaw"}',
+        b"\xff",
+        b'{"execute": "guest-ping", "arguments": {}}',
+        b'{"execute": "guest-sync", "arguments": {"id": 87643}}',
     ]
 
 
-def test_ga_sync_retry(guest_agent):
+def test_ga_sync_wrong_response(guest_agent):
     guest_agent._client_stub.responses = [
-        '{"return": 2}',
-        '{"return": 87643}',
-    ]
-
-    with guest_agent:
-        # This causes an implicit sync and wires up the client stub.
-        assert True
-
-    assert guest_agent.client.messages_sent == [
-        b'\xff{"execute": "guest-sync", "arguments": {"id": 87643}}'
-    ]
-
-
-def test_ga_sync_too_often(guest_agent):
-    guest_agent._client_stub.responses = [
-        f'{{"return": {x}}}' for x in range(20)
+        "{}",
+        '{"return": 1}',
     ]
 
     with pytest.raises(ClientError):
-        with guest_agent:
-            pass
+        guest_agent.connect()
 
     assert guest_agent.client.messages_sent == [
-        b'\xff{"execute": "guest-sync", "arguments": {"id": 87643}}'
+        b'{"execute": "guest-fsfreeze-thaw"}',
+        b"\xff",
+        b'{"execute": "guest-ping", "arguments": {}}',
+        b'{"execute": "guest-sync", "arguments": {"id": 87643}}',
     ]

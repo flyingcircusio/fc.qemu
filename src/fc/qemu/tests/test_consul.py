@@ -266,22 +266,9 @@ start-consul-events count=1
 snapshot machine=simplevm snapshot=backy-1234
 snapshot-create machine=simplevm name=backy-1234
 freeze machine=simplevm volume=root
-freeze-failed action=continue machine=simplevm reason=Unable to sync with guest agent after 10 tries.
+sync-gratuitous-thaw machine=simplevm subsystem=qemu/guestagent
+freeze-failed action=continue machine=simplevm reason=timed out
 snapshot-ignore machine=simplevm reason=not frozen
-ensure-thawed machine=simplevm volume=root
-guest-fsfreeze-thaw-failed machine=simplevm subsystem=qemu
-Traceback (most recent call last):
-...
-    raise RuntimeError("VM not frozen, not making snapshot.")
-RuntimeError: VM not frozen, not making snapshot.
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-...
-    raise ClientError(
-fc.qemu.hazmat.guestagent.ClientError: Unable to sync with guest agent after 10 tries.
-ensure-thawed-failed machine=simplevm reason=Unable to sync with guest agent after 10 tries.
 handle-key-failed key=snapshot/7468743
 Traceback (most recent call last):
 ...

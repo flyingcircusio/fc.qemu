@@ -1013,7 +1013,10 @@ class Agent(object):
             self.stop()
         else:
             self.log.info(
-                "ensure-state", wanted="offline", found="offline", action="none"
+                "ensure-state",
+                wanted="offline",
+                found="offline",
+                action="none",
             )
 
     def ensure_online_remote(self):
@@ -1225,23 +1228,25 @@ class Agent(object):
 
         """
         frozen = False
-        try:
-            if self.qemu.is_running():
-                self.log.info("freeze", volume="root")
-                try:
-                    self.qemu.freeze()
-                    frozen = True
-                except Exception as e:
-                    self.log.error(
-                        "freeze-failed",
-                        reason=str(e),
-                        action="continue",
-                        machine=self.name,
-                    )
-            yield frozen
-        finally:
-            if self.qemu.is_running():
-                self.ensure_thawed()
+        if self.qemu.is_running():
+            self.log.info("freeze", volume="root")
+            try:
+                self.qemu.freeze()
+                frozen = True
+            except Exception as e:
+                self.log.error(
+                    "freeze-failed",
+                    reason=str(e),
+                    action="continue",
+                    machine=self.name,
+                )
+        yield frozen
+        # We're not doing this with a finally because if qemu.freeze failed
+        # initially then we can't reliably communicate with the agent and
+        # there are measures already in place to assist in the unreliable
+        # case in `freeze()`
+        if frozen and self.qemu.is_running():
+            self.ensure_thawed()
 
     @locked()
     @running(True)

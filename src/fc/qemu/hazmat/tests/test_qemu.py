@@ -17,6 +17,8 @@ def test_write_file_no_error(guest_agent):
     # the emulated answers of the guest agent:
 
     guest_agent._client_stub.responses = [
+        # ping
+        "{}",
         # sync ID, hard-coded in fixture
         '{"return": 87643}',
         # emulated non-empty result of executions:
@@ -32,8 +34,12 @@ def test_write_file_no_error(guest_agent):
 
     qemu.write_file("/tmp/foo", b'"asdf"')
     print(guest_agent.client.messages_sent)
+
     assert guest_agent.client.messages_sent == [
-        b'\xff{"execute": "guest-sync", "arguments": {"id": 87643}}',
+        b'{"execute": "guest-fsfreeze-thaw"}',
+        b"\xff",
+        b'{"execute": "guest-ping", "arguments": {}}',
+        b'{"execute": "guest-sync", "arguments": {"id": 87643}}',
         b'{"execute": "guest-file-open", "arguments": {"path": "/tmp/foo", "mode": "w"}}',
         b'{"execute": "guest-file-write", "arguments": {"handle": "file-handle-1", "buf-b64": "ImFzZGYi\\n"}}',
         b'{"execute": "guest-file-close", "arguments": {"handle": "file-handle-1"}}',
