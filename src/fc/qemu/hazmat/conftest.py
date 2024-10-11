@@ -262,6 +262,8 @@ def guest_agent(monkeypatch, tmpdir):
         messages_sent: typing.List[bytes]
         responses: typing.List[str]
 
+        receive_buffer = ""
+
         def __init__(self):
             self.messages_sent = []
             self.responses = []
@@ -277,6 +279,9 @@ def guest_agent(monkeypatch, tmpdir):
 
         def send(self, msg: bytes):
             self.messages_sent.append(msg)
+
+        def recv(self, buffersize):
+            return self.receive_buffer
 
         def makefile(self):
             pseudo_socket_filename = tempfile.mktemp(dir=tmpdir)

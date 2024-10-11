@@ -25,9 +25,11 @@ from .qmp import QMPConnectError
 # timeout of 3 seconds will cause everything to explode when
 # the guest takes too long. We've seen 16 seconds as a regular
 # period in some busy and large machines. I'm being _very_
-# generous using a 120s timeout here.
+# generous using a 5 minute timeout here. We've seen it get stuck longer
+# than 2 minutes and the agent is very stubborn in those cases and really
+# doesn't like if the client goes away ...
 # This is a global variable so we can instrument it during testing.
-FREEZE_TIMEOUT = 120
+FREEZE_TIMEOUT = 300
 
 
 class InvalidMigrationStatus(Exception):
@@ -75,7 +77,9 @@ def locked_global(f):
         finally:
             self._global_lock_count -= 1
             self.log.debug(
-                "global-lock-status", target=LOCK, count=self._global_lock_count
+                "global-lock-status",
+                target=LOCK,
+                count=self._global_lock_count,
             )
             if self._global_lock_count == 0:
                 self.log.debug("global-lock-release", target=LOCK)
@@ -186,6 +190,7 @@ class Qemu(object):
         pass
 
     def __exit__(self, exc_value, exc_type, exc_tb):
+        self.guestagent.disconnect()
         if self.__qmp:
             self.__qmp.close()
             self.__qmp = None
@@ -361,32 +366,25 @@ class Qemu(object):
                 return
 
     def freeze(self):
-        with self.guestagent as guest:
-            try:
-                # This request may take a _long_ _long_ time and the default
-                # timeout of 3 seconds will cause everything to explode when
-                # the guest takes too long. We've seen 16 seconds as a regular
-                # period in some busy and large machines. I'm being _very_
-                # generous using a 120s timeout here.
-                guest.cmd("guest-fsfreeze-freeze", timeout=FREEZE_TIMEOUT)
-            except ClientError:
-                self.log.debug("guest-fsfreeze-freeze-failed", exc_info=True)
-            assert guest.cmd("guest-fsfreeze-status") == "frozen"
-
-    def _thaw_via_guest_agent(self):
-        with self.guestagent as guest:
-            try:
-                guest.cmd("guest-fsfreeze-thaw")
-            except ClientError:
-                self.log.debug("guest-fsfreeze-freeze-thaw", exc_info=True)
-                raise
-            result = guest.cmd("guest-fsfreeze-status")
-            if result != "thawed":
-                raise RuntimeError("Unexpected thaw result: {}".format(result))
+        try:
+            # This request may take a _long_ _long_ time and the default
+            # timeout of 3 seconds will cause everything to explode when
+            # the guest takes too long. We've seen 16 seconds as a regular
+            # period in some busy and large machines. So we increase this
+            # to a lot more and also perform a gratuitous thaw in case
+            # we error out.
+            self.guestagent.cmd("guest-fsfreeze-freeze", timeout=FREEZE_TIMEOUT)
+        except ClientError:
+            self.log.debug("guest-fsfreeze-freeze-failed", exc_info=True)
+            self.guestagent.cmd("guest-fsfreeze-thaw", fire_and_forget=True)
+        assert self.guestagent.cmd("guest-fsfreeze-status") == "frozen"
 
     def thaw(self):
         try:
-            self._thaw_via_guest_agent()
+            self.guestagent.cmd("guest-fsfreeze-thaw")
+            result = self.guestagent.cmd("guest-fsfreeze-status")
+            if result != "thawed":
+                raise RuntimeError("Unexpected thaw result: {}".format(result))
         except Exception:
             self.log.warning("guest-fsfreeze-thaw-failed", exc_info=True)
             raise
@@ -394,19 +392,18 @@ class Qemu(object):
     def write_file(self, path, content: bytes):
         if not isinstance(content, bytes):
             raise TypeError("Expected bytes, got string.")
-        with self.guestagent as guest:
-            try:
-                handle = guest.cmd("guest-file-open", path=path, mode="w")
-                guest.cmd(
-                    "guest-file-write",
-                    handle=handle,
-                    # The ASCII armour needs to be turned into text again, because the
-                    # JSON encoder doesn't handle bytes-like objects.
-                    **{"buf-b64": encode(content, "base64").decode("ascii")},
-                )
-                guest.cmd("guest-file-close", handle=handle)
-            except ClientError:
-                self.log.error("guest-write-file", exc_info=True)
+        try:
+            handle = self.guestagent.cmd("guest-file-open", path=path, mode="w")
+            self.guestagent.cmd(
+                "guest-file-write",
+                handle=handle,
+                # The ASCII armour needs to be turned into text again, because the
+                # JSON encoder doesn't handle bytes-like objects.
+                **{"buf-b64": encode(content, "base64").decode("ascii")},
+            )
+            self.guestagent.cmd("guest-file-close", handle=handle)
+        except ClientError:
+            self.log.error("guest-write-file", exc_info=True)
 
     def inmigrate(self):
         self._start(["-incoming {}".format(self.migration_address)])
@@ -436,7 +433,8 @@ class Qemu(object):
         )
         self.qmp.command("migrate", uri=address)
         self.log.debug(
-            "migrate-parameters", **self.qmp.command("query-migrate-parameters")
+            "migrate-parameters",
+            **self.qmp.command("query-migrate-parameters"),
         )
 
     def poll_migration_status(self, timeout=30):
