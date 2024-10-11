@@ -74,11 +74,11 @@ class GuestAgent(object):
             json.dumps({"execute": "guest-fsfreeze-thaw"}).encode("utf-8")
         )
 
-        # Phase 2: clear the connection buffer from previous connections.
-        # We set a very short timeout (nonblocking does not help, the kernel
-        # needs a little time to give access to the data already buffered).
-        # However, we want to keep it as short as possible because this timeout
-        # will always happen in the happy case which is most of the time.
+        # Phase 2: clear the connection buffer from previous connections. We
+        # set a very short timeout because the guest agent might still be
+        # stuck trying to send a response to a client that went away. However,
+        # we want to keep it as short as possible because this timeout will
+        # always happen in the happy case which is most of the time.
         self.client.settimeout(1)
         self.log.debug("clear-buffer")
         try:
