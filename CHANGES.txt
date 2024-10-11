@@ -1,7 +1,7 @@
 Release notes
 =============
 
-1.5.0 (unreleased)
+1.5.0 (2024-10-11)
 ------------------
 
 - Revamp guest agent connection handling and try harder to thaw a VM
