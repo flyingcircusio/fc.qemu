@@ -9,7 +9,7 @@ with open("HACKING.txt") as f:
 
 setup(
     name="fc.qemu",
-    version="1.5.0",
+    version="1.5.1.dev0",
     author="Christian Kauhaus, Christian Theune",
     author_email="mail@flyingcircus.io",
     url="http://github.com/flyingcircusio/fc.qemu",
