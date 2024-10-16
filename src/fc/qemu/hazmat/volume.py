@@ -224,6 +224,9 @@ class Volume(Image):
         ),
     }
 
+    # ENC parameters which should be seeded at boot-time into the VM
+    ENC_SEED_PARAMETERS = ["cpu_model", "rbd_pool"]
+
     def __init__(self, ceph, name, label):
         super(Volume, self).__init__(ceph, name)
         self.label = label
@@ -416,6 +419,21 @@ class Volume(Image):
                 os.fchmod(f.fileno(), 0o640)
                 json.dump(enc, f)
                 f.write("\n")
+            # Seed boot-time VM properties which require a reboot to
+            # change. While some of these properties are copied from
+            # the ENC data, a separate file allows properties which
+            # are not exposed to guests through ENC to be added in the
+            # future.
+            guest_properties = p.join(fc_data, "qemu-guest-properties-booted")
+            with open(guest_properties, "w") as f:
+                props = {}
+                props["binary_generation"] = generation
+                for key in self.ENC_SEED_PARAMETERS:
+                    if key in enc["parameters"]:
+                        props[key] = enc["parameters"][key]
+                json.dump(props, f)
+            # For backwards compatibility with old fc-agent versions,
+            # write the Qemu binary generation into a separate file.
             generation_marker = p.join(fc_data, "qemu-binary-generation-booted")
             with open(generation_marker, "w") as f:
                 f.write(str(generation) + "\n")
