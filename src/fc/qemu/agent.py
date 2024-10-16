@@ -1088,6 +1088,7 @@ class Agent(object):
             # reduce the time we're unnecessarily waiting for timeouts.
             self.ensure_thawed()
             self.mark_qemu_binary_generation()
+            self.mark_qemu_guest_properties()
 
     def cleanup(self):
         """Removes various run and tmp files."""
@@ -1101,6 +1102,24 @@ class Agent(object):
             self.qemu.thaw()
         except Exception as e:
             self.log.error("ensure-thawed-failed", reason=str(e))
+
+    def mark_qemu_guest_properties(self):
+        props = {
+            "binary_generation": self.binary_generation,
+            "cpu_model": self.cfg["cpu_model"],
+            "rbd_pool": self.cfg["rbd_pool"],
+        }
+        self.log.info(
+            "mark-qemu-guest-properties",
+            properties=props,
+        )
+        try:
+            self.qemu.write_file(
+                "/run/qemu-guest-properties-current",
+                (json.dumps(props)).encode("utf-8"),
+            )
+        except Exception as e:
+            self.log.error("mark-qemu-guest-properties", reason=str(e))
 
     def mark_qemu_binary_generation(self):
         self.log.info(
