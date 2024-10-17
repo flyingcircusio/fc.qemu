@@ -16,6 +16,23 @@ To run only some tests you can pass arguments to pytest:
 
     hydra01 ~/fc-nixos $ nix-build --arg useCheckout true --argstr testOpts "-k test_agent_check"  tests/kvm_host_ceph-nautilus.nix
 
+To interact with the tests using PDB you can add breakpoints and/or cause the tests to fail and then:
+
+Keep the build outputs:
+
+    hydra01 ~/fc-nixos $ nix-build --arg useCheckout true --argstr testOpts "-k test_agent_check"  tests/kvm_host_ceph-nautilus.nix -K
+
+Get a live pdb session:
+
+   sudo -i
+   cd /tmp/nix-build-python3.8-fc.qemu-dev.drv-50/build/fc.qemu
+   grep
+   source ../env-vars
+
+
+
+
+
 Real-world testing on FCIO DEV network
 --------------------------------------
 
