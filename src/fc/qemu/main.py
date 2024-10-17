@@ -230,7 +230,7 @@ def main():
             agent = Agent(vm)
             with agent:
                 sys.exit(getattr(agent, func)(**kwargs) or 0)
-    except (ControlledRuntimeException):
+    except ControlledRuntimeException:
         # Those exceptions are properly logged and indicate an error with a
         # proper shutdown.
         log.exception("controlled-exception", exc_info=True)
@@ -238,7 +238,6 @@ def main():
     except (VMConfigNotFound, InvalidCommand):
         # Those exceptions are properly logged and don't have to be shown
         # with their traceback.
-        log.debug("unexpected-exception")
         sys.exit(69)  # EX_UNAVAILABLE
     except Exception:
         log.exception("unexpected-exception", exc_info=True)
