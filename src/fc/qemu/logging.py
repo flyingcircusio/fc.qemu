@@ -6,6 +6,7 @@
 
 import os
 import sys
+from pathlib import Path
 
 import structlog
 from six import StringIO
@@ -96,6 +97,12 @@ def prefix(prefix, line):
     return "{}>\t".format(prefix) + line.replace("\n", "\n{}>\t".format(prefix))
 
 
+def format_value(value):
+    if isinstance(value, Path):
+        value = str(value)
+    return repr(value)
+
+
 class MultiConsoleRenderer(object):
     """
     Render `event_dict` nicely aligned, in colors, and ordered with
@@ -181,7 +188,11 @@ class MultiConsoleRenderer(object):
 
         machine = event_dict.pop("machine", "")
         if machine:
-            write(machine.ljust(20) + " ")
+            write(machine.ljust(10) + " ")
+        subsystem = event_dict.pop("subsystem", "")
+        if machine or subsystem:
+            # Always keep the columns in order if we have a machine.
+            write(subsystem.rjust(10)[:10] + " ")
 
         output = event_dict.pop("output", None)
         output_line = event_dict.pop("output", None)
@@ -204,7 +215,7 @@ class MultiConsoleRenderer(object):
                     + RESET_ALL
                     + "="
                     + MAGENTA
-                    + repr(event_dict[key])
+                    + format_value(event_dict[key])
                     + RESET_ALL
                     for key in sorted(event_dict.keys())
                 )
