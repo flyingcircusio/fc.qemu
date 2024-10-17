@@ -85,6 +85,7 @@ class Outgoing(object):
 
     def __call__(self):
         self.cookie = self.agent.ceph.auth_cookie()
+        self.log.debug("setup-outgoing-migration", cookie=self.cookie)
         with self:
             self.connect()
             self.acquire_migration_locks()
