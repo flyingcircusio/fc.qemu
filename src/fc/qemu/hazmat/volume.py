@@ -6,26 +6,27 @@ base class for both volumes and snapshots.
 """
 
 import contextlib
-import json
-import os
-import os.path as p
 import time
+from pathlib import Path
+from typing import Optional
 
 import rbd
 
-from ..timeout import TimeOut, TimeoutError
-from ..util import cmd, parse_export_format, remove_empty_dirs
+from ..timeout import TimeOut
+from ..util import cmd, remove_empty_dirs
 
 
 class Image(object):
     """Abstract base class for all images (volumes and snapshots)."""
 
-    device = None
-    mountpoint = None
+    device: Optional[Path] = None
+    mountpoint: Optional[Path] = None
 
-    def __init__(self, ceph, name):
+    _image = None
+
+    def __init__(self, ceph, ioctx, name):
         self.ceph = ceph
-        self.ioctx = ceph.ioctx
+        self.ioctx = ioctx
         self.name = name
         self.log = ceph.log.bind(image=self.name)
         self.rbd = rbd.RBD()
@@ -45,24 +46,23 @@ class Image(object):
     def part1dev(self):
         if not self.device:
             return None
-        return self.device + "-part1"
+        return self.device.with_name(self.device.name + "-part1")
 
     def wait_for_part1dev(self):
         timeout = TimeOut(5, interval=0.1, raise_on_timeout=True, log=self.log)
         while timeout.tick():
-            if os.path.exists(self.part1dev):
+            if self.part1dev.exists():
                 break
 
     def map(self):
         if self.device is not None:
             return
         self.cmd(
-            'rbd -c "{}" --id "{}" map "{}"'.format(
-                self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.fullname
-            )
+            f'rbd -c "{self.ceph.CEPH_CONF}" --id "{self.ceph.CEPH_CLIENT}" '
+            f'map "{self.fullname}"'
         )
-        device = "/dev/rbd/" + self.fullname
-        while not os.path.exists(device):
+        device = Path("/dev/rbd") / self.fullname
+        while not device.exists():
             time.sleep(0.1)
         self.device = device
 
@@ -70,9 +70,8 @@ class Image(object):
         if self.device is None:
             return
         self.cmd(
-            'rbd -c "{}" --id "{}" unmap "{}"'.format(
-                self.ceph.CEPH_CONF, self.ceph.CEPH_CLIENT, self.device
-            )
+            f'rbd -c "{self.ceph.CEPH_CONF}" --id "{self.ceph.CEPH_CLIENT}" '
+            f'unmap "{self.device}"'
         )
         self.device = None
 
@@ -97,19 +96,16 @@ class Image(object):
             raise RuntimeError(
                 "image must be mapped before mounting", self.fullname
             )
-        mountpoint = "/mnt/rbd/{}".format(self.fullname)
-        try:
-            os.makedirs(mountpoint)
-        except OSError:  # pragma: no cover
-            pass
+        mountpoint = Path("/mnt/rbd") / self.fullname
+        mountpoint.mkdir(parents=True, exist_ok=True)
         self.wait_for_part1dev()
-        self.cmd('mount "{}" "{}"'.format(self.part1dev, mountpoint))
+        self.cmd(f'mount "{self.part1dev}" "{mountpoint}"')
         self.mountpoint = mountpoint
 
     def umount(self):
         if self.mountpoint is None:
             return
-        self.cmd('umount "{}"'.format(self.mountpoint))
+        self.cmd(f'umount "{self.mountpoint}"')
         remove_empty_dirs(self.mountpoint)
         self.mountpoint = None
 
@@ -179,7 +175,7 @@ class Snapshot(Image):
     """Single snapshot of a Volume."""
 
     def __init__(self, volume, snapname, id, snapsize):
-        super(Snapshot, self).__init__(volume.ceph, volume.name)
+        super(Snapshot, self).__init__(volume.ceph, volume.ioctx, volume.name)
         self.vol = volume
         self.snapname = snapname
         self.id = id
@@ -189,7 +185,9 @@ class Snapshot(Image):
 
     @property
     def rbdimage(self):
-        return rbd.Image(self.ioctx, self.name, self.snapname)
+        if self._image is None:
+            self._image = rbd.Image(self.ioctx, self.name, self.snapname)
+        return self._image
 
     @property
     def fullname(self):
@@ -208,28 +206,13 @@ class Snapshot(Image):
 
 
 class Volume(Image):
-    """RBD Volume interface.
-
-    A volume has a name (shown in `rbd ls`) and a filesystem label. The
-    latter is only used for mkfs/mkswap. A volume may have a set of
-    snapshots accessible via the `snapshots` container object.
-
-    """
-
-    MKFS_CMD = {
-        "xfs": ('mkfs.xfs {options} -L "{label}" "{device}"'),
-        "ext4": (
-            'mkfs.ext4 {options} -L "{label}" "{device}" '
-            '&& tune2fs -e remount-ro "{device}"'
-        ),
-    }
+    """RBD volume interface."""
 
     # ENC parameters which should be seeded at boot-time into the VM
     ENC_SEED_PARAMETERS = ["cpu_model", "rbd_pool"]
 
-    def __init__(self, ceph, name, label):
-        super(Volume, self).__init__(ceph, name)
-        self.label = label
+    def __init__(self, ceph, ioctx, name):
+        super(Volume, self).__init__(ceph, ioctx, name)
         self.log = ceph.log.bind(volume=self.fullname)
         self.cmd = lambda cmdline: cmd(cmdline, log=self.log)
         self.snapshots = Snapshots(self)
@@ -242,6 +225,11 @@ class Volume(Image):
             self._image = rbd.Image(self.ioctx, self.name)
         return self._image
 
+    def close(self):
+        if self._image:
+            self._image.close()
+        self.ceph._clean_volume(self)
+
     @property
     def fullname(self):
         return self.ioctx.name.decode("ascii") + "/" + self.name
@@ -250,14 +238,6 @@ class Volume(Image):
     def size(self):
         """Image size in Bytes."""
         return self.rbdimage.size()
-
-    def exists(self):
-        return self.name in self.rbd.list(self.ioctx)
-
-    def ensure_presence(self, size=1024):
-        if self.name in self.rbd.list(self.ioctx):
-            return
-        self.rbd.create(self.ioctx, self.name, size)
 
     def ensure_size(self, size):
         if self.size == size:
@@ -332,13 +312,9 @@ class Volume(Image):
                     self.log.warn("buggy-lock", action="low-level-delete")
                     # This looks a lot like a broken hammer installation.
                     # Be cruel.
-                    img_id = self.ioctx.read(
-                        "rbd_id.{}".format(self.name)
-                    ).strip()
+                    img_id = self.ioctx.read(f"rbd_id.{self.name}").strip()
                     img_id = img_id[4:]
-                    self.ioctx.rm_xattr(
-                        "rbd_header.{}".format(img_id), "lock.rbd_lock"
-                    )
+                    self.ioctx.rm_xattr(f"rbd_header.{img_id}", "lock.rbd_lock")
 
         if lock_id == self.ceph.CEPH_LOCK_HOST:
             # This host owns this lock but from a different connection. This
@@ -349,93 +325,3 @@ class Volume(Image):
         elif force:
             self.log.info("break-lock")
             _break_lock()
-
-    def mkswap(self):
-        """Creates a swap partition. Requires the volume to be mappped."""
-        assert self.device, "volume must be mapped first"
-        self.cmd('mkswap -f -L "{}" "{}"'.format(self.label, self.device))
-
-    def mkfs(self, fstype="xfs", gptbios=False):
-        self.log.debug("create-fs", type=fstype)
-        assert self.device, "volume must be mapped first"
-        self.cmd('sgdisk -o "{}"'.format(self.device))
-        self.cmd(
-            'sgdisk -a 8192 -n 1:8192:0 -c "1:{}" -t 1:8300 '
-            '"{}"'.format(self.label, self.device)
-        )
-        if gptbios:
-            self.cmd(
-                'sgdisk -n 2:2048:+1M -c 2:gptbios -t 2:EF02 "{}"'.format(
-                    self.device
-                )
-            )
-        self.cmd("partprobe {}".format(self.device))
-        self.wait_for_part1dev()
-        options = getattr(self.ceph, "MKFS_" + fstype.upper())
-        self.cmd(
-            self.MKFS_CMD[fstype].format(
-                options=options, device=self.part1dev, label=self.label
-            )
-        )
-
-    def regen_xfs_uuid(self):
-        """Regenerate the UUID of the XFS filesystem on partition 1."""
-        with self.mapped():
-            try:
-                self.wait_for_part1dev()
-            except TimeoutError:
-                self.log.warn(
-                    "regenerate-xfs-uuid",
-                    status="skipped",
-                    reason="no partition found",
-                )
-                return
-            output = self.cmd(f"blkid {self.part1dev} -o export")
-            values = parse_export_format(output)
-            fs_type = values.get("TYPE")
-            if fs_type != "xfs":
-                self.log.info(
-                    "regenerate-xfs-uuid",
-                    device=self.part1dev,
-                    status="skipped",
-                    fs_type=fs_type,
-                    reason="filesystem type != xfs",
-                )
-                return
-            with self.mounted():
-                # Mount once to ensure a clean log.
-                pass
-            self.log.info("regenerate-xfs-uuid", device=self.part1dev)
-            self.cmd(f"xfs_admin -U generate {self.part1dev}")
-
-    def seed(self, enc, generation):
-        self.log.info("seed")
-        with self.mounted() as target:
-            os.chmod(target, 0o1777)
-            fc_data = p.join(target, "fc-data")
-            os.mkdir(fc_data)
-            os.chmod(fc_data, 0o750)
-            with open(p.join(fc_data, "enc.json"), "w") as f:
-                os.fchmod(f.fileno(), 0o640)
-                json.dump(enc, f)
-                f.write("\n")
-            # Seed boot-time VM properties which require a reboot to
-            # change. While some of these properties are copied from
-            # the ENC data, a separate file allows properties which
-            # are not exposed to guests through ENC to be added in the
-            # future.
-            properties = {}
-            properties["binary_generation"] = generation
-            for key in self.ENC_SEED_PARAMETERS:
-                if key in enc["parameters"]:
-                    properties[key] = enc["parameters"][key]
-            self.log.debug("guest-properties", properties=properties)
-            guest_properties = p.join(fc_data, "qemu-guest-properties-booted")
-            with open(guest_properties, "w") as f:
-                json.dump(properties, f)
-            # For backwards compatibility with old fc-agent versions,
-            # write the Qemu binary generation into a separate file.
-            self.log.debug("binary-generation", generation=generation)
-            generation_marker = p.join(fc_data, "qemu-binary-generation-booted")
-            with open(generation_marker, "w") as f:
-                f.write(str(generation) + "\n")
