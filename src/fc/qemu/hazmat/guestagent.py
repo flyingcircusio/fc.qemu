@@ -10,6 +10,9 @@ class ClientError(RuntimeError):
     pass
 
 
+SYNC_TIMEOUT = 30
+
+
 class GuestAgent(object):
     """Wraps qemu guest agent wire protocol."""
 
@@ -58,6 +61,7 @@ class GuestAgent(object):
         self.connect()
         message = json.dumps({"execute": cmd, "arguments": args})
         message = message.encode("utf-8")
+        self.log.debug("send", message=message)
         self.client.send(message)
         if not fire_and_forget:
             self.client.settimeout(timeout or self.timeout)
@@ -84,28 +88,14 @@ class GuestAgent(object):
         try:
             while buffer := self.client.recv(4096):
                 self.log.debug("found-buffer-garbage", buffer=buffer)
-        except (BlockingIOError, socket.timeout):
+        except socket.timeout:
             self.log.debug("cleared-buffer")
 
         # Phase 3: ensure we see proper agent interactions. To be sure we
         # test this with two diagnostic calls. The timeout can be higher now
         # as we expect the agent to actually have to respond to us.
-
-        # \xff is an invalid utf-8 character and recommended to safely
-        # ensure that the parser of the guest agent at the other end
-        # is reset to a known state. This is recommended for sync.
-        # http://wiki.qemu-project.org/index.php/Features/GuestAgent#guest-sync
-        self.log.debug("clear-guest-parser")
-        self.client.send(b"\xff")
-
-        ping_result = self.cmd("guest-ping")
-        if ping_result != {}:
-            raise ClientError(
-                f"Agent did not respond properly to ping command: {ping_result}"
-            )
-
         sync_id = random.randint(0, 0xFFFF)
-        result = self.cmd("guest-sync", timeout=30, id=sync_id)
+        result = self.cmd("guest-sync", timeout=SYNC_TIMEOUT, id=sync_id)
 
         self.log.debug("sync-response", expected=sync_id, got=result)
         if result == sync_id:
