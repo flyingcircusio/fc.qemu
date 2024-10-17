@@ -4,7 +4,7 @@ Release notes
 1.5.1 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Fix guest agent revamp: 0xFF handling did not work as advertised. (PL-132809)
 
 
 1.5.0 (2024-10-11)
