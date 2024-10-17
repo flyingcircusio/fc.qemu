@@ -1,7 +1,7 @@
 import mock
 import pytest
 
-from ..outgoing import Outgoing
+from fc.qemu.outgoing import Outgoing
 
 
 @pytest.fixture

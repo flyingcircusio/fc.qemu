@@ -1,5 +1,4 @@
 import errno
-import os
 import tempfile
 import typing
 
@@ -8,9 +7,9 @@ import pytest
 import rados
 import rbd
 
-from . import volume
-from .ceph import Ceph
-from .guestagent import GuestAgent
+from fc.qemu.hazmat import volume
+from fc.qemu.hazmat.ceph import Ceph, RootSpec, VolumeSpecification
+from fc.qemu.hazmat.guestagent import GuestAgent
 
 
 class RadosMock(object):
@@ -32,6 +31,9 @@ class RadosMock(object):
     def shutdown(self):
         assert self.__connected__
         self.__connected__ = False
+
+    def list_pools(self):
+        return ["rbd", "data", "rbd.ssd", "rbd.hdd", "rbd.rgw.foo"]
 
 
 class IoctxMock(object):
@@ -193,39 +195,43 @@ class ImageMock(object):
 
 
 @pytest.fixture
-def ceph_mock(request, monkeypatch, tmpdir):
+def ceph_mock(request, monkeypatch, tmp_path):
     is_live = request.node.get_closest_marker("live")
     if is_live is not None:
         # This is a live test. Do not mock things.
         return
 
+    def ensure_presence(self):
+        VolumeSpecification.ensure_presence(self)
+
     def image_map(self):
         if self.device:
             return
-        self.device = str(tmpdir / self.fullname.replace("/", "-"))
-
-        raw = self.device + ".raw"
-        if not os.path.exists(raw):
-            with open(raw, "wb") as f:
+        self.device = tmp_path / self.fullname.replace("/", "-")
+        raw = self.device.with_name("{self.device.name}.raw")
+        if not raw.exists():
+            with raw.open("wb") as f:
                 f.seek(self.size)
                 f.write(b"\0")
                 f.close()
-        os.symlink(raw, self.device)
+        raw.rename(self.device)
 
         # create an implicit first partition as we can't really do the
         # partprobe dance.
-        raw = self.part1dev + ".raw"
-        with open(raw, "wb") as f:
+        raw = self.part1dev.with_name("{self.part1dev.name}.raw")
+        with raw.open("wb") as f:
             f.seek(self.size)
             f.write(b"\0")
             f.close()
-        os.symlink(raw, self.part1dev)
+        raw.rename(self.part1dev)
 
     def image_unmap(self):
         if self.device is None:
             return
-        os.unlink(self.device)
-        os.unlink(self.part1dev)
+        self.device.rename(self.device.with_name("{self.device.name}.raw"))
+        self.part1dev.rename(
+            self.part1dev.with_name("{self.part1dev.name}.raw")
+        )
         self.device = None
 
     monkeypatch.setattr(rados, "Rados", RadosMock)
@@ -233,6 +239,7 @@ def ceph_mock(request, monkeypatch, tmpdir):
     monkeypatch.setattr(rbd, "Image", ImageMock)
     monkeypatch.setattr(volume.Image, "map", image_map)
     monkeypatch.setattr(volume.Image, "unmap", image_unmap)
+    monkeypatch.setattr(RootSpec, "ensure_presence", ensure_presence)
 
 
 @pytest.fixture
@@ -242,8 +249,12 @@ def ceph_inst(ceph_mock):
         "rbd_pool": "rbd.hdd",
         "name": "simplevm",
         "disk": 10,
+        "tmp_size": 1024 * 1024,
+        "swap_size": 1024 * 1024,
+        "root_size": 1024 * 1024,
     }
-    ceph = Ceph(cfg)
+    enc = {}
+    ceph = Ceph(cfg, enc)
     ceph.CREATE_VM = "echo {name}"
     ceph.MKFS_XFS = "-q -f -K"
     ceph.__enter__()

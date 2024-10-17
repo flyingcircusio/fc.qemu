@@ -1,6 +1,6 @@
 import pytest
 
-from ..cpuscan import AbstractHost, AMDHost, IntelHost, scan_cpus
+from fc.qemu.hazmat.cpuscan import AbstractHost, AMDHost, IntelHost, scan_cpus
 
 
 @pytest.mark.timeout(60)
