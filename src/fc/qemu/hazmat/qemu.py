@@ -2,12 +2,12 @@
 
 import datetime
 import fcntl
-import glob
-import os.path
+import os
 import socket
 import subprocess
 import time
 from codecs import encode
+from pathlib import Path
 
 import psutil
 import yaml
@@ -16,7 +16,6 @@ from ..exc import QemuNotRunning, VMStateInconsistent
 from ..sysconfig import sysconfig
 from ..timeout import TimeOut
 from ..util import ControlledRuntimeException, log
-from . import supervise
 from .guestagent import ClientError, GuestAgent
 from .qmp import QEMUMonitorProtocol as Qmp
 from .qmp import QMPConnectError
@@ -54,23 +53,24 @@ def detect_current_machine_type(
 
 
 def locked_global(f):
-    LOCK = "/run/fc-qemu.lock"
+    LOCK = Path("run/fc-qemu.lock")
 
     # This is thread-safe *AS LONG* as every thread uses a separate instance
     # of the agent. Using multiple file descriptors will guarantee that the
     # lock can only be held once even within a single process.
     def locked(self, *args, **kw):
-        self.log.debug("acquire-global-lock", target=LOCK)
+        lock = self.prefix / LOCK
+        self.log.debug("acquire-global-lock", target=lock)
         if not self._global_lock_fd:
-            if not os.path.exists(LOCK):
-                open(LOCK, "a+").close()
-            self._global_lock_fd = os.open(LOCK, os.O_RDONLY)
-        self.log.debug("global-lock-acquire", target=LOCK, result="locked")
+            if not lock.exists():
+                lock.touch()
+            self._global_lock_fd = os.open(lock, os.O_RDONLY)
+        self.log.debug("global-lock-acquire", target=lock, result="locked")
 
         fcntl.flock(self._global_lock_fd, fcntl.LOCK_EX)
         self._global_lock_count += 1
         self.log.debug(
-            "global-lock-status", target=LOCK, count=self._global_lock_count
+            "global-lock-status", target=lock, count=self._global_lock_count
         )
         try:
             return f(self, *args, **kw)
@@ -78,11 +78,11 @@ def locked_global(f):
             self._global_lock_count -= 1
             self.log.debug(
                 "global-lock-status",
-                target=LOCK,
+                target=lock,
                 count=self._global_lock_count,
             )
             if self._global_lock_count == 0:
-                self.log.debug("global-lock-release", target=LOCK)
+                self.log.debug("global-lock-release", target=lock)
                 fcntl.flock(self._global_lock_fd, fcntl.LOCK_UN)
                 self.log.debug("global-lock-release", result="unlocked")
 
@@ -90,7 +90,7 @@ def locked_global(f):
 
 
 class Qemu(object):
-    prefix = ""
+    prefix = Path("/")
     executable = "qemu-system-x86_64"
 
     # Attributes on this class can be overriden (in a controlled fashion
@@ -119,20 +119,23 @@ class Qemu(object):
     config = ""
 
     # Host-specific qemu configuration
-    chroot = "/srv/vm/{name}"
+    chroot = Path("srv/vm/{name}")
     vnc = "localhost:1"
 
     MONITOR_OFFSET = 20000
 
-    pidfile = "/run/qemu.{name}.pid"
-    configfile = "/run/qemu.{name}.cfg"
-    argfile = "/run/qemu.{name}.args"
-    qmp_socket = "/run/qemu.{name}.qmp.sock"
+    pid_file = Path("run/qemu.{name}.pid")
+    config_file = Path("run/qemu.{name}.cfg")
+    config_file_in = Path("run/qemu.{name}.cfg.in")
+    arg_file = Path("run/qemu.{name}.args")
+    arg_file_in = Path("run/qemu.{name}.args.in")
+    qmp_socket = Path("run/qemu.{name}.qmp.sock")
+    serial_file = Path("var/log/vm/{name}.log")
 
     _global_lock_fd = None
     _global_lock_count = 0
 
-    migration_lockfile = "/run/qemu.migration.lock"
+    migration_lock_file = Path("run/qemu.migration.lock")
     _migration_lock_fd = None
 
     def __init__(self, vm_cfg):
@@ -141,14 +144,24 @@ class Qemu(object):
 
         self.cfg = vm_cfg
         # expand template keywords in configuration variables
-        for f in [
-            "pidfile",
-            "configfile",
-            "argfile",
-            "migration_address",
-            "qmp_socket",
-        ]:
+        for f in ["migration_address"]:
             setattr(self, f, getattr(self, f).format(**vm_cfg))
+
+        # expand template keywords in paths and apply prefix
+        for f in [
+            "pid_file",
+            "config_file",
+            "config_file_in",
+            "arg_file",
+            "arg_file_in",
+            "qmp_socket",
+            "migration_lock_file",
+            "chroot",
+            "serial_file",
+        ]:
+            expanded = self.prefix / str(getattr(self, f)).format(**vm_cfg)
+            setattr(self, f, expanded)
+            vm_cfg[f] = expanded
 
         # We are running qemu with chroot which causes us to not be able to
         # resolve names. :( See #13837.
@@ -162,19 +175,12 @@ class Qemu(object):
 
         self.log = log.bind(machine=self.name, subsystem="qemu")
 
-        self.pidfile = self.prefix + self.pidfile
-        self.configfile = self.prefix + self.configfile
-        self.argfile = self.prefix + self.argfile
-        self.qmp_socket = self.prefix + self.qmp_socket
-        self.migration_lockfile = self.prefix + self.migration_lockfile
-        self.chroot = self.prefix + self.chroot
-
     __qmp = None
 
     @property
     def qmp(self):
         if self.__qmp is None:
-            qmp = Qmp(self.qmp_socket, self.log)
+            qmp = Qmp(str(self.qmp_socket), self.log)
             qmp.settimeout(self.qmp_timeout)
             try:
                 qmp.connect()
@@ -202,7 +208,7 @@ class Qemu(object):
         not running.
         """
         try:
-            with open(self.pidfile) as p:
+            with self.pid_file.open() as p:
                 # pid file may contain trailing lines with garbage
                 for line in p:
                     proc = psutil.Process(int(line))
@@ -215,14 +221,14 @@ class Qemu(object):
             pass
 
     def prepare_log(self):
-        if not os.path.exists("/var/log/vm"):
+        log_dir = self.prefix / Path("/var/log/vm")
+        if not log_dir.is_dir():
             raise RuntimeError("Expected directory /var/log/vm to exist.")
-        logfile = "/var/log/vm/{}.log".format(self.name)
-        alternate = "/var/log/vm/{}-{}.log".format(
-            self.name, datetime.datetime.now().isoformat()
-        )
-        if os.path.exists(logfile):
-            os.rename(logfile, alternate)
+        log_file = log_dir / f"{self.name}.log"
+        if log_file.exists():
+            alt_marker = datetime.datetime.now().isoformat()
+            alternate = log_dir / f"{self.name}-{alt_marker}.log"
+            log_file.rename(alternate)
 
     def _current_vms_booked_memory(self):
         """Determine the amount of booked memory (MiB) from the
@@ -303,11 +309,11 @@ class Qemu(object):
         )
 
     # This lock protects checking the amount of available memory and actually
-    # starting the VM. This ensure that no other process checks at the same
+    # starting the VM. This ensures that no other process checks at the same
     # time and we end up using the free memory twice.
     @locked_global
     def _start(self, additional_args=()):
-        if self.require_kvm and not os.path.exists("/dev/kvm"):
+        if self.require_kvm and not Path("/dev/kvm").exists():
             self.log.error("missing-kvm-support")
             raise ControlledRuntimeException(
                 "Refusing to start without /dev/kvm support."
@@ -633,59 +639,64 @@ class Qemu(object):
         )
 
     def clean_run_files(self):
-        runfiles = glob.glob("/run/qemu.{}.*".format(self.cfg["name"]))
+        runfiles = list(
+            (self.prefix / "run").glob(f"qemu.{self.cfg['name']}.*")
+        )
         if not runfiles:
             return
         self.log.debug("clean-run-files")
         for runfile in runfiles:
-            if runfile.endswith(".lock"):
+            if runfile.suffix == ".lock":
                 # Never, ever, remove lock files. Those should be on
                 # partitions that get cleaned out during reboot, but
                 # never otherwise.
                 continue
-            os.unlink(runfile)
+            runfile.unlink(missing_ok=True)
 
     def prepare_config(self):
-        chroot = self.chroot.format(**self.cfg)
-        if not os.path.exists(chroot):
-            os.makedirs(chroot)
+        if not self.chroot.exists():
+            self.chroot.mkdir(parents=True, exist_ok=True)
 
         def format(s):
+            # These names must stay compatible between
+            # fc.qemu versions so that VMs can migrate between
+            # older and newer versions freely.
             return s.format(
-                pidfile=self.pidfile,
-                configfile=self.configfile,
                 monitor_port=self.monitor_port,
                 vnc=self.vnc.format(**self.cfg),
-                chroot=chroot,
+                pidfile=self.cfg["pid_file"],
+                configfile=self.cfg["config_file"],
                 **self.cfg,
             )
 
         self.local_args = [format(a) for a in self.args]
         self.local_config = format(self.config)
 
-        with open(self.configfile + ".in", "w") as f:
+        with self.config_file_in.open("w") as f:
             f.write(self.config)
-        with open(self.configfile, "w") as f:
+
+        with self.config_file.open("w") as f:
             f.write(self.local_config)
-        with open(self.argfile + ".in", "w") as f:
+
+        with self.arg_file_in.open("w") as f:
             yaml.safe_dump(self.args, f)
 
         # Qemu tends to overwrite the pid file incompletely -> truncate
-        open(self.pidfile, "w").close()
+        self.pid_file.open("w").close()
 
     def get_running_config(self):
         """Return the host-independent version of the current running
         config."""
-        with open(self.argfile + ".in") as a:
+        with self.arg_file_in.open() as a:
             args = yaml.safe_load(a.read())
-        with open(self.configfile + ".in") as c:
+        with self.config_file_in.open() as c:
             config = c.read()
         return args, config
 
     def acquire_migration_lock(self):
         assert not self._migration_lock_fd
-        open(self.migration_lockfile, "a+").close()
-        self._migration_lock_fd = os.open(self.migration_lockfile, os.O_RDONLY)
+        open(self.migration_lock_file, "a+").close()
+        self._migration_lock_fd = os.open(self.migration_lock_file, os.O_RDONLY)
         try:
             fcntl.flock(self._migration_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.log.debug("acquire-migration-lock", result="success")

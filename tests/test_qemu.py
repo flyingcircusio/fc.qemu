@@ -14,11 +14,8 @@ def qemu_with_pidfile(tmpdir):
     # the proc name is limited to 16 bytes and then we failed to match
     # the running VM. Parametrizing fixtures doesn't work the way I want
     # so I did it this way ...
-    pidfile = str(tmpdir / "run/qemu.testvmwithverylongname.pid")
-    try:
-        os.unlink(pidfile)
-    except OSError:
-        pass
+    pid_file = tmp_path / "run/qemu.testvmwithverylongname.pid"
+    pid_file.unlink(missing_ok=True)
     proc = subprocess.Popen(
         [
             "qemu-system-x86_64",

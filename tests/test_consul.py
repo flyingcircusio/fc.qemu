@@ -60,18 +60,16 @@ finish-consul-events"""
 
 
 @pytest.fixture
-def clean_config_test22(tmpdir):
+def clean_config_test22(tmp_path):
     targets = [
-        str(tmpdir / "etc/qemu/vm/test22.cfg"),
-        str(tmpdir / "/etc/qemu/vm/.test22.cfg.staging"),
+        tmp_path / "etc/qemu/vm/test22.cfg",
+        tmp_path / "/etc/qemu/vm/.test22.cfg.staging",
     ]
     for target in targets:
-        if os.path.exists(target):
-            os.unlink(target)
+        target.unlink(missing_ok=True)
     yield
     for target in targets:
-        if os.path.exists(target):
-            os.unlink(target)
+        target.unlink(missing_ok=True)
 
 
 def prepare_consul_event(
