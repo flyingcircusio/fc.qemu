@@ -424,16 +424,18 @@ class Volume(Image):
             # the ENC data, a separate file allows properties which
             # are not exposed to guests through ENC to be added in the
             # future.
+            properties = {}
+            properties["binary_generation"] = generation
+            for key in self.ENC_SEED_PARAMETERS:
+                if key in enc["parameters"]:
+                    properties[key] = enc["parameters"][key]
+            self.log.debug("guest-properties", properties=properties)
             guest_properties = p.join(fc_data, "qemu-guest-properties-booted")
             with open(guest_properties, "w") as f:
-                props = {}
-                props["binary_generation"] = generation
-                for key in self.ENC_SEED_PARAMETERS:
-                    if key in enc["parameters"]:
-                        props[key] = enc["parameters"][key]
-                json.dump(props, f)
+                json.dump(properties, f)
             # For backwards compatibility with old fc-agent versions,
             # write the Qemu binary generation into a separate file.
+            self.log.debug("binary-generation", generation=generation)
             generation_marker = p.join(fc_data, "qemu-binary-generation-booted")
             with open(generation_marker, "w") as f:
                 f.write(str(generation) + "\n")
