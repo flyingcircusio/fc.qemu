@@ -4,35 +4,34 @@ import rbd
 
 @pytest.fixture
 def ceph_with_volumes(ceph_inst):
-    for vol in ceph_inst.volumes:
+    for vol in ceph_inst.specs.values():
         vol.ensure_presence()
     ceph_inst.lock()
     yield ceph_inst
-    for vol in ceph_inst.volumes:
-        vol.unlock(force=True)
-        vol.snapshots.purge()
-        if vol._image:
-            vol._image.close()
-        rbd.RBD().remove(ceph_inst.ioctx, vol.name)
+    for volume in ceph_inst.opened_volumes:
+        volume.unlock(force=True)
+        volume.snapshots.purge()
+        volume.close()
+        rbd.RBD().remove(volume.ioctx, volume.name)
 
 
 def test_ceph_stop_should_unlock_all_volumes(ceph_with_volumes):
-    for vol in ceph_with_volumes.volumes:
-        assert vol.lock_status()
+    for volume in ceph_with_volumes.opened_volumes:
+        assert volume.lock_status()
     ceph_with_volumes.stop()
-    for vol in ceph_with_volumes.volumes:
-        assert vol.lock_status() is None
+    for volume in ceph_with_volumes.opened_volumes:
+        assert volume.lock_status() is None
 
 
 def test_ceph_stop_remove_only_own_locks(ceph_with_volumes):
     """Test case where failed migrations leave inconsistent locking."""
-    ceph_with_volumes.root.unlock()
-    ceph_with_volumes.root.rbdimage.lock_exclusive("someotherhost")
+    ceph_with_volumes.volumes["root"].unlock()
+    ceph_with_volumes.volumes["root"].rbdimage.lock_exclusive("someotherhost")
     # It unlocks what it can.
     ceph_with_volumes.stop()
-    assert ceph_with_volumes.root.lock_status()
-    assert ceph_with_volumes.swap.lock_status() is None
-    assert ceph_with_volumes.tmp.lock_status() is None
+    assert ceph_with_volumes.volumes["root"].lock_status()
+    assert ceph_with_volumes.volumes["swap"].lock_status() is None
+    assert ceph_with_volumes.volumes["tmp"].lock_status() is None
 
 
 def test_is_unlocked(ceph_with_volumes):

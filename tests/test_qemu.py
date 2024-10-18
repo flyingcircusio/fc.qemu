@@ -5,11 +5,11 @@ import time
 import psutil
 import pytest
 
-from ..hazmat.qemu import Qemu
+from fc.qemu.hazmat.qemu import Qemu
 
 
 @pytest.fixture
-def qemu_with_pidfile(tmpdir):
+def qemu_with_pid_file(tmp_path):
     # The fixture uses a very long name which catches a special case where
     # the proc name is limited to 16 bytes and then we failed to match
     # the running VM. Parametrizing fixtures doesn't work the way I want
@@ -23,10 +23,10 @@ def qemu_with_pidfile(tmpdir):
             "testvmwithverylongname,process=kvm.testvmwithverylongname",
             "-nodefaults",
             "-pidfile",
-            pidfile,
+            str(pid_file),
         ]
     )
-    while not os.path.exists(pidfile):
+    while not pid_file.exists():
         time.sleep(0.01)
     q = Qemu(dict(name="testvmwithverylongname", id=1234))
     while not q.proc():
@@ -37,35 +37,36 @@ def qemu_with_pidfile(tmpdir):
         proc.kill()
 
 
-def test_proc_running(qemu_with_pidfile):
-    assert isinstance(qemu_with_pidfile.proc(), psutil.Process)
+def test_proc_running(qemu_with_pid_file):
+    assert isinstance(qemu_with_pid_file.proc(), psutil.Process)
 
 
-def test_proc_not_running(qemu_with_pidfile):
-    with open(qemu_with_pidfile.pidfile, "w") as p:
+def test_proc_not_running(qemu_with_pid_file):
+    with qemu_with_pid_file.pid_file.open("w") as p:
         p.write("0\n")
-    assert qemu_with_pidfile.proc() is None
+    assert qemu_with_pid_file.proc() is None
 
 
-def test_proc_wrong_process(qemu_with_pidfile):
-    with open(qemu_with_pidfile.pidfile, "w") as p:
+def test_proc_wrong_process(qemu_with_pid_file):
+    with qemu_with_pid_file.pid_file.open("w") as p:
         p.write("1\n")
-    assert qemu_with_pidfile.proc() is None
+    assert qemu_with_pid_file.proc() is None
 
 
-def test_proc_no_pidfile(qemu_with_pidfile):
-    os.unlink(qemu_with_pidfile.pidfile)
-    assert qemu_with_pidfile.proc() is None
+def test_proc_no_pid_file(qemu_with_pid_file):
+    os.unlink(qemu_with_pid_file.pid_file)
+    assert qemu_with_pid_file.proc() is None
 
 
-def test_proc_empty_pidfile(qemu_with_pidfile):
-    open(qemu_with_pidfile.pidfile, "w").close()
-    assert qemu_with_pidfile.proc() is None
+def test_proc_empty_pid_file(qemu_with_pid_file):
+    # Empty out the file
+    qemu_with_pid_file.pid_file.open("w").close()
+    assert qemu_with_pid_file.proc() is None
 
 
-def test_proc_pidfile_with_garbage(qemu_with_pidfile):
-    """pidfiles are allowed to contain trailing lines with garbage,
+def test_proc_pid_file_with_garbage(qemu_with_pid_file):
+    """pid files are allowed to contain trailing lines with garbage,
     process retrieval must still work then."""
-    with open(qemu_with_pidfile.pidfile, "a") as f:
+    with qemu_with_pid_file.pid_file.open("a") as f:
         f.write("trailing line\n")
-    assert isinstance(qemu_with_pidfile.proc(), psutil.Process)
+    assert isinstance(qemu_with_pid_file.proc(), psutil.Process)

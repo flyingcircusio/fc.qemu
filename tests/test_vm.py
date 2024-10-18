@@ -11,12 +11,11 @@ import pytest
 import yaml
 
 from fc.qemu import util
-
-from ..agent import Agent, InvalidCommand, swap_size, tmp_size
-from ..conftest import get_log
-from ..ellipsis import Ellipsis
-from ..hazmat import qemu
-from ..util import GiB, MiB
+from fc.qemu.agent import Agent, InvalidCommand, swap_size, tmp_size
+from fc.qemu.hazmat import guestagent, qemu
+from fc.qemu.util import GiB, MiB
+from tests.conftest import get_log
+from tests.ellipsis import Ellipsis
 
 
 def clean_output(output):
@@ -35,9 +34,9 @@ def test_simple_vm_lifecycle_start_stop(vm, patterns):
     status.continuous(
         """
 vm-status machine=simplevm result=offline
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp
 """
     )
 
@@ -57,15 +56,42 @@ rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp
         """
 acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
 acquire-lock count=1 machine=simplevm result=locked target=/run/qemu.simplevm.lock
-generate-config machine=simplevm
-ensure-root machine=simplevm subsystem=ceph
+
+pre-start machine=simplevm subsystem=ceph volume_spec=root
+
+ensure-presence machine=simplevm subsystem=ceph volume_spec=root
 lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-ensure-tmp machine=simplevm subsystem=ceph
+ensure-size machine=simplevm subsystem=ceph volume_spec=root
+start machine=simplevm subsystem=ceph volume_spec=root
+start-root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+root-found-in current_pool=rbd.ssd machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+
+pre-start machine=simplevm subsystem=ceph volume_spec=swap
+ensure-presence machine=simplevm subsystem=ceph volume_spec=swap
+lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+ensure-size machine=simplevm subsystem=ceph volume_spec=swap
+start machine=simplevm subsystem=ceph volume_spec=swap
+start-swap machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.ssd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd> /dev/rbd0
+rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
+mkswap args=-f -L "swap" /dev/rbd/rbd.ssd/simplevm.swap machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+mkswap> Setting up swapspace version 1, size = 1024 MiB (1073737728 bytes)
+mkswap> LABEL=swap, UUID=...-...-...-...-...
+mkswap machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.ssd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
+
+pre-start machine=simplevm subsystem=ceph volume_spec=tmp
+ensure-presence machine=simplevm subsystem=ceph volume_spec=tmp
 lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+ensure-size machine=simplevm subsystem=ceph volume_spec=tmp
+start machine=simplevm subsystem=ceph volume_spec=tmp
+start-tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 rbd> /dev/rbd0
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
-create-fs machine=simplevm subsystem=ceph type=xfs volume=rbd.ssd/simplevm.tmp
+create-fs machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 sgdisk args=-o "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 sgdisk> The operation has completed successfully.
 sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -76,8 +102,7 @@ sgdisk> The operation has completed successfully.
 sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
-waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.tmp
-mkfs.xfs args=-q -f -K -m crc=1,finobt=1 -d su=4m,sw=1 -L "tmp" "/dev/rbd/rbd.ssd/simplevm.tmp-part1" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+mkfs.xfs args=-q -f -K -m crc=1,finobt=1 -d su=4m,sw=1 -L "tmp" /dev/rbd/rbd.ssd/simplevm.tmp-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mkfs.xfs> mkfs.xfs: Specified data stripe unit 8192 is not the same as the volume stripe unit 128
 mkfs.xfs> mkfs.xfs: Specified data stripe width 8192 is not the same as the volume stripe width 128
 mkfs.xfs> log stripe unit (4194304 bytes) is too large (maximum is 256KiB)
@@ -92,17 +117,7 @@ umount args="/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volu
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
-ensure-swap machine=simplevm subsystem=ceph
-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.ssd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd> /dev/rbd0
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
-mkswap args=-f -L "swap" "/dev/rbd/rbd.ssd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-mkswap> Setting up swapspace version 1, size = 1024 MiB (1073737728 bytes)
-mkswap> LABEL=swap, UUID=...-...-...-...-...
-mkswap machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.ssd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
+generate-config machine=simplevm
 acquire-global-lock machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 global-lock-acquire machine=simplevm result=locked subsystem=qemu target=/run/fc-qemu.lock
 global-lock-status count=1 machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
@@ -135,12 +150,13 @@ release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
         """
 sgdisk> Creating new GPT entries in memory.
 rbd> /dev/rbd0
+waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/simplevm.tmp
 """
     )
 
     BOOTSTRAP = """
-create-vm machine=simplevm subsystem=ceph
-/nix/store/.../bin/fc-create-vm args=-I simplevm machine=simplevm subsystem=ceph
+create-vm machine=simplevm subsystem=ceph volume=simplevm.root
+/nix/store/.../bin/fc-create-vm args=-I simplevm machine=simplevm subsystem=ceph volume=simplevm.root
 fc-create-vm>
 fc-create-vm> Establishing system identity
 fc-create-vm> ----------------------------
@@ -152,18 +168,18 @@ fc-create-vm> $ rbd --id host1 clone rbd.hdd/fc-21.05-dev@v1 rbd.ssd/simplevm.ro
 fc-create-vm>
 fc-create-vm> Finished
 fc-create-vm> --------
-/nix/store/.../bin/fc-create-vm machine=simplevm returncode=0 subsystem=ceph
+/nix/store/.../bin/fc-create-vm machine=simplevm returncode=0 subsystem=ceph volume=simplevm.root
 rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd> /dev/rbd0
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.root
 blkid args=/dev/rbd/rbd.ssd/simplevm.root-part1 -o export machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 blkid> DEVNAME=/dev/rbd/rbd.ssd/simplevm.root-part1
-blkid> UUID=...
+blkid> UUID=...-...-...-...-...
 blkid> BLOCK_SIZE=512
 blkid> TYPE=xfs
 blkid> PARTLABEL=ROOT
-blkid> PARTUUID=...
+blkid> PARTUUID=...-...-...-...-...
 blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 mount args="/dev/rbd/rbd.ssd/simplevm.root-part1" "/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
@@ -173,7 +189,7 @@ regenerate-xfs-uuid device=/dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm
 xfs_admin args=-U generate /dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 xfs_admin> Clearing log and setting UUID
 xfs_admin> writing all SBs
-xfs_admin> new UUID = ...
+xfs_admin> new UUID = ...-...-...-...-...
 xfs_admin machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
@@ -208,9 +224,9 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     vm.stop()
@@ -221,9 +237,9 @@ rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplev
         get_log()
         == """\
 vm-status machine=simplevm result=offline
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     # Starting a second time doesn't show the bootstrap code!
@@ -282,9 +298,9 @@ def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys, caplog):
         get_log()
         == """\
 vm-status machine=simplevm result=offline
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     vm.ensure()
@@ -301,9 +317,9 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     vm.enc["parameters"]["online"] = False
@@ -324,9 +340,9 @@ ensure-state action=stop found=online machine=simplevm wanted=offline"""
         get_log()
         == """\
 vm-status machine=simplevm result=offline
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
 
@@ -339,9 +355,9 @@ def test_vm_not_running_here(vm, capsys):
         get_log()
         == """\
 vm-status machine=simplevm result=offline
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     vm.enc["parameters"]["kvm_host"] = "otherhost"
@@ -353,9 +369,9 @@ rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
     assert get_log() == Ellipsis(
         """\
 vm-status machine=simplevm result=offline
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
 
@@ -375,9 +391,9 @@ def test_crashed_vm_clean_restart(vm):
     assert get_log() == Ellipsis(
         """\
 vm-status machine=simplevm result=offline
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     vm.ensure()
@@ -391,9 +407,9 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     p = vm.qemu.proc()
@@ -405,9 +421,9 @@ rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplev
     assert get_log() == Ellipsis(
         """\
 vm-status machine=simplevm result=offline
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     vm.ensure()
@@ -422,9 +438,9 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', 'host1') machine=simplevm volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     util.test_log_options["show_events"] = [
@@ -454,9 +470,9 @@ unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 consul-deregister machine=simplevm
 clean-run-files machine=simplevm subsystem=qemu
 vm-status machine=simplevm result=offline
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.root
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm volume=rbd.ssd/simplevm.tmp
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 consul machine=simplevm service=<not registered>"""
     )
 
@@ -482,8 +498,8 @@ def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
 @pytest.mark.live
 @pytest.mark.timeout(60)
 def test_vm_snapshot_only_if_running(vm):
-    assert list(x.fullname for x in vm.ceph.root.snapshots) == []
-    vm.ceph.root.ensure_presence()
+    vm.ceph.specs["root"].ensure_presence()
+    assert list(x.fullname for x in vm.ceph.volumes["root"].snapshots) == []
     with pytest.raises(InvalidCommand):
         vm.snapshot("asdf")
 
@@ -502,8 +518,10 @@ def test_vm_snapshot_with_missing_guest_agent(vm, monkeypatch):
     monkeypatch.setattr(util, "today", lambda: datetime.date(2010, 1, 1))
 
     monkeypatch.setattr(qemu, "FREEZE_TIMEOUT", 1)
+    monkeypatch.setattr(guestagent, "SYNC_TIMEOUT", 1)
 
-    assert list(x.fullname for x in vm.ceph.root.snapshots) == []
+    vm.ceph.specs["root"].ensure_presence()
+    assert list(x.fullname for x in vm.ceph.volumes["root"].snapshots) == []
     vm.ensure()
     get_log()
 
@@ -586,26 +604,25 @@ def test_vm_resize_disk(vm, patterns):
     vm.start()
     get_log()
 
-    # The cloned image is smaller than the initial desired
-    # disk so we immediately get a resize.
+    vm.cfg["root_size"] += 1 * 1024**3
     vm.ensure_online_disk_size()
     resize_1 = patterns.resize_1
     resize_1.in_order(
         """
-check-disk-size action=resize found=104857600 machine=simplevm wanted=2147483648
-block_resize arguments={'device': 'virtio0', 'size': 2147483648} id=None machine=simplevm subsystem=qemu/qmp
+check-disk-size action=resize found=2147483648 machine=simplevm wanted=3221225472
+block_resize arguments={'device': 'virtio0', 'size': 3221225472} id=None machine=simplevm subsystem=qemu/qmp
 """
     )
     assert get_log() == resize_1
 
     # Increasing the desired disk size also triggers a change.
-    vm.cfg["disk"] *= 2
+    vm.cfg["root_size"] *= 2
     vm.ensure_online_disk_size()
     resize_2 = patterns.resize_2
     resize_2.in_order(
         """
-check-disk-size action=resize found=2147483648 machine=simplevm wanted=4294967296
-block_resize arguments={'device': 'virtio0', 'size': 4294967296} id=None machine=simplevm subsystem=qemu/qmp
+check-disk-size action=resize found=3221225472 machine=simplevm wanted=6442450944
+block_resize arguments={'device': 'virtio0', 'size': 6442450944} id=None machine=simplevm subsystem=qemu/qmp
 """
     )
     assert get_log() == resize_2
@@ -615,7 +632,7 @@ block_resize arguments={'device': 'virtio0', 'size': 4294967296} id=None machine
     resize_noop = patterns.resize_noop
     resize_noop.in_order(
         """
-check-disk-size action=none found=4294967296 machine=simplevm wanted=4294967296
+check-disk-size action=none found=6442450944 machine=simplevm wanted=6442450944
 """
     )
 
@@ -661,72 +678,72 @@ def outmigrate_pattern(patterns):
         """
 /nix/store/.../bin/fc-qemu -v outmigrate simplevm
 load-system-config
-simplevm             connect-rados                  subsystem='ceph'
-simplevm             acquire-lock                   target='/run/qemu.simplevm.lock'
-simplevm             acquire-lock                   count=1 result='locked' target='/run/qemu.simplevm.lock'
-simplevm             qmp_capabilities               arguments={} id=None subsystem='qemu/qmp'
-simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
+simplevm         ceph connect-rados
+simplevm              acquire-lock                   target='/run/qemu.simplevm.lock'
+simplevm              acquire-lock                   count=1 result='locked' target='/run/qemu.simplevm.lock'
+simplevm     qemu/qmp qmp_capabilities               arguments={} id=None
+simplevm     qemu/qmp query-status                   arguments={} id=None
 
-simplevm             outmigrate
-simplevm             consul-register
-simplevm             locate-inmigration-service
-simplevm             check-staging-config           result='none'
-simplevm             located-inmigration-service    url='http://host2.mgm.test.gocept.net:...'
+simplevm              outmigrate
+simplevm              consul-register
+simplevm              setup-outgoing-migration       cookie='...'
+simplevm              locate-inmigration-service
+simplevm              check-staging-config           result='none'
+simplevm              located-inmigration-service    url='http://host2.mgm.test.gocept.net:...'
 
-simplevm             acquire-migration-locks
-simplevm             check-staging-config           result='none'
-simplevm             acquire-migration-lock         result='success' subsystem='qemu'
-simplevm             acquire-local-migration-lock   result='success'
-simplevm             acquire-remote-migration-lock
-simplevm             acquire-remote-migration-lock  result='success'
+simplevm              acquire-migration-locks
+simplevm              check-staging-config           result='none'
+simplevm         qemu acquire-migration-lock         result='success'
+simplevm              acquire-local-migration-lock   result='success'
+simplevm              acquire-remote-migration-lock
+simplevm              acquire-remote-migration-lock  result='success'
 
-simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.root'
-simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.swap'
-simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.tmp'
+simplevm         ceph unlock                         volume='rbd.ssd/simplevm.root'
+simplevm         ceph unlock                         volume='rbd.ssd/simplevm.swap'
+simplevm         ceph unlock                         volume='rbd.ssd/simplevm.tmp'
 
-simplevm             prepare-remote-environment
-simplevm             start-migration                target='tcp:192.168.4.7:...'
-simplevm             migrate                        subsystem='qemu'
-simplevm             migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None subsystem='qemu/qmp'
-simplevm             migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None subsystem='qemu/qmp'
-simplevm             migrate                        arguments={'uri': 'tcp:192.168.4.7:...'} id=None subsystem='qemu/qmp'
+simplevm              prepare-remote-environment
+simplevm              start-migration                target='tcp:192.168.4.7:...'
+simplevm         qemu migrate
+simplevm     qemu/qmp migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None
+simplevm     qemu/qmp migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None
+simplevm     qemu/qmp migrate                        arguments={'uri': 'tcp:192.168.4.7:...'} id=None
 
-simplevm             query-migrate-parameters       arguments={} id=None subsystem='qemu/qmp'
-simplevm             migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 subsystem='qemu' throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
+simplevm     qemu/qmp query-migrate-parameters       arguments={} id=None
+simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
 
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps='-' remaining='0' status='setup'
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps='-' remaining='0' status='setup'
 
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status='active'
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=... remaining='...' status='active'
 
-simplevm             migration-status               mbps=... remaining='...' status='completed'
+simplevm              migration-status               mbps=... remaining='...' status='completed'
 
-simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
-simplevm             finish-migration
+simplevm     qemu/qmp query-status                   arguments={} id=None
+simplevm              finish-migration
 
-simplevm             vm-destroy-kill-supervisor     attempt=1 subsystem='qemu'
-simplevm             vm-destroy-kill-supervisor     attempt=2 subsystem='qemu'
-simplevm             vm-destroy-kill-vm             attempt=1 subsystem='qemu'
-simplevm             vm-destroy-kill-vm             attempt=2 subsystem='qemu'
-simplevm             clean-run-files                subsystem='qemu'
-simplevm             finish-remote
-simplevm             consul-deregister
-simplevm             outmigrate-finished            exitcode=0
-simplevm             release-lock                   count=0 target='/run/qemu.simplevm.lock'
-simplevm             release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
+simplevm         qemu vm-destroy-kill-supervisor     attempt=1
+simplevm         qemu vm-destroy-kill-supervisor     attempt=2
+simplevm         qemu vm-destroy-kill-vm             attempt=1
+simplevm         qemu vm-destroy-kill-vm             attempt=2
+simplevm         qemu clean-run-files
+simplevm              finish-remote
+simplevm              consul-deregister
+simplevm              outmigrate-finished            exitcode=0
+simplevm              release-lock                   count=0 target='/run/qemu.simplevm.lock'
+simplevm              release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
 """
     )
     # There are a couple of steps in the migration process that may repeat due to
     # timings,so this may or may not appear more often:
     outmigrate.optional(
         """
-simplevm             waiting                        interval=3 remaining=...
-simplevm             check-staging-config           result='none'
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=... remaining='...' status='active'
-simplevm             vm-destroy-kill-vm             attempt=... subsystem='qemu'
-    """
+simplevm              waiting                        interval=3 remaining=...
+simplevm              check-staging-config           result='none'
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=... remaining='...' status='active'
+simplevm         qemu vm-destroy-kill-vm             attempt=...    """
     )
     # Expect debug output that doesn't matter as much
     patterns.debug.optional("simplevm> ...")
@@ -734,17 +751,17 @@ simplevm             vm-destroy-kill-vm             attempt=... subsystem='qemu'
     # This part of the heartbeats must show up
     patterns.heartbeat.in_order(
         """\
-simplevm             heartbeat-initialized
-simplevm             started-heartbeat-ping
-simplevm             heartbeat-ping
+simplevm              heartbeat-initialized
+simplevm              started-heartbeat-ping
+simplevm              heartbeat-ping
 """
     )
     # The pings may happen more times and sometimes the stopping part
     # isn't visible because we terminate too fast.
     patterns.heartbeat.optional(
         """
-simplevm             heartbeat-ping
-simplevm             stopped-heartbeat-ping
+simplevm              heartbeat-ping
+simplevm              stopped-heartbeat-ping
 """
     )
 
@@ -759,44 +776,45 @@ def test_vm_migration_pattern(outmigrate_pattern):
     assert (
         outmigrate_pattern
         == """\
-/nix/store/c5kfr1yx6920s7lcswsv9dn61g8dc5xk-python3.8-fc.qemu-dev/bin/fc-qemu -v outmigrate simplevm
+/nix/store/.../bin/fc-qemu -v outmigrate simplevm
 load-system-config
-simplevm             connect-rados                  subsystem='ceph'
-simplevm             acquire-lock                   target='/run/qemu.simplevm.lock'
-simplevm             acquire-lock                   count=1 result='locked' target='/run/qemu.simplevm.lock'
-simplevm             qmp_capabilities               arguments={} id=None subsystem='qemu/qmp'
-simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
-simplevm             outmigrate
-simplevm             consul-register
-simplevm             heartbeat-initialized
-simplevm             locate-inmigration-service
-simplevm             check-staging-config           result='none'
-simplevm             located-inmigration-service    url='http://host2.mgm.test.gocept.net:36573'
-simplevm             started-heartbeat-ping
-simplevm             acquire-migration-locks
-simplevm             heartbeat-ping
-simplevm             check-staging-config           result='none'
-simplevm             acquire-migration-lock         result='success' subsystem='qemu'
-simplevm             acquire-local-migration-lock   result='success'
-simplevm             acquire-remote-migration-lock
-simplevm             acquire-remote-migration-lock  result='success'
-simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.root'
-simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.swap'
-simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.tmp'
-simplevm             prepare-remote-environment
-simplevm             start-migration                target='tcp:192.168.4.7:2345'
-simplevm             migrate                        subsystem='qemu'
-simplevm             migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None subsystem='qemu/qmp'
-simplevm             migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None subsystem='qemu/qmp'
-simplevm             migrate                        arguments={'uri': 'tcp:192.168.4.7:2345'} id=None subsystem='qemu/qmp'
-simplevm             query-migrate-parameters       arguments={} id=None subsystem='qemu/qmp'
-simplevm             migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 subsystem='qemu' throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps='-' remaining='0' status='setup'
-simplevm> {'blocked': False, 'status': 'setup'}
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.32976 remaining='285,528,064' status='active'
-simplevm> {'blocked': False,
+simplevm         ceph connect-rados
+simplevm              acquire-lock                   target='/run/qemu.simplevm.lock'
+simplevm              acquire-lock                   count=1 result='locked' target='/run/qemu.simplevm.lock'
+simplevm     qemu/qmp qmp_capabilities               arguments={} id=None
+simplevm     qemu/qmp query-status                   arguments={} id=None
+simplevm              outmigrate
+simplevm              consul-register
+simplevm              setup-outgoing-migration       cookie='b76481202c5afb5b70feae12350c120b8e881356'
+simplevm              heartbeat-initialized
+simplevm              locate-inmigration-service
+simplevm              check-staging-config           result='none'
+simplevm              located-inmigration-service    url='http://host2.mgm.test.gocept.net:36573'
+simplevm              started-heartbeat-ping
+simplevm              acquire-migration-locks
+simplevm              heartbeat-ping
+simplevm              check-staging-config           result='none'
+simplevm         qemu acquire-migration-lock         result='success'
+simplevm              acquire-local-migration-lock   result='success'
+simplevm              acquire-remote-migration-lock
+simplevm              acquire-remote-migration-lock  result='success'
+simplevm         ceph unlock                         volume='rbd.ssd/simplevm.root'
+simplevm         ceph unlock                         volume='rbd.ssd/simplevm.swap'
+simplevm         ceph unlock                         volume='rbd.ssd/simplevm.tmp'
+simplevm              prepare-remote-environment
+simplevm              start-migration                target='tcp:192.168.4.7:2345'
+simplevm         qemu migrate
+simplevm     qemu/qmp migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None
+simplevm     qemu/qmp migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None
+simplevm     qemu/qmp migrate                        arguments={'uri': 'tcp:192.168.4.7:2345'} id=None
+simplevm     qemu/qmp query-migrate-parameters       arguments={} id=None
+simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps='-' remaining='0' status='setup'
+simplevm>  {'blocked': False, 'status': 'setup'}
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.32976 remaining='285,528,064' status='active'
+simplevm>  {'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -815,9 +833,9 @@ simplevm>          'transferred': 63317},
 simplevm>  'setup-time': 3,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 1419}
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.32976 remaining='285,331,456' status='active'
-simplevm> {'blocked': False,
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.32976 remaining='285,331,456' status='active'
+simplevm>  {'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -836,9 +854,9 @@ simplevm>          'transferred': 145809},
 simplevm>  'setup-time': 3,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 3423}
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.18144 remaining='267,878,400' status='active'
-simplevm> {'blocked': False,
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.18144 remaining='267,878,400' status='active'
+simplevm>  {'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -857,10 +875,10 @@ simplevm>          'transferred': 229427},
 simplevm>  'setup-time': 3,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 6255}
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.17964356435643564 remaining='226,918,400' status='active'
-simplevm> {'blocked': False,
+simplevm              heartbeat-ping
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.17964356435643564 remaining='226,918,400' status='active'
+simplevm>  {'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -879,9 +897,9 @@ simplevm>          'transferred': 319747},
 simplevm>  'setup-time': 3,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 10261}
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.18144 remaining='169,574,400' status='active'
-simplevm> {'blocked': False,
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.18144 remaining='169,574,400' status='active'
+simplevm>  {'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -900,10 +918,10 @@ simplevm>          'transferred': 446195},
 simplevm>  'setup-time': 3,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 15925}
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.18144 remaining='87,654,400' status='active'
-simplevm> {'blocked': False,
+simplevm              heartbeat-ping
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.18144 remaining='87,654,400' status='active'
+simplevm>  {'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -922,10 +940,10 @@ simplevm>          'transferred': 626835},
 simplevm>  'setup-time': 3,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 23935}
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.32976 remaining='18,825,216' status='active'
-simplevm> {'blocked': False,
+simplevm              heartbeat-ping
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.32976 remaining='18,825,216' status='active'
+simplevm>  {'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -944,10 +962,10 @@ simplevm>          'transferred': 967345},
 simplevm>  'setup-time': 3,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 35261}
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.3264950495049505 remaining='839,680' status='active'
-simplevm> {'blocked': False,
+simplevm              heartbeat-ping
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.3264950495049505 remaining='839,680' status='active'
+simplevm>  {'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -966,10 +984,10 @@ simplevm>          'transferred': 1409137},
 simplevm>  'setup-time': 3,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 46586}
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.32976 remaining='1,118,208' status='active'
-simplevm> {'blocked': False,
+simplevm              heartbeat-ping
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.32976 remaining='1,118,208' status='active'
+simplevm>  {'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 4,
 simplevm>          'dirty-sync-count': 2,
@@ -988,10 +1006,10 @@ simplevm>          'transferred': 1874605},
 simplevm>  'setup-time': 3,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 57908}
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.34057172924857854 remaining='0' status='completed'
-simplevm> {'blocked': False,
+simplevm              heartbeat-ping
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.34057172924857854 remaining='0' status='completed'
+simplevm>  {'blocked': False,
 simplevm>  'downtime': 8,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 5,
@@ -1010,19 +1028,19 @@ simplevm>          'transferred': 2467703},
 simplevm>  'setup-time': 3,
 simplevm>  'status': 'completed',
 simplevm>  'total-time': 68420}
-simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
-simplevm             finish-migration
-simplevm             vm-destroy-kill-supervisor     attempt=1 subsystem='qemu'
-simplevm             vm-destroy-kill-supervisor     attempt=2 subsystem='qemu'
-simplevm             vm-destroy-kill-vm             attempt=1 subsystem='qemu'
-simplevm             vm-destroy-kill-vm             attempt=2 subsystem='qemu'
-simplevm             clean-run-files                subsystem='qemu'
-simplevm             finish-remote
-simplevm             stopped-heartbeat-ping
-simplevm             consul-deregister
-simplevm             outmigrate-finished            exitcode=0
-simplevm             release-lock                   count=0 target='/run/qemu.simplevm.lock'
-simplevm             release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
+simplevm     qemu/qmp query-status                   arguments={} id=None
+simplevm              finish-migration
+simplevm         qemu vm-destroy-kill-supervisor     attempt=1
+simplevm         qemu vm-destroy-kill-supervisor     attempt=2
+simplevm         qemu vm-destroy-kill-vm             attempt=1
+simplevm         qemu vm-destroy-kill-vm             attempt=2
+simplevm         qemu clean-run-files
+simplevm              finish-remote
+simplevm              stopped-heartbeat-ping
+simplevm              consul-deregister
+simplevm              outmigrate-finished            exitcode=0
+simplevm              release-lock                   count=0 target='/run/qemu.simplevm.lock'
+simplevm              release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
 """
     )
 
@@ -1034,42 +1052,43 @@ simplevm             release-lock                   result='unlocked' target='/r
         == """\
 /nix/store/kj63j38ji0c8yk037yvzj9c5f27mzh58-python3.8-fc.qemu-d26a0eae29efd95fe5c328d8a9978eb5a6a4529e/bin/fc-qemu -v outmigrate simplevm
 load-system-config
-simplevm             connect-rados                  subsystem='ceph'
-simplevm             acquire-lock                   target='/run/qemu.simplevm.lock'
-simplevm             acquire-lock                   count=1 result='locked' target='/run/qemu.simplevm.lock'
-simplevm             qmp_capabilities               arguments={} id=None subsystem='qemu/qmp'
-simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
-simplevm             outmigrate
-simplevm             consul-register
-simplevm             heartbeat-initialized
-simplevm             locate-inmigration-service
-simplevm             check-staging-config           result='none'
-simplevm             located-inmigration-service    url='http://host2.mgm.test.gocept.net:35241'
-simplevm             started-heartbeat-ping
-simplevm             acquire-migration-locks
-simplevm             heartbeat-ping
-simplevm             check-staging-config           result='none'
-simplevm             acquire-migration-lock         result='success' subsystem='qemu'
-simplevm             acquire-local-migration-lock   result='success'
-simplevm             acquire-remote-migration-lock
-simplevm             acquire-remote-migration-lock  result='success'
-simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.root'
-simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.swap'
-simplevm             unlock                         subsystem='ceph' volume='rbd.ssd/simplevm.tmp'
-simplevm             prepare-remote-environment
-simplevm             start-migration                target='tcp:192.168.4.7:2345'
-simplevm             migrate                        subsystem='qemu'
-simplevm             migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None subsystem='qemu/qmp'
-simplevm             migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None subsystem='qemu/qmp'
-simplevm             migrate                        arguments={'uri': 'tcp:192.168.4.7:2345'} id=None subsystem='qemu/qmp'
-simplevm             query-migrate-parameters       arguments={} id=None subsystem='qemu/qmp'
-simplevm             migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 subsystem='qemu' throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps='-' remaining='0' status='setup'
-simplevm> {'blocked': False, 'status': 'setup'}
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.32976 remaining='285,528,064' status='active'
-simplevm> {'blocked': False,
+simplevm         ceph connect-rados
+simplevm              acquire-lock                   target='/run/qemu.simplevm.lock'
+simplevm              acquire-lock                   count=1 result='locked' target='/run/qemu.simplevm.lock'
+simplevm     qemu/qmp qmp_capabilities               arguments={} id=None
+simplevm     qemu/qmp query-status                   arguments={} id=None
+simplevm              outmigrate
+simplevm              consul-register
+simplevm              setup-outgoing-migration       cookie='b76481202c5afb5b70feae12350c120b8e881356'
+simplevm              heartbeat-initialized
+simplevm              locate-inmigration-service
+simplevm              check-staging-config           result='none'
+simplevm              located-inmigration-service    url='http://host2.mgm.test.gocept.net:35241'
+simplevm              started-heartbeat-ping
+simplevm              acquire-migration-locks
+simplevm              heartbeat-ping
+simplevm              check-staging-config           result='none'
+simplevm         qemu acquire-migration-lock         result='success'
+simplevm              acquire-local-migration-lock   result='success'
+simplevm              acquire-remote-migration-lock
+simplevm              acquire-remote-migration-lock  result='success'
+simplevm         ceph unlock                         volume='rbd.ssd/simplevm.root'
+simplevm         ceph unlock                         volume='rbd.ssd/simplevm.swap'
+simplevm         ceph unlock                         volume='rbd.ssd/simplevm.tmp'
+simplevm              prepare-remote-environment
+simplevm              start-migration                target='tcp:192.168.4.7:2345'
+simplevm         qemu migrate
+simplevm     qemu/qmp migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None
+simplevm     qemu/qmp migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None
+simplevm     qemu/qmp migrate                        arguments={'uri': 'tcp:192.168.4.7:2345'} id=None
+simplevm     qemu/qmp query-migrate-parameters       arguments={} id=None
+simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps='-' remaining='0' status='setup'
+simplevm> { 'blocked': False, 'status': 'setup'}
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.32976 remaining='285,528,064' status='active'
+simplevm> { 'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -1088,9 +1107,9 @@ simplevm>          'transferred': 63317},
 simplevm>  'setup-time': 1,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 1418}
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.32976 remaining='285,331,456' status='active'
-simplevm> {'blocked': False,
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.32976 remaining='285,331,456' status='active'
+simplevm> { 'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -1109,9 +1128,9 @@ simplevm>          'transferred': 145809},
 simplevm>  'setup-time': 1,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 3422}
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.18144 remaining='267,878,400' status='active'
-simplevm> {'blocked': False,
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.18144 remaining='267,878,400' status='active'
+simplevm> { 'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -1130,10 +1149,10 @@ simplevm>          'transferred': 229427},
 simplevm>  'setup-time': 1,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 6254}
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.18144 remaining='226,918,400' status='active'
-simplevm> {'blocked': False,
+simplevm              heartbeat-ping
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.18144 remaining='226,918,400' status='active'
+simplevm> { 'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -1152,9 +1171,9 @@ simplevm>          'transferred': 319747},
 simplevm>  'setup-time': 1,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 10259}
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.18144 remaining='169,574,400' status='active'
-simplevm> {'blocked': False,
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.18144 remaining='169,574,400' status='active'
+simplevm> { 'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -1173,10 +1192,10 @@ simplevm>          'transferred': 446195},
 simplevm>  'setup-time': 1,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 15923}
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.18144 remaining='87,654,400' status='active'
-simplevm> {'blocked': False,
+simplevm              heartbeat-ping
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.18144 remaining='87,654,400' status='active'
+simplevm> { 'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -1195,10 +1214,10 @@ simplevm>          'transferred': 626835},
 simplevm>  'setup-time': 1,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 23932}
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.32976 remaining='18,825,216' status='active'
-simplevm> {'blocked': False,
+simplevm              heartbeat-ping
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.32976 remaining='18,825,216' status='active'
+simplevm> { 'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -1217,10 +1236,10 @@ simplevm>          'transferred': 967345},
 simplevm>  'setup-time': 1,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 35258}
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.32976 remaining='843,776' status='active'
-simplevm> {'blocked': False,
+simplevm              heartbeat-ping
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.32976 remaining='843,776' status='active'
+simplevm> { 'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 1,
@@ -1239,11 +1258,11 @@ simplevm>          'transferred': 1405025},
 simplevm>  'setup-time': 1,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 46582}
-simplevm             heartbeat-ping
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.32976 remaining='1,118,208' status='active'
-simplevm> {'blocked': False,
+simplevm              heartbeat-ping
+simplevm              heartbeat-ping
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.32976 remaining='1,118,208' status='active'
+simplevm> { 'blocked': False,
 simplevm>  'expected-downtime': 4000,
 simplevm>  'ram': {'dirty-pages-rate': 4,
 simplevm>          'dirty-sync-count': 2,
@@ -1262,10 +1281,10 @@ simplevm>          'transferred': 1874605},
 simplevm>  'setup-time': 1,
 simplevm>  'status': 'active',
 simplevm>  'total-time': 57908}
-simplevm             heartbeat-ping
-simplevm             query-migrate                  arguments={} id=None subsystem='qemu/qmp'
-simplevm             migration-status               mbps=0.3400370667639548 remaining='0' status='completed'
-simplevm> {'blocked': False,
+simplevm              heartbeat-ping
+simplevm     qemu/qmp query-migrate                  arguments={} id=None
+simplevm              migration-status               mbps=0.3400370667639548 remaining='0' status='completed'
+simplevm> { 'blocked': False,
 simplevm>  'downtime': 11,
 simplevm>  'ram': {'dirty-pages-rate': 0,
 simplevm>          'dirty-sync-count': 5,
@@ -1284,18 +1303,18 @@ simplevm>          'transferred': 2467711},
 simplevm>  'setup-time': 1,
 simplevm>  'status': 'completed',
 simplevm>  'total-time': 68526}
-simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
-simplevm             finish-migration
-simplevm             vm-destroy-kill-supervisor     attempt=1 subsystem='qemu'
-simplevm             vm-destroy-kill-supervisor     attempt=2 subsystem='qemu'
-simplevm             vm-destroy-kill-vm             attempt=1 subsystem='qemu'
-simplevm             vm-destroy-kill-vm             attempt=2 subsystem='qemu'
-simplevm             clean-run-files                subsystem='qemu'
-simplevm             finish-remote
-simplevm             consul-deregister
-simplevm             outmigrate-finished            exitcode=0
-simplevm             release-lock                   count=0 target='/run/qemu.simplevm.lock'
-simplevm             release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
+simplevm     qemu/qmp query-status                   arguments={} id=None
+simplevm              finish-migration
+simplevm         qemu vm-destroy-kill-supervisor     attempt=1
+simplevm         qemu vm-destroy-kill-supervisor     attempt=2
+simplevm         qemu vm-destroy-kill-vm             attempt=1
+simplevm         qemu vm-destroy-kill-vm             attempt=2
+simplevm         qemu clean-run-files
+simplevm              finish-remote
+simplevm              consul-deregister
+simplevm              outmigrate-finished            exitcode=0
+simplevm              release-lock                   count=0 target='/run/qemu.simplevm.lock'
+simplevm              release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
 """
     )
 
@@ -1333,7 +1352,7 @@ def test_vm_migration(vm, kill_vms, outmigrate_pattern, patterns):
             line = p.stdout.readline()
             if line:
                 # This ensures we get partial output e.g. during timeouts.
-                print(line)
+                print(line.rstrip())
                 stdout += line
             else:
                 p.wait()
@@ -1350,67 +1369,71 @@ def test_vm_migration(vm, kill_vms, outmigrate_pattern, patterns):
     inmigrate = call("ssh host2 'fc-qemu -v inmigrate simplevm'", wait=False)
     outmigrate = call("fc-qemu -v outmigrate simplevm", wait=False)
 
-    assert outmigrate_pattern == communicate_progress(outmigrate)
-    assert outmigrate.returncode == 0
-
+    # Consume both process outputs so in a failing test we see both
+    # in the test output and can more easily compare what's going on.
     inmigrate_result = communicate_progress(inmigrate)
+    outmigrate_result = communicate_progress(outmigrate)
+
     inmigrate_pattern = patterns.inmigrate
     inmigrate_pattern.in_order(
         """
 /nix/store/.../bin/fc-qemu -v inmigrate simplevm
 load-system-config
-simplevm             connect-rados                  subsystem='ceph'
-simplevm             acquire-lock                   target='/run/qemu.simplevm.lock'
-simplevm             acquire-lock                   count=1 result='locked' target='/run/qemu.simplevm.lock'
+simplevm         ceph connect-rados
+simplevm              acquire-lock                   target='/run/qemu.simplevm.lock'
+simplevm              acquire-lock                   count=1 result='locked' target='/run/qemu.simplevm.lock'
 
-simplevm             inmigrate
-simplevm             start-server                   type='incoming' url='http://host2.mgm.test.gocept.net:.../'
-simplevm             setup-incoming-api             cookie='...'
-simplevm             consul-register-inmigrate
+simplevm              inmigrate
+simplevm              start-server                   type='incoming' url='http://host2.mgm.test.gocept.net:.../'
+simplevm              setup-incoming-api             cookie='...'
+simplevm              consul-register-inmigrate
 
-simplevm             received-acquire-migration-lock
-simplevm             acquire-migration-lock         result='success' subsystem='qemu'
-simplevm             received-acquire-ceph-locks
-simplevm             lock                           subsystem='ceph' volume='rbd.ssd/simplevm.root'
-simplevm             lock                           subsystem='ceph' volume='rbd.ssd/simplevm.swap'
-simplevm             lock                           subsystem='ceph' volume='rbd.ssd/simplevm.tmp'
+simplevm              received-acquire-migration-lock
+simplevm         qemu acquire-migration-lock         result='success'
+simplevm              received-acquire-ceph-locks
+simplevm         ceph lock                           volume='rbd.ssd/simplevm.root'
+simplevm         ceph lock                           volume='rbd.ssd/simplevm.swap'
+simplevm         ceph lock                           volume='rbd.ssd/simplevm.tmp'
 
-simplevm             received-prepare-incoming
-simplevm             acquire-global-lock            subsystem='qemu' target='/run/fc-qemu.lock'
-simplevm             global-lock-acquire            result='locked' subsystem='qemu' target='/run/fc-qemu.lock'
-simplevm             global-lock-status             count=1 subsystem='qemu' target='/run/fc-qemu.lock'
-simplevm             sufficient-host-memory         available_real=... bookable=... required=768 subsystem='qemu'
-simplevm             start-qemu                     subsystem='qemu'
-simplevm             qemu-system-x86_64             additional_args=['-incoming tcp:192.168.4.7:...'] local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-chroot /srv/vm/simplevm', '-runas nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg'] subsystem='qemu'
-simplevm             exec                           cmd='supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -chroot /srv/vm/simplevm -runas nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -incoming tcp:192.168.4.7:2345 -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log' subsystem='qemu'
-simplevm             supervised-qemu-stdout         subsystem='qemu'
-simplevm             supervised-qemu-stderr         subsystem='qemu'
+simplevm              received-prepare-incoming
+simplevm         qemu acquire-global-lock            target='/run/fc-qemu.lock'
+simplevm         qemu global-lock-acquire            result='locked' target='/run/fc-qemu.lock'
+simplevm         qemu global-lock-status             count=1 target='/run/fc-qemu.lock'
+simplevm         qemu sufficient-host-memory         available_real=... bookable=... required=768
+simplevm         qemu start-qemu
+simplevm         qemu qemu-system-x86_64             additional_args=['-incoming tcp:192.168.4.7:...'] local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-chroot /srv/vm/simplevm', '-runas nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg']
+simplevm         qemu exec                           cmd='supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -chroot /srv/vm/simplevm -runas nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -incoming tcp:192.168.4.7:2345 -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log'
+simplevm         qemu supervised-qemu-stdout
+simplevm         qemu supervised-qemu-stderr
 
-simplevm             global-lock-status             count=0 subsystem='qemu' target='/run/fc-qemu.lock'
-simplevm             global-lock-release            subsystem='qemu' target='/run/fc-qemu.lock'
-simplevm             global-lock-release            result='unlocked' subsystem='qemu'
-simplevm             qmp_capabilities               arguments={} id=None subsystem='qemu/qmp'
-simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
+simplevm         qemu global-lock-status             count=0 target='/run/fc-qemu.lock'
+simplevm         qemu global-lock-release            target='/run/fc-qemu.lock'
+simplevm         qemu global-lock-release            result='unlocked'
+simplevm     qemu/qmp qmp_capabilities               arguments={} id=None
+simplevm     qemu/qmp query-status                   arguments={} id=None
 
-simplevm             received-finish-incoming
-simplevm             query-status                   arguments={} id=None subsystem='qemu/qmp'
-simplevm             consul-deregister-inmigrate
-simplevm             stop-server                    result='success' type='incoming'
-simplevm             consul-register
-simplevm             inmigrate-finished             exitcode=0
-simplevm             release-lock                   count=0 target='/run/qemu.simplevm.lock'
-simplevm             release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
+simplevm              received-finish-incoming
+simplevm     qemu/qmp query-status                   arguments={} id=None
+simplevm              consul-deregister-inmigrate
+simplevm              stop-server                    result='success' type='incoming'
+simplevm              consul-register
+simplevm              inmigrate-finished             exitcode=0
+simplevm              release-lock                   count=0 target='/run/qemu.simplevm.lock'
+simplevm              release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
 """
     )
     inmigrate_pattern.optional(
         """
 simplevm>
-simplevm             received-ping                  timeout=60
-simplevm             reset-timeout
-simplevm             waiting                        interval=0 remaining=...
-simplevm             guest-disconnect
+simplevm              received-ping                  timeout=60
+simplevm              reset-timeout
+simplevm              waiting                        interval=0 remaining=...
+simplevm              guest-disconnect
 """
     )
+
+    assert outmigrate_pattern == outmigrate_result
+    assert outmigrate.returncode == 0
 
     assert inmigrate_pattern == inmigrate_result
     assert inmigrate.returncode == 0
@@ -1422,25 +1445,25 @@ simplevm             guest-disconnect
     local_status = call("fc-qemu status simplevm")
     assert local_status == Ellipsis(
         """\
-simplevm             vm-status                      result='offline'
-simplevm             rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.root'
-simplevm             rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.swap'
-simplevm             rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.tmp'
-simplevm             consul                         address='host2' service='qemu-simplevm'
+simplevm              vm-status                      result='offline'
+simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.root'
+simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.swap'
+simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.tmp'
+simplevm              consul                         address='host2' service='qemu-simplevm'
 """
     )
 
     remote_status = call("ssh host2 'fc-qemu status simplevm'")
     assert remote_status == Ellipsis(
         """\
-simplevm             vm-status                      result='online'
-simplevm             disk-throttle                  device='virtio0' iops=0
-simplevm             disk-throttle                  device='virtio1' iops=0
-simplevm             disk-throttle                  device='virtio2' iops=0
-simplevm             rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.root'
-simplevm             rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.swap'
-simplevm             rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.tmp'
-simplevm             consul                         address='host2' service='qemu-simplevm'
+simplevm              vm-status                      result='online'
+simplevm              disk-throttle                  device='virtio0' iops=0
+simplevm              disk-throttle                  device='virtio1' iops=0
+simplevm              disk-throttle                  device='virtio2' iops=0
+simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.root'
+simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.swap'
+simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.tmp'
+simplevm              consul                         address='host2' service='qemu-simplevm'
 """
     )
 
@@ -1483,9 +1506,10 @@ update-check action=update current=-1 machine=simplevm result=update-available u
 ...
 ensure-state action=start found=offline machine=simplevm wanted=online
 ...
+ensure-presence machine=simplevm subsystem=ceph volume_spec=root
+create-vm machine=simplevm subsystem=ceph volume=simplevm.root
+...
 generate-config machine=simplevm
-ensure-root machine=simplevm subsystem=ceph
-create-vm machine=simplevm subsystem=ceph
 ...
 """
     )
