@@ -1,8 +1,7 @@
 import pytest
 
+from fc.qemu.timeout import TimeOut, TimeoutError
 from fc.qemu.util import log
-
-from ..timeout import TimeOut, TimeoutError
 
 
 def test_timeout_raises():

@@ -1,8 +1,8 @@
 import mock
 import pytest
 
-from ..exc import MigrationError
-from ..incoming import IncomingAPI, IncomingServer
+from fc.qemu.exc import MigrationError
+from fc.qemu.incoming import IncomingAPI, IncomingServer
 
 
 @pytest.fixture

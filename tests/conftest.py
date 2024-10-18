@@ -11,8 +11,8 @@ import structlog
 
 import fc.qemu.agent
 import fc.qemu.hazmat.qemu
-
-from .agent import Agent
+from fc.qemu.agent import Agent
+from tests.hazmat.conftest import ceph_inst, ceph_mock  # noqa
 
 
 def pytest_collectstart(collector):
@@ -22,21 +22,21 @@ def pytest_collectstart(collector):
 
 
 @pytest.fixture(autouse=True)
-def synthetic_root(request, monkeypatch, tmpdir):
+def synthetic_root(request, monkeypatch, tmp_path):
     is_live = request.node.get_closest_marker("live")
     if is_live is not None:
         # This is a live test. Do not mock things.
         return
-    monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "prefix", str(tmpdir))
-    os.makedirs(str(tmpdir / "run"))
-    os.makedirs(str(tmpdir / "etc/qemu/vm"))
-    monkeypatch.setattr(Agent, "prefix", str(tmpdir))
+    (tmp_path / "run").mkdir()
+    (tmp_path / "etc/qemu/vm").mkdir(parents=True)
+    monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "prefix", tmp_path)
+    monkeypatch.setattr(Agent, "prefix", tmp_path)
     monkeypatch.setattr(fc.qemu.agent, "EXECUTABLE", "true")
 
 
 @pytest.fixture(scope="session")
 def setup_structlog():
-    from . import util
+    from fc.qemu import util
 
     # set to True to temporarily get detailed tracebacks
     log_exceptions = True
@@ -104,7 +104,7 @@ def setup_structlog():
 
 @pytest.fixture(autouse=True)
 def reset_structlog(setup_structlog):
-    from . import util
+    from fc.qemu import util
 
     util.log_data = []
     util.test_log_options = {"show_methods": [], "show_events": []}
@@ -128,7 +128,8 @@ def record_subprocess_calls(monkeypatch):
         binary = args[0][0]
         if kw.get("shell"):
             binary = args[0].split()[0]
-        CALLED_BINARIES.add(binary)
+        if not binary.startswith("/"):
+            CALLED_BINARIES.add(binary)
         return original(self, *args, **kw)
 
     monkeypatch.setattr(subprocess.Popen, "__init__", Popen_recording_init)
@@ -142,7 +143,8 @@ def record_subprocess_run(monkeypatch):
         binary = args[0][0]
         if kw.get("shell"):
             binary = args[0].split()[0]
-        CALLED_BINARIES.add(binary)
+        if not binary.startswith("/"):
+            CALLED_BINARIES.add(binary)
         return subprocess_run_orig(*args, **kw)
 
     monkeypatch.setattr(subprocess, "run", recording_subprocess_run)
@@ -221,7 +223,7 @@ def vm(clean_environment, monkeypatch, tmpdir):
     import fc.qemu.hazmat.qemu
 
     monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "guestagent_timeout", 0.1)
-    fixtures = pkg_resources.resource_filename(__name__, "tests/fixtures")
+    fixtures = pkg_resources.resource_filename(__name__, "fixtures")
     shutil.copy(fixtures + "/simplevm.yaml", "/etc/qemu/vm/simplevm.cfg")
     if os.path.exists("/etc/qemu/vm/.simplevm.cfg.staging"):
         os.unlink("/etc/qemu/vm/.simplevm.cfg.staging")
@@ -230,15 +232,18 @@ def vm(clean_environment, monkeypatch, tmpdir):
     vm.__enter__()
     vm.qemu.qmp_timeout = 0.1
     vm.qemu.vm_expected_overhead = 128
-    for snapshot in vm.ceph.root.snapshots:
-        snapshot.remove()
+
+    for volume in vm.ceph.opened_volumes:
+        for snapshot in volume.snapshots:
+            snapshot.remove()
     vm.qemu.destroy(kill_supervisor=True)
     vm.unlock()
     get_log()
     yield vm
 
-    for snapshot in vm.ceph.root.snapshots:
-        snapshot.remove()
+    for volume in vm.ceph.opened_volumes:
+        for snapshot in volume.snapshots:
+            snapshot.remove()
     exc_info = sys.exc_info()
     vm.__exit__(*exc_info)
     if len(exc_info):
