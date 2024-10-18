@@ -406,8 +406,12 @@ class Qemu(object):
             self.log.error("guest-write-file", exc_info=True)
 
     def inmigrate(self):
-        self._start(["-incoming {}".format(self.migration_address)])
-        time.sleep(1)
+        self._start([f"-incoming {self.migration_address}"])
+
+        timeout = TimeOut(30, 1, raise_on_timeout=True)
+        while self.qmp is None:
+            timeout.tick()
+
         status = self.qmp.command("query-status")
         assert not status["running"], status
         assert status["status"] == "inmigrate", status
