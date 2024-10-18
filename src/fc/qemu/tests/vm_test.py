@@ -86,6 +86,8 @@ mkfs.xfs machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tm
 seed machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mount args="/dev/rbd/rbd.ssd/simplevm.tmp-part1" "/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+guest-properties machine=simplevm properties={'binary_generation': 2, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.tmp
+binary-generation generation=2 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount args="/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
