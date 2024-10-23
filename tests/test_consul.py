@@ -9,9 +9,8 @@ import pytest
 from fc.qemu import util
 from fc.qemu.agent import Agent
 from fc.qemu.hazmat.qemu import Qemu
-
-from ..conftest import get_log
-from ..ellipsis import Ellipsis
+from tests.conftest import get_log
+from tests.ellipsis import Ellipsis
 
 
 @pytest.fixture(autouse=True)
@@ -50,7 +49,7 @@ def test_no_key_event():
 start-consul-events count=1
 handle-key-failed key=None
 Traceback (most recent call last):
-  File "/nix/store/...-python3-...-env/lib/python3.8/site-packages/fc/qemu/agent.py", line ..., in handle
+  File ".../fc/qemu/agent.py", line ..., in handle
     log.debug("handle-key", key=event["Key"])
 KeyError: 'Key'
 finish-handle-key key=None
@@ -61,18 +60,16 @@ finish-consul-events"""
 
 
 @pytest.fixture
-def clean_config_test22(tmpdir):
+def clean_config_test22(tmp_path):
     targets = [
-        str(tmpdir / "etc/qemu/vm/test22.cfg"),
-        str(tmpdir / "/etc/qemu/vm/.test22.cfg.staging"),
+        tmp_path / "etc/qemu/vm/test22.cfg",
+        tmp_path / "/etc/qemu/vm/.test22.cfg.staging",
     ]
     for target in targets:
-        if os.path.exists(target):
-            os.unlink(target)
+        target.unlink(missing_ok=True)
     yield
     for target in targets:
-        if os.path.exists(target):
-            os.unlink(target)
+        target.unlink(missing_ok=True)
 
 
 def prepare_consul_event(
@@ -157,11 +154,11 @@ def test_qemu_config_change(clean_config_test22):
     util.log_data = []
     agent = Agent("test22")
     assert agent.has_new_config()
-    assert not os.path.exists(agent.configfile)
+    assert not os.path.exists(agent.config_file)
     agent.activate_new_config()
     agent._update_from_enc()
     assert not agent.has_new_config()
-    assert os.path.exists(agent.configfile)
+    assert os.path.exists(agent.config_file)
     assert util.log_data == []
 
     # Applying the same config again doesn't cause another ensure run.
@@ -305,7 +302,7 @@ def test_snapshot_offline_vm(vm):
     vm.stage_new_config()
     vm.activate_new_config()
 
-    vm.ceph.ensure_root_volume()
+    vm.ceph.specs["root"].ensure_presence()
     vm.ensure_offline()
 
     print(get_log())

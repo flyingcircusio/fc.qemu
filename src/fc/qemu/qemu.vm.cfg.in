@@ -18,7 +18,7 @@
   media = "disk"
   if = "virtio"
   format = "rbd"
-  file = "rbd:{rbd_pool}/{name}.root:id={{ceph_id}}"
+  file = "rbd:{ceph.volumes[root].fullname}:id={{ceph_id}}"
   aio = "threads"
   cache = "none"
 
@@ -27,7 +27,7 @@
   media = "disk"
   if = "virtio"
   format = "rbd"
-  file = "rbd:{rbd_pool}/{name}.swap:id={{ceph_id}}"
+  file = "rbd:{ceph.volumes[tmp].fullname}:id={{ceph_id}}"
   aio = "threads"
   cache = "none"
 
@@ -36,7 +36,7 @@
   media = "disk"
   if = "virtio"
   format = "rbd"
-  file = "rbd:{rbd_pool}/{name}.tmp:id={{ceph_id}}"
+  file = "rbd:{ceph.volumes[swap].fullname}:id={{ceph_id}}"
   aio = "threads"
   cache = "none"
 

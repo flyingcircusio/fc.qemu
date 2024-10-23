@@ -2,11 +2,13 @@ import shutil
 
 import pytest
 
-import fc.qemu.conftest
+import tests.conftest
 
 KNOWN_BINARIES = set(
     [
+        "blkid",
         "mkfs.xfs",
+        "mkswap",
         "mount",
         "partprobe",
         "pgrep",
@@ -16,6 +18,7 @@ KNOWN_BINARIES = set(
         "sgdisk",
         "systemctl",
         "umount",
+        "xfs_admin",
     ]
 )
 
@@ -28,7 +31,8 @@ def test_known_binaries_reachable():
 
 @pytest.mark.live
 def test_no_unexpected_binaries():
-    assert fc.qemu.conftest.CALLED_BINARIES == KNOWN_BINARIES
+    # This needs to be last tu ensure we tracked all subprocess calls.
+    assert tests.conftest.CALLED_BINARIES == KNOWN_BINARIES
 
 
 @pytest.mark.unit
