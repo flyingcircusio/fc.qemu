@@ -6,7 +6,7 @@ Release notes
 
 - Fix guest agent revamp: 0xFF handling did not work as advertised. (PL-132809)
 
-- Implement automatic (root) volume migration between different RBD pool.s ()
+- Implement automatic (root) volume migration between different RBD pools (PL-131857)
 
 
 1.5.0 (2024-10-11)
