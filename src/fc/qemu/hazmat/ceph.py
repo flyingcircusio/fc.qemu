@@ -45,8 +45,6 @@ class VolumeSpecification:
     # Used for internal book-keeping, suffixing the rbd image name, and for
     # labels on partitions and/or file systems.
     suffix: str
-    desired_pool: str
-    desired_size: int
 
     current_pool: Optional[str]
 
@@ -61,9 +59,21 @@ class VolumeSpecification:
         self._log = ceph.log
         self.cmd = lambda cmdline, **args: cmd(cmdline, log=self.log, **args)
 
-        self.desired_pool = ceph.cfg["rbd_pool"]
+    @property
+    def desired_pool(self) -> str:
+        return self.ceph.cfg["rbd_pool"]
 
-        self.desired_size = ceph.cfg[f"{self.suffix}_size"]
+    @desired_pool.setter
+    def desired_pool(self, value: str):
+        self.ceph.cfg["rbd_pool"] = value
+
+    @property
+    def desired_size(self) -> int:
+        return self.ceph.cfg[f"{self.suffix}_size"]
+
+    @desired_size.setter
+    def desired_size(self, value: int):
+        self.ceph.cfg[f"{self.suffix}_size"] = value
 
     @property
     def log(self):
@@ -138,7 +148,8 @@ class RootSpec(VolumeSpecification):
             # the existing disk.
             # If there was a migration in progress, give it a chance to
             # commit. but do not start executing it as that seems to create
-            # exclusive-locking issues.
+            # exclusive-locking issues result in VMs stuck booting until
+            # the execution phase has finished.
             self.log.info(
                 "migrate-vm-root-disk",
                 action="postpone",
@@ -259,9 +270,7 @@ class TmpSpec(VolumeSpecification):
     def pre_start(self):
         for pool in self.exists_in_pools():
             if pool != self.desired_pool:
-                self.log.info(
-                    "delete-outdated-tmp", pool=pool, image=self.name
-                )
+                self.log.info("delete-outdated-tmp", pool=pool, image=self.name)
                 self.ceph.remove_volume(self.name, pool)
 
     def start(self):

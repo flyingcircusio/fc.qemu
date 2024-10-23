@@ -252,8 +252,9 @@ def ceph_inst(ceph_mock):
         "tmp_size": 1024 * 1024,
         "swap_size": 1024 * 1024,
         "root_size": 1024 * 1024,
+        "binary_generation": 2,
     }
-    enc = {}
+    enc = {"parameters": {}}
     ceph = Ceph(cfg, enc)
     ceph.CREATE_VM = "echo {name}"
     ceph.MKFS_XFS = "-q -f -K"
