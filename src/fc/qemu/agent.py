@@ -1252,7 +1252,7 @@ class Agent(object):
 
         """
         frozen = False
-        has_exception = True
+        has_exception = False
         try:
             if self.qemu.is_running():
                 self.log.info("freeze", volume="root")
