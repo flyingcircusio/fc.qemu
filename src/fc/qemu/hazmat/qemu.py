@@ -407,8 +407,8 @@ class Qemu(object):
     def write_file(self, path, content: bytes):
         if not isinstance(content, bytes):
             raise TypeError("Expected bytes, got string.")
+        handle = self.guestagent.cmd("guest-file-open", path=path, mode="w")
         try:
-            handle = self.guestagent.cmd("guest-file-open", path=path, mode="w")
             self.guestagent.cmd(
                 "guest-file-write",
                 handle=handle,
@@ -416,9 +416,8 @@ class Qemu(object):
                 # JSON encoder doesn't handle bytes-like objects.
                 **{"buf-b64": encode(content, "base64").decode("ascii")},
             )
+        finally:
             self.guestagent.cmd("guest-file-close", handle=handle)
-        except ClientError:
-            self.log.error("guest-write-file", exc_info=True)
 
     def inmigrate(self):
         self._start([f"-incoming {self.migration_address}"])

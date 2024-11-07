@@ -5,7 +5,8 @@ We expect Ceph Python bindings to be present in the system site packages.
 
 import hashlib
 import json
-from typing import Dict, List, Optional
+import os
+from typing import Dict, Optional
 
 import rados
 import rbd
@@ -387,6 +388,7 @@ class Ceph(object):
         # without 'client.': qemu doesn't want to see this, whereas the
         # Rados binding does ... :/
         self.log.debug("connect-rados")
+        os.environ["CEPH_ARGS"] = f"--id {self.CEPH_CLIENT} -c {self.CEPH_CONF}"
         self.rados = rados.Rados(
             conffile=self.CEPH_CONF,
             name="client." + self.CEPH_CLIENT,

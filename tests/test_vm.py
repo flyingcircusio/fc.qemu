@@ -72,14 +72,14 @@ lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 ensure-size machine=simplevm subsystem=ceph volume_spec=swap
 start machine=simplevm subsystem=ceph volume_spec=swap
 start-swap machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.ssd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd args=map "rbd.ssd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 rbd> /dev/rbd0
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
 mkswap args=-f -L "swap" /dev/rbd/rbd.ssd/simplevm.swap machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 mkswap> Setting up swapspace version 1, size = 1024 MiB (1073737728 bytes)
 mkswap> LABEL=swap, UUID=...-...-...-...-...
 mkswap machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.ssd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd args=unmap "/dev/rbd/rbd.ssd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
 
 pre-start machine=simplevm subsystem=ceph volume_spec=tmp
@@ -88,7 +88,7 @@ lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 ensure-size machine=simplevm subsystem=ceph volume_spec=tmp
 start machine=simplevm subsystem=ceph volume_spec=tmp
 start-tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd args=map "rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 rbd> /dev/rbd0
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 create-fs machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -115,7 +115,7 @@ guest-properties machine=simplevm properties={'binary_generation': 2, 'rbd_pool'
 binary-generation generation=2 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount args="/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd args=unmap "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 generate-config machine=simplevm
 acquire-global-lock machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
@@ -169,7 +169,7 @@ fc-create-vm>
 fc-create-vm> Finished
 fc-create-vm> --------
 /nix/store/.../bin/fc-create-vm machine=simplevm returncode=0 subsystem=ceph volume=simplevm.root
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd args=map "rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd> /dev/rbd0
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.root
@@ -191,7 +191,7 @@ xfs_admin> Clearing log and setting UUID
 xfs_admin> writing all SBs
 xfs_admin> new UUID = ...-...-...-...-...
 xfs_admin machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd args=unmap "/dev/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 """
 

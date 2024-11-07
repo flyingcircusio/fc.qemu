@@ -4,6 +4,10 @@ Release notes
 1.7 (unreleased)
 ----------------
 
+- rbd: fix command line calls that only ran interactively due to missing
+  config file and client id settings. switch to environment variables
+  so they can't be forgotten when writing new rbd CLI calls.  (PL-133145)
+
 - snapshots: fix a race condition where a snapshot was created by
   impatient clients and we ended up not thawing correctly when
   creating the snapshot resulted in an ImageExists error. (PL-133149)

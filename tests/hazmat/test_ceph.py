@@ -112,14 +112,14 @@ lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
 ensure-size machine=simplevm subsystem=ceph volume_spec=swap
 start machine=simplevm subsystem=ceph volume_spec=swap
 start-swap machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.hdd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+rbd args=map "rbd.hdd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
 rbd>    /dev/rbd0
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.swap
 mkswap args=-f -L "swap" /dev/rbd/rbd.hdd/simplevm.swap machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
 mkswap> Setting up swapspace version 1, size = 50 MiB (52424704 bytes)
 mkswap> LABEL=swap, UUID=...-...-...-...-...
 mkswap machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.swap
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.hdd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+rbd args=unmap "/dev/rbd/rbd.hdd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.swap
 
 pre-start machine=simplevm subsystem=ceph volume_spec=tmp
@@ -129,7 +129,7 @@ lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 ensure-size machine=simplevm subsystem=ceph volume_spec=tmp
 start machine=simplevm subsystem=ceph volume_spec=tmp
 start-tmp machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" map "rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+rbd args=map "rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 rbd>    /dev/rbd0
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 create-fs machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
@@ -153,7 +153,7 @@ guest-properties machine=simplevm properties={'binary_generation': 2} subsystem=
 binary-generation generation=2 machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 umount args="/mnt/rbd/rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
-rbd args=-c "/etc/ceph/ceph.conf" --id "host1" unmap "/dev/rbd/rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+rbd args=unmap "/dev/rbd/rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root

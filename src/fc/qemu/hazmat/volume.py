@@ -57,10 +57,7 @@ class Image(object):
     def map(self):
         if self.device is not None:
             return
-        self.cmd(
-            f'rbd -c "{self.ceph.CEPH_CONF}" --id "{self.ceph.CEPH_CLIENT}" '
-            f'map "{self.fullname}"'
-        )
+        self.cmd(f'rbd map "{self.fullname}"')
         device = Path("/dev/rbd") / self.fullname
         while not device.exists():
             time.sleep(0.1)
@@ -69,10 +66,7 @@ class Image(object):
     def unmap(self):
         if self.device is None:
             return
-        self.cmd(
-            f'rbd -c "{self.ceph.CEPH_CONF}" --id "{self.ceph.CEPH_CLIENT}" '
-            f'unmap "{self.device}"'
-        )
+        self.cmd(f'rbd unmap "{self.device}"')
         self.device = None
 
     @contextlib.contextmanager
