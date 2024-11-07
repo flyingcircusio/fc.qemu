@@ -393,6 +393,15 @@ class Qemu(object):
                 raise RuntimeError("Unexpected thaw result: {}".format(result))
         except Exception:
             self.log.warning("guest-fsfreeze-thaw-failed", exc_info=True)
+            # Try a bit harder. Explicitly reconnecting causes a "blind",
+            # gratuitous thaw to be pushed to the agent.
+            self.log.warning("guest-fsfreeze-thaw-try-agent-reset")
+            self.guestagent.disconnect()
+            self.guestagent.connect()
+            # Reraise because we don't quite know whether this worked
+            # successfully or not. Even if the agent sync correctly i may
+            # have responsded with yet another error to the sync request,
+            # but that would be ignored during the gratuitous thaw.
             raise
 
     def write_file(self, path, content: bytes):

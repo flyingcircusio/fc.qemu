@@ -4,7 +4,9 @@ Release notes
 1.7 (unreleased)
 ----------------
 
-- Nothing changed yet.
+- snapshots: fix a race condition where a snapshot was created by
+  impatient clients and we ended up not thawing correctly when
+  creating the snapshot resulted in an ImageExists error. (PL-133149)
 
 
 1.6 (2024-10-23)

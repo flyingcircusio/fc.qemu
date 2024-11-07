@@ -1252,25 +1252,35 @@ class Agent(object):
 
         """
         frozen = False
-        if self.qemu.is_running():
-            self.log.info("freeze", volume="root")
-            try:
-                self.qemu.freeze()
-                frozen = True
-            except Exception as e:
-                self.log.error(
-                    "freeze-failed",
-                    reason=str(e),
-                    action="continue",
-                    machine=self.name,
-                )
-        yield frozen
-        # We're not doing this with a finally because if qemu.freeze failed
-        # initially then we can't reliably communicate with the agent and
-        # there are measures already in place to assist in the unreliable
-        # case in `freeze()`
-        if frozen and self.qemu.is_running():
-            self.ensure_thawed()
+        has_exception = True
+        try:
+            if self.qemu.is_running():
+                self.log.info("freeze", volume="root")
+                try:
+                    self.qemu.freeze()
+                    frozen = True
+                except Exception as e:
+                    self.log.error(
+                        "freeze-failed",
+                        reason=str(e),
+                        action="continue",
+                        machine=self.name,
+                    )
+            yield frozen
+        except Exception:
+            # requirement of the contextlib.contextmanager: otherwise
+            # the finally clause will trap the exception here and it
+            # will be missed on the outside
+            has_exception = True
+        finally:
+            if frozen:
+                # If we didn't freeze before then we can't be sure about
+                # reliability of communicating with the agent. There are
+                # other measures in place (e.g. during scrubbing) that will
+                # try to unfreeze later.
+                self.ensure_thawed()
+            if has_exception:
+                raise
 
     @locked()
     @running(True)
