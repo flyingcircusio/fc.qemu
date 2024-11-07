@@ -497,10 +497,10 @@ class Agent(object):
         # Monitor whether there are still VMs running.
         timeout = TimeOut(300, interval=3)
         while timeout.tick():
-            p = subprocess.Popen(
+            process = subprocess.Popen(
                 ["pgrep", "-f", "qemu-system-x86_64"], stdout=subprocess.PIPE
             )
-            p.wait()
+            process.wait()
             num_procs = len(p.stdout.read().splitlines())
             log.info(
                 "evacuation-running",
@@ -598,8 +598,8 @@ class Agent(object):
             # Isolate the stop call into separate fc-qemu
             # processes to ensure reliability.
             log.info("shutdown", vm=vm.name)
-            p = subprocess.Popen([EXECUTABLE, "stop", vm.name])
-            p.wait()
+            process = subprocess.Popen([EXECUTABLE, "stop", vm.name])
+            process.wait()
 
         pool = ThreadPool(5)
         for vm in vms:

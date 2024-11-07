@@ -75,7 +75,7 @@ class MultiOptimisticLogger(object):
 
     def __repr__(self):
         return "<MultiOptimisticLogger {}>".format(
-            [repr(l) for l in self.loggers]
+            [repr(logger) for logger in self.loggers]
         )
 
     def msg(self, **event_dict):

@@ -1,18 +1,22 @@
 exclude: ^secrets/|^appenv$
 repos:
 - hooks:
+  - id: detect-private-key
+  - id: check-added-large-files
   - exclude: "(?x)^(\n  secrets/|environments/.*/secret.*|\n  .*\\.patch\n)$\n"
     id: trailing-whitespace
   - exclude: "(?x)^(\n  environments/.*/secret.*|\n  .*\\.patch\n)$\n"
     id: end-of-file-fixer
-  - id: check-yaml
-  - id: check-added-large-files
-  - id: check-json
-  - id: check-xml
-  - id: check-toml
-  - id: detect-private-key
+  - exclude: "(?x)^(\n  environments/.*/secret.*|\n  .*\\.patch\n)$\n"
+    id: check-yaml
+  - exclude: "(?x)^(\n  environments/.*/secret.*|\n  .*\\.patch\n)$\n"
+    id: check-json
+  - exclude: "(?x)^(\n  environments/.*/secret.*|\n  .*\\.patch\n)$\n"
+    id: check-xml
+  - exclude: "(?x)^(\n  environments/.*/secret.*|\n  .*\\.patch\n)$\n"
+    id: check-toml
   repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v3.2.0
+  rev: v5.0.0
 - hooks:
   - args:
     - --profile
@@ -21,8 +25,17 @@ repos:
     id: isort
     name: isort (python)
   repo: https://github.com/pycqa/isort
-  rev: 5.12.0
+  rev: 5.13.2
 - hooks:
   - id: black
   repo: https://github.com/psf/black
-  rev: 22.3.0
+  rev: 24.10.0
+- hooks:
+  - args:
+    - --ignore
+    - E501
+    - --ignore
+    - F401
+    id: ruff
+  repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.6.9

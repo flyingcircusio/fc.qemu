@@ -1,6 +1,5 @@
 """Global helper functions and utilites for fc.qemu."""
 
-
 import contextlib
 import datetime
 import os

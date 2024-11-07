@@ -201,7 +201,7 @@ rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=
 
     assert get_log() == first_ensure
 
-    while "status=executed" not in (log := get_log()):
+    while "status=executed" not in get_log():
         ceph_inst.status()
 
     ceph_inst.ensure()
