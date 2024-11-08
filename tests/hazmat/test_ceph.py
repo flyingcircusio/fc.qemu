@@ -53,7 +53,7 @@ def test_multiple_images_raises_error(ceph_inst):
 
 @pytest.mark.timeout(60)
 @pytest.mark.live()
-def test_rbd_pool_migration(ceph_inst, patterns):
+def test_rbd_pool_migration(ceph_inst, patterns) -> None:
     ceph_inst.cfg["tmp_size"] = 50 * 1024 * 1024
     ceph_inst.cfg["swap_size"] = 50 * 1024 * 1024
     ceph_inst.cfg["root_size"] = 50 * 1024 * 1024

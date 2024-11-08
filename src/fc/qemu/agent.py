@@ -442,7 +442,7 @@ class Agent(object):
             return f"<unknown due to error: {e}>"
 
     @classmethod
-    def maintenance_enter(cls):
+    def maintenance_enter(cls) -> None:
         """Prepare the host for maintenance mode.
 
         process exit codes signal success or (temporary) failure
@@ -501,7 +501,8 @@ class Agent(object):
                 ["pgrep", "-f", "qemu-system-x86_64"], stdout=subprocess.PIPE
             )
             process.wait()
-            num_procs = len(p.stdout.read().splitlines())
+            assert process.stdout is not None
+            num_procs = len(process.stdout.read().splitlines())
             log.info(
                 "evacuation-running",
                 vms=num_procs,
@@ -552,7 +553,7 @@ class Agent(object):
             )
 
     @classmethod
-    def shutdown_all(cls):
+    def shutdown_all(cls) -> None:
         """Shut down all VMs cleanly.
 
         Runs the shutdowns in parallel to speed up host reboots.

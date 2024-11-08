@@ -73,7 +73,7 @@ class MultiOptimisticLogger(object):
     def __init__(self, loggers):
         self.loggers = loggers
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "<MultiOptimisticLogger {}>".format(
             [repr(logger) for logger in self.loggers]
         )
