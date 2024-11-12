@@ -234,7 +234,10 @@ class Volume(Image):
         return self.rbdimage.size()
 
     def ensure_size(self, size):
-        if self.size == size:
+        # The existing size must be considered as a minimum, because we can't
+        # just reduce images that already exist and are bigger and expect them
+        # to work properly.
+        if self.size >= size:
             return
         self.rbdimage.resize(size)
 

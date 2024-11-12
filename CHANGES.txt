@@ -12,6 +12,9 @@ Release notes
   impatient clients and we ended up not thawing correctly when
   creating the snapshot resulted in an ImageExists error. (PL-133149)
 
+- rbd: fix disk downsizing that causes potential data loss
+  when inventory data and real data mismatch and may shrink root images
+  accidentally. (PL-133166)
 
 1.6 (2024-10-23)
 ----------------

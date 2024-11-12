@@ -94,6 +94,9 @@ def test_volume_size(tmp_spec):
     # Call ensure multiple times to help triggering caching code paths.
     volume.ensure_size(2048)
     assert volume.size == 2048
+    # Trying to reduce the size doesn't make a change
+    volume.ensure_size(1024)
+    assert volume.size == 2048
 
 
 def test_volume_shared_lock_protection(tmp_spec):

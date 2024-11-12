@@ -638,6 +638,17 @@ check-disk-size action=none found=6442450944 machine=simplevm wanted=6442450944
 
     assert get_log() == resize_noop
 
+    # Decreasing the desired disk size does not trigger a change.
+    vm.cfg["root_size"] = 6442450944 - 1
+    vm.ensure_online_disk_size()
+    resize_noop2 = patterns.resize_noop2
+    resize_noop2.in_order(
+        """
+check-disk-size action=none found=6442450944 machine=simplevm wanted=6442450943
+"""
+    )
+    assert get_log() == resize_noop2
+
 
 def test_swap_size():
     assert swap_size(512) == 1024 * MiB
