@@ -89,8 +89,11 @@ class VolumeSpecification:
     def exists_in_pools(self):
         result = []
         for pool, ioctx in self.ceph.ioctxs.items():
-            if self.name in self.ceph.rbd.list(ioctx):
-                result.append(pool)
+            try:
+                rbd.Image(ioctx, self.name)
+            except rbd.ImageNotFound:
+                continue
+            result.append(pool)
         return result
 
     def exists_in_pool(self):

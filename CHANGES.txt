@@ -16,6 +16,8 @@ Release notes
   when inventory data and real data mismatch and may shrink root images
   accidentally. (PL-133166)
 
+- rbd: fix cluster load issue due to overuse of rbd.list (PL-133194)
+
 1.6 (2024-10-23)
 ----------------
 
