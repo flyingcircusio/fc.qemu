@@ -453,7 +453,11 @@ class Ceph(object):
 
     def ensure_volume_presence(self, name, pool, size):
         for ioctx in self.ioctxs.values():
-            if name in self.rbd.list(ioctx):
+            try:
+                rbd.Image(ioctx, name)
+            except rbd.ImageNotFound:
+                continue
+            else:
                 return
         self.rbd.create(self.ioctxs[pool], name, size)
 
