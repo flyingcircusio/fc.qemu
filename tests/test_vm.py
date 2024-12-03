@@ -1555,7 +1555,7 @@ fc-create-vm>\t
 fc-create-vm>\t> stderr:
 fc-create-vm>\trbd: error opening image does-not-exist: (2) No such file or directory
 ...
-fc-create-vm>\tsubprocess.CalledProcessError: Command '('rbd', '--format', 'json', '--id', 'host1', 'snap', 'ls', 'rbd.hdd/does-not-exist')' returned non-zero exit status 2.
+fc-create-vm>\tsubprocess.CalledProcessError: Command ...'rbd', '--format', 'json', '--id', 'host1', 'snap', 'ls', 'rbd.hdd/does-not-exist'... returned non-zero exit status 2.
 ...
 """
         )
