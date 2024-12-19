@@ -3,11 +3,10 @@ import copy
 import datetime
 import distutils.spawn
 import fcntl
-import glob
+import importlib.resources
 import json
 import math
 import os
-import os.path as p
 import shutil
 import socket
 import subprocess
@@ -21,7 +20,6 @@ from pathlib import Path
 import colorama
 import consulate
 import consulate.models.agent
-import pkg_resources
 import requests
 import yaml
 
@@ -272,9 +270,9 @@ class Agent(object):
     timeout_graceful = 10
 
     system_config_template = Path("etc/qemu/qemu.vm.cfg.in")
-    builtin_config_template = Path(
-        pkg_resources.resource_filename(__name__, "qemu.vm.cfg.in")
-    )
+    # XXX the importlib schema requiring a context manager
+    # is not helpful here.
+    builtin_config_template = Path(__file__).parent / "qemu.vm.cfg.in"
     consul_token = None
     consul_generation = -1
 

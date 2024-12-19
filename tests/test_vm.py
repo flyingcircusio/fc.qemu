@@ -96,8 +96,6 @@ sgdisk args=-o "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph v
 sgdisk> The operation has completed successfully.
 sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 sgdisk args=-a 8192 -n 1:8192:0 -c "1:tmp" -t 1:8300 "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-sgdisk> Setting name!
-sgdisk> partNum is 0
 sgdisk> The operation has completed successfully.
 sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -151,6 +149,8 @@ release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
 sgdisk> Creating new GPT entries in memory.
 rbd> /dev/rbd0
 waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/simplevm.tmp
+sgdisk> Setting name!
+sgdisk> partNum is 0
 """
     )
 
@@ -163,7 +163,7 @@ fc-create-vm> ----------------------------
 fc-create-vm> $ rbd --format json --id host1 snap ls rbd.hdd/fc-21.05-dev
 fc-create-vm> Snapshots:
 fc-create-vm> snapid name size
-fc-create-vm> 4 v1 104857600
+fc-create-vm> 4 v1 524288000
 fc-create-vm> $ rbd --id host1 clone rbd.hdd/fc-21.05-dev@v1 rbd.ssd/simplevm.root
 fc-create-vm>
 fc-create-vm> Finished
@@ -375,7 +375,10 @@ rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simpl
     )
 
 
-@pytest.mark.timeout(60)
+# This test is really slow and it appears that a lot of time is due to
+# locking/unlocking (or rather: breaking locks) in Ceph taking around 5
+# seconds each time ...
+@pytest.mark.timeout(90)
 @pytest.mark.live
 def test_crashed_vm_clean_restart(vm):
     util.test_log_options["show_events"] = [
@@ -386,6 +389,7 @@ def test_crashed_vm_clean_restart(vm):
         "shutdown",
     ]
 
+    util.test_log_print("=== Running status() ===")
     vm.status()
 
     assert get_log() == Ellipsis(
@@ -396,7 +400,9 @@ rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simpl
 rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
+    util.test_log_print("=== Running ensure() ... ===")
     vm.ensure()
+    util.test_log_print("=== Running status() ===")
     vm.status()
     assert get_log() == Ellipsis(
         """\
@@ -412,11 +418,13 @@ rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=
 rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
+    util.test_log_print("=== Killing the qemu process ===")
     p = vm.qemu.proc()
     p.kill()
     p.wait(2)
     get_log()
 
+    util.test_log_print("=== Running status() ===")
     vm.status()
     assert get_log() == Ellipsis(
         """\
@@ -426,8 +434,10 @@ rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=
 rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
+    util.test_log_print("=== Running ensure() ===")
     vm.ensure()
 
+    util.test_log_print("=== Running status() ===")
     vm.status()
     assert get_log() == Ellipsis(
         """\
@@ -452,7 +462,9 @@ rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=
         "clean",
         "rbd-status",
     ]
+    util.test_log_print("=== Running stop() ===")
     vm.stop()
+    util.test_log_print("=== Running status() ===")
     vm.status()
     assert get_log() == Ellipsis(
         """\

@@ -159,7 +159,7 @@ def test_volume_mkswap(ceph_inst):
 
 @pytest.mark.timeout(60)
 def test_volume_tmp_mkfs(tmp_spec):
-    tmp_spec.desired_size = 100 * 1024 * 1024
+    tmp_spec.desired_size = 400 * 1024 * 1024
     tmp_spec.ensure_presence()
     with tmp_spec.volume.mapped():
         tmp_spec.mkfs()
@@ -205,7 +205,7 @@ def test_mount_should_fail_if_not_mapped(tmp_spec):
 @pytest.mark.timeout(60)
 @pytest.mark.live()
 def test_mount_snapshot(tmp_spec):
-    tmp_spec.desired_size = 100 * 1024 * 1024
+    tmp_spec.desired_size = 500 * 1024 * 1024
     tmp_spec.ensure_presence()
     volume = tmp_spec.volume
     with volume.mapped():

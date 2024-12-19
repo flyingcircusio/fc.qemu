@@ -28,7 +28,7 @@ setup(
     namespace_packages=["fc"],
     install_requires=[
         "colorama",  # ==0.3.3',
-        "abaez.consulate==1.1.0",
+        "consulate >= 1.1.0",
         "psutil",  # ==5.4.2',
         "PyYaml>=5.3.1",
         "requests",  # ==2.11.1',

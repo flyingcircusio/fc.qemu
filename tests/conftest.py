@@ -5,8 +5,8 @@ import sys
 import time
 import traceback
 from pathlib import Path
+from subprocess import getoutput
 
-import pkg_resources
 import pytest
 import structlog
 
@@ -66,7 +66,8 @@ def setup_structlog():
                 result += fc.qemu.logging.prefix(event_prefix, output)
 
         # Ensure we get something to read on stdout in case we have errors.
-        print(result)
+        reltime = time.time() - util.test_log_start
+        print(f"{reltime:08.4f} {result}")
         if stack:
             print(stack)
         if exc:
@@ -95,6 +96,18 @@ def setup_structlog():
                 util.log_data.extend(exc.splitlines())
         raise structlog.DropEvent
 
+    def test_log_print(*args):
+        """A helper for tests to insert output into the stdout log.
+
+        This adds the same timestamps as the default output for the
+        log and avoids this to become part of the output content that
+        we run assertions on.
+        """
+        reltime = time.time() - util.test_log_start
+        print(f"{reltime:08.4f}", *args)
+
+    util.test_log_print = test_log_print
+
     structlog.configure(
         processors=(
             ([structlog.processors.format_exc_info] if log_exceptions else [])
@@ -108,6 +121,7 @@ def reset_structlog(setup_structlog):
     from fc.qemu import util
 
     util.log_data = []
+    util.test_log_start = time.time()
     util.test_log_options = {"show_methods": [], "show_events": []}
 
 
@@ -173,37 +187,15 @@ def clean_environment():
 
     yield
     clean()
-
     print(
-        subprocess.check_output(
-            "free && sync && echo 3 > /proc/sys/vm/drop_caches && free",
-            shell=True,
-        ).decode("ascii")
+        getoutput("free && sync && echo 3 > /proc/sys/vm/drop_caches && free")
     )
-    print(
-        subprocess.check_output(
-            "ceph df",
-            shell=True,
-        ).decode("ascii")
-    )
-    print(
-        subprocess.check_output(
-            "ps auxf",
-            shell=True,
-        ).decode("ascii")
-    )
-    print(
-        subprocess.check_output(
-            "df -h",
-            shell=True,
-        ).decode("ascii")
-    )
-    print(
-        subprocess.check_output(
-            "rbd showmapped",
-            shell=True,
-        ).decode("ascii")
-    )
+    print(getoutput("ceph df"))
+    print(getoutput("ps auxf"))
+    print(getoutput("df -h"))
+    print(getoutput("rbd showmapped"))
+    print(getoutput("journalctl --since -30s"))
+    print(getoutput("tail -n 50 /var/log/vm/*"))
 
 
 @pytest.fixture(autouse=True)
@@ -224,8 +216,8 @@ def vm(clean_environment, monkeypatch, tmpdir):
     import fc.qemu.hazmat.qemu
 
     monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "guestagent_timeout", 0.1)
-    fixtures = pkg_resources.resource_filename(__name__, "fixtures")
-    shutil.copy(fixtures + "/simplevm.yaml", "/etc/qemu/vm/simplevm.cfg")
+    simplevm_cfg = Path(__file__).parent / "fixtures" / "simplevm.yaml"
+    shutil.copy(simplevm_cfg, "/etc/qemu/vm/simplevm.cfg")
     Path("/etc/qemu/vm/.simplevm.cfg.staging").unlink(missing_ok=True)
 
     vm = Agent("simplevm")

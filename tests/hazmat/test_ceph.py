@@ -54,7 +54,7 @@ def test_multiple_images_raises_error(ceph_inst):
 @pytest.mark.timeout(60)
 @pytest.mark.live()
 def test_rbd_pool_migration(ceph_inst, patterns) -> None:
-    ceph_inst.cfg["tmp_size"] = 50 * 1024 * 1024
+    ceph_inst.cfg["tmp_size"] = 500 * 1024 * 1024
     ceph_inst.cfg["swap_size"] = 50 * 1024 * 1024
     ceph_inst.cfg["root_size"] = 50 * 1024 * 1024
     rbd.RBD().create(
@@ -83,6 +83,9 @@ def test_rbd_pool_migration(ceph_inst, patterns) -> None:
     first_start.optional(
         """
 waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.hdd/simplevm.tmp
+sgdisk> Setting name!
+sgdisk> partNum is 0
+mkfs.xfs>       mkfs.xfs: small data volume, ignoring data volume stripe unit 128 and stripe width 128
 """
     )
     first_start.in_order(
@@ -138,8 +141,6 @@ sgdisk> Creating new GPT entries in memory.
 sgdisk> The operation has completed successfully.
 sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 sgdisk args=-a 8192 -n 1:8192:0 -c "1:tmp" -t 1:8300 "/dev/rbd/rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
-sgdisk> Setting name!
-sgdisk> partNum is 0
 sgdisk> The operation has completed successfully.
 sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 partprobe args=/dev/rbd/rbd.hdd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp

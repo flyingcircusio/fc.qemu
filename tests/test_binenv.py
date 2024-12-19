@@ -38,3 +38,4 @@ def test_no_unexpected_binaries():
 @pytest.mark.unit
 def test_ensure_critical_module_imports():
     import rados  # noqa
+    import structlog  # noqa
