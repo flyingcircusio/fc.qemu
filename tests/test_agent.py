@@ -1,9 +1,7 @@
-import os
 import shutil
 from pathlib import Path
 
 import mock
-import pkg_resources
 import psutil
 import pytest
 
@@ -14,7 +12,7 @@ from fc.qemu.hazmat.qemu import Qemu, detect_current_machine_type
 
 @pytest.fixture
 def simplevm_cfg(monkeypatch):
-    fixtures = Path(pkg_resources.resource_filename(__name__, "fixtures"))
+    fixtures = Path(__file__).parent / "fixtures"
     source = fixtures / "simplevm.yaml"
     # The Qemu prefix gets adjusted automatically in the synhetic_root
     # auto-use fixture that checks whether this is a live test or not.

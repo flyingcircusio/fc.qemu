@@ -6,7 +6,6 @@ import time
 import traceback
 from pathlib import Path
 
-import pkg_resources
 import pytest
 import structlog
 
@@ -224,8 +223,8 @@ def vm(clean_environment, monkeypatch, tmpdir):
     import fc.qemu.hazmat.qemu
 
     monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "guestagent_timeout", 0.1)
-    fixtures = pkg_resources.resource_filename(__name__, "fixtures")
-    shutil.copy(fixtures + "/simplevm.yaml", "/etc/qemu/vm/simplevm.cfg")
+    simplevm_cfg = Path(__file__).parent / "fixtures" / "simplevm.yaml"
+    shutil.copy(simplevm_cfg, "/etc/qemu/vm/simplevm.cfg")
     Path("/etc/qemu/vm/.simplevm.cfg.staging").unlink(missing_ok=True)
 
     vm = Agent("simplevm")
