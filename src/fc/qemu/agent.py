@@ -3,7 +3,6 @@ import copy
 import datetime
 import distutils.spawn
 import fcntl
-import importlib.resources
 import json
 import math
 import os

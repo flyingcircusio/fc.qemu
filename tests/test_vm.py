@@ -682,7 +682,7 @@ def test_tmp_size():
 @pytest.fixture
 def kill_vms():
     def _kill_vms():
-        subprocess.call("pkill -f qemu", shell=True)
+        subprocess.call("pkill -A -f qemu", shell=True)
         subprocess.call(
             "ssh -oStrictHostKeyChecking=no -i/etc/ssh_key host2 'pkill -f qemu'",
             shell=True,
@@ -736,9 +736,6 @@ simplevm     qemu/qmp query-migrate-parameters       arguments={} id=None
 simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
 
 simplevm     qemu/qmp query-migrate                  arguments={} id=None
-simplevm              migration-status               mbps='-' remaining='0' status='setup'
-
-simplevm     qemu/qmp query-migrate                  arguments={} id=None
 simplevm              migration-status               mbps=... remaining='...' status='active'
 
 simplevm              migration-status               mbps=... remaining='...' status='completed'
@@ -766,6 +763,7 @@ simplevm              waiting                        interval=3 remaining=...
 simplevm              check-staging-config           result='none'
 simplevm     qemu/qmp query-migrate                  arguments={} id=None
 simplevm              migration-status               mbps=... remaining='...' status='active'
+simplevm              migration-status               mbps='-' remaining='0' status='setup'
 simplevm         qemu vm-destroy-kill-vm             attempt=...    """
     )
     # Expect debug output that doesn't matter as much
@@ -1345,7 +1343,7 @@ simplevm              release-lock                   result='unlocked' target='/
 @pytest.mark.live
 @pytest.mark.timeout(300)
 def test_vm_migration(vm, kill_vms, outmigrate_pattern, patterns):
-    def call(cmd, wait=True, host=None):
+    def call(cmd, wait=True, host=None, fail_on_exit_code=True):
         for ssh_cmd in ["scp", "ssh"]:
             if not cmd.startswith(ssh_cmd):
                 continue
@@ -1364,8 +1362,10 @@ def test_vm_migration(vm, kill_vms, outmigrate_pattern, patterns):
             errors="replace",
         )
         if wait:
-            stdout, _ = p.communicate()
+            stdout, stderr = p.communicate()
             print(stdout)
+            if fail_on_exit_code and (code := p.wait()):
+                raise RuntimeError(cmd, code, stderr, stdout)
             return clean_output(stdout)
         return p
 
@@ -1465,7 +1465,7 @@ simplevm              guest-disconnect
     # and I've seen the test be unreliable.
     time.sleep(6)
 
-    local_status = call("fc-qemu status simplevm")
+    local_status = call("fc-qemu status simplevm", fail_on_exit_code=False)
     assert local_status == Ellipsis(
         """\
 simplevm              vm-status                      result='offline'
