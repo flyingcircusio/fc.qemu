@@ -4,12 +4,17 @@ We expect Ceph Python bindings to be present in the system site packages.
 """
 
 import hashlib
+import ipaddress
 import json
 import os
+from pathlib import Path
 from typing import Dict, Optional
 
 import rados
 import rbd
+import yaml
+
+from fc.qemu.util import generate_cloudinit_ssh_keyfile
 
 from ..sysconfig import sysconfig
 from ..timeout import TimeoutError
@@ -333,6 +338,132 @@ class TmpSpec(VolumeSpecification):
                 f.write(str(generation) + "\n")
 
 
+class CloudInitSpec(VolumeSpecification):
+    suffix = "cidata"
+
+    def pre_start(self):
+        for pool in self.exists_in_pools():
+            if pool != self.desired_pool:
+                self.log.info(
+                    "delete-outdated-cloud-init", pool=pool, image=self.name
+                )
+                self.ceph.remove_volume(self.name, pool)
+
+    def start(self):
+        self.log.info("start-cloud-init")
+        with self.volume.mapped():
+            self.mkfs()
+            self.seed(self.ceph.enc)
+
+    def mkfs(self):
+        self.log.debug("create-fs")
+        device = self.volume.device
+        assert device, f"volume must be mapped first: {device}"
+        self.cmd(f'sgdisk -o "{device}"')
+        self.cmd(f'sgdisk -n 1:: -c "1:{self.suffix}" ' f'-t 1:8300 "{device}"')
+        self.cmd(f"partprobe {device}")
+        self.volume.wait_for_part1dev()
+        options = getattr(self.ceph, "MKFS_VFAT")
+        self.cmd(
+            f'mkfs.vfat {options} -n "{self.suffix}" {self.volume.part1dev}'
+        )
+
+    def seed(self, enc):
+        self.log.info("seed")
+        if enc["parameters"]["environment_class_type"] != "cloudinit":
+            return
+        managed_files = [
+            {
+                "path": "/etc/ssh/sshd_config.d/10-cloud-init-fc.conf",
+                "content": "AuthorizedKeysFile .ssh/authorized_keys .ssh/authorized_keys_fc\n",
+                "permissions": "0644",
+            }
+        ]
+
+        # Improve factoring
+        try:
+            with Path(
+                f"/etc/qemu/users/{self.ceph.cfg['resource_group']}.json"
+            ).open() as f:
+                users = json.load(f)
+                ssh_authorized_keys_content = generate_cloudinit_ssh_keyfile(
+                    users, self.ceph.cfg["resource_group"]
+                )
+                managed_files.append(
+                    {
+                        "path": "/root/.ssh/authorized_keys_fc",
+                        "content": ssh_authorized_keys_content,
+                        "permissions": "0600",
+                    }
+                )
+        except IOError:
+            self.log.error("users-file-not-existing")
+
+        with self.volume.mounted() as target:
+            metadata = target / "meta-data"
+            metadata.touch()
+            with metadata.open("w") as f:
+                yaml.safe_dump({"instance-id": enc["name"]}, f)
+            userdata = target / "user-data"
+            userdata.touch()
+            with userdata.open("w") as f:
+                f.write("#cloud-config\n")
+                yaml.safe_dump(
+                    {
+                        "allow_public_ssh_keys": True,
+                        "ssh_pwauth": False,
+                        "disable_root": False,
+                        "package_update": True,
+                        "packages": ["qemu-guest-agent"],
+                        "hostname": enc["name"],
+                        # don't create ubuntu user, but only root
+                        "users": [{"name": "root"}],
+                        "write_files": managed_files,
+                        "runcmd": [
+                            "systemctl enable --now qemu-guest-agent",
+                            "systemctl restart ssh",
+                        ],
+                    },
+                    f,
+                )
+            networkconfig_path = target / "network-config"
+            networkconfig_path.touch()
+            networkconfig = {"version": 1, "config": []}
+            for ifacename, ifaceconfig in enc["parameters"][
+                "interfaces"
+            ].items():
+                cfg = {
+                    "type": "physical",
+                    "name": "eth" + ifacename,
+                    "mac_address": ifaceconfig["mac"],
+                    "accept-ra": False,
+                    "subnets": [],
+                }
+                for net, netconfig in ifaceconfig["networks"].items():
+                    if not netconfig:
+                        continue
+                    ip_network = ipaddress.ip_network(net)
+                    gateway = ifaceconfig["gateways"][net]
+                    if ip_network.version == 4:
+                        type_ = "static"
+                        nameservers = ["9.9.9.9", "8.8.8.8"]
+                    else:
+                        type_ = "static6"
+                        nameservers = ["2620:fe::fe", "2001:4860:4860::8888"]
+                    for address in netconfig:
+                        cfg["subnets"].append(
+                            {
+                                "type": type_,
+                                "address": f"{address}/{ip_network.prefixlen}",
+                                "gateway": gateway,
+                                "dns_nameservers": nameservers,
+                            }
+                        )
+                networkconfig["config"].append(cfg)
+            with networkconfig_path.open("w") as f:
+                yaml.safe_dump(networkconfig, f)
+
+
 class SwapSpec(VolumeSpecification):
     suffix = "swap"
 
@@ -407,6 +538,7 @@ class Ceph(object):
         RootSpec(self)
         SwapSpec(self)
         TmpSpec(self)
+        CloudInitSpec(self)
         for spec in self.specs.values():
             self.get_volume(spec)
 

@@ -176,3 +176,20 @@ def parse_export_format(data: str) -> Dict[str, str]:
         v = v.strip("'\"")
         result[k] = v
     return result
+
+
+def generate_cloudinit_ssh_keyfile(
+    users: List[Dict], resource_group: str
+) -> str:
+
+    authorized_ssh_keys = [
+        u["ssh_pubkey"]
+        for u in users
+        if set(u["permissions"][resource_group]) & set(["sudo-srv", "manager"])
+    ]
+    flattened_ssh_keys = sum(authorized_ssh_keys, [])
+    return (
+        "### managed by Flying Circus - do not edit! ###\n"
+        + "\n".join(flattened_ssh_keys)
+        + "\n"
+    )
