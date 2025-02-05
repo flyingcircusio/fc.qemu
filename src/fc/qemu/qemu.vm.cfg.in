@@ -40,6 +40,15 @@
   aio = "threads"
   cache = "none"
 
+[drive]
+  index = "3"
+  media = "disk"
+  if = "virtio"
+  format = "rbd"
+  file = "rbd:{ceph.volumes[cidata].fullname}:id={{ceph_id}}"
+  aio = "threads"
+  cache = "none"
+
 [device]
   driver = "virtio-rng-pci"
 

@@ -85,6 +85,7 @@ class SysConfig(object):
         self.ceph["CEPH_LOCK_HOST"] = self.cp.get("ceph", "lock_host")
         self.ceph["CREATE_VM"] = self.cp.get("ceph", "create-vm")
         self.ceph["MKFS_XFS"] = self.cp.get("ceph", "mkfs-xfs")
+        self.ceph["MKFS_VFAT"] = self.cp.get("ceph", "mkfs-vfat")
 
 
 sysconfig = SysConfig()

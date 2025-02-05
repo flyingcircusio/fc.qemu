@@ -330,6 +330,14 @@ class Agent(object):
     def lock_file(self):
         return self.prefix / "run" / f"qemu.{self.name}.lock"
 
+    @property
+    def users_file(self):
+        return (
+            self.prefix
+            / "etc/qemu/users"
+            / f"{self.cfg['resource_group']}.json"
+        )
+
     def _load_enc(self):
         try:
             with self.config_file.open() as f:
@@ -345,6 +353,10 @@ class Agent(object):
                 raise VMConfigNotFound(
                     "Could not load {}".format(self.config_file)
                 )
+
+    def _load_users(self):
+        with self.users_file.open() as f:
+            return json.load(f)
 
     @classmethod
     def handle_consul_event(cls, input: typing.TextIO = sys.stdin):
@@ -899,6 +911,7 @@ class Agent(object):
         self.cfg["root_size"] = self.cfg["disk"] * (1024**3)
         self.cfg["swap_size"] = swap_size(self.cfg["memory"])
         self.cfg["tmp_size"] = tmp_size(self.cfg["disk"])
+        self.cfg["cidata_size"] = 10 * MiB
         self.cfg["ceph_id"] = self.ceph_id
         self.cfg["cpu_model"] = self.cfg.get("cpu_model", "qemu64")
         self.cfg["binary_generation"] = self.binary_generation
@@ -1091,6 +1104,7 @@ class Agent(object):
             self.ensure_thawed()
             self.mark_qemu_binary_generation()
             self.mark_qemu_guest_properties()
+            self.update_root_ssh_keys_cloudinit()
 
     def cleanup(self):
         """Removes various run and tmp files."""
@@ -1134,6 +1148,23 @@ class Agent(object):
             )
         except Exception as e:
             self.log.error("mark-qemu-binary-generation", reason=str(e))
+
+    def update_root_ssh_keys_cloudinit(self):
+        # TODO: use environment_class_type != 'cloudinit'
+        if self.cfg["environment_class"].lower() != "ubuntu":
+            return
+        self.log.info("update-root-ssh-keys-cloudinit")
+        try:
+            users = self._load_users()
+            to_write_text = util.generate_cloudinit_ssh_keyfile(
+                users, self.cfg["resource_group"]
+            )
+            self.qemu.write_file(
+                "/root/.ssh/authorized_keys_fc",
+                to_write_text.encode("utf-8"),
+            )
+        except Exception as e:
+            self.log.error("update-root-ssh-keys-cloudinit", reason=str(e))
 
     def ensure_online_disk_size(self):
         """Trigger block resize action for the root disk."""
