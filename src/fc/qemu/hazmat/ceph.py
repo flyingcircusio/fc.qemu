@@ -263,7 +263,7 @@ class RootSpec(VolumeSpecification):
                 # Mount once to ensure a clean log.
                 pass
             self.log.info("regenerate-xfs-uuid", device=partition)
-            self.cmd(f"xfs_admin -U generate {partition}")
+            self.cmd(f"xfs_db -x -c 'uuid generate' {partition}")
 
 
 class TmpSpec(VolumeSpecification):
