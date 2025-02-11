@@ -221,11 +221,11 @@ mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 umount args="/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 regenerate-xfs-uuid device=/dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-xfs_admin args=-U generate /dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-xfs_admin> Clearing log and setting UUID
-xfs_admin> writing all SBs
-xfs_admin> new UUID = ...-...-...-...-...
-xfs_admin machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+xfs_db args=-x -c 'uuid generate' /dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+xfs_db> Clearing log and setting UUID
+xfs_db> writing all SBs
+xfs_db> new UUID = ...-...-...-...-...
+xfs_db machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd args=unmap "/dev/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 """

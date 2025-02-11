@@ -20,6 +20,7 @@ REQUIRED_BINARIES = set(
         "systemctl",
         "umount",
         "xfs_admin",
+        "xfs_db",
         "parted",
     ]
 )
