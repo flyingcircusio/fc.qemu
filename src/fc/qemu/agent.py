@@ -1426,9 +1426,17 @@ class Agent(object):
             # locked by me, so it doesn't make sense to live migrate the VM.
             return None
 
-        # The VM seems to be locked somewhere else, try to migrate it from
-        # there.
-        return self.ceph.locked_by()
+        if locked_by := self.ceph.locked_by():
+            # The VM seems to be locked somewhere else, try to migrate it from
+            # there.
+            self.log.debug(
+                "require_inmigrate",
+                cause="foreign-ceph-lock",
+                address=locked_by,
+            )
+            return locked_by
+
+        return None
 
     @locked()
     @running(False)
