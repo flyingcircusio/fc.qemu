@@ -503,6 +503,7 @@ class Ceph(object):
 
     def locked_by_me(self):
         """Returns True if CEPH_LOCK_HOST holds locks for all volumes."""
+        assert self.opened_volumes
         try:
             return all(
                 v.lock_status()[1] == self.CEPH_LOCK_HOST
