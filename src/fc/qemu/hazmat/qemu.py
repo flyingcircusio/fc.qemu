@@ -608,11 +608,27 @@ class Qemu(object):
                     except psutil.NoSuchProcess:
                         break
 
+        # Graceful destruction: ask qemu via qmp to stop
+        self.log.debug("vm-destroy-vm-via-qmp")
+        try:
+            self.qmp.command("quit")
+        except Exception:
+            # QMP doesn't promise to respond if the process actually quits.
+            pass
+
+        timeout = TimeOut(15, interval=1, raise_on_timeout=False)
+        while p.is_running() and timeout.tick():
+            pass
+
+        if not p.is_running():
+            return
+
+        # Be more forceful: use a SIGTERM
         timeout = TimeOut(100, interval=2, raise_on_timeout=True)
         attempt = 0
         while p.is_running() and timeout.tick():
             attempt += 1
-            self.log.debug("vm-destroy-kill-vm", attempt=attempt)
+            self.log.debug("vm-destroy-vm-via-sigterm", attempt=attempt)
             try:
                 p.terminate()
             except psutil.NoSuchProcess:
