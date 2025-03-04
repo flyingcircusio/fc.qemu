@@ -15,6 +15,7 @@ import typing
 from codecs import decode
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
+from typing import Optional
 
 import colorama
 import consulate
@@ -1311,11 +1312,15 @@ class Agent(object):
     # Alternatively we'd had to connect/disconnect and do weird things
     # for every single command ...
     @locked()
-    def status(self):
-        """Determine status of the VM."""
+    def status(self) -> int:
+        """Determine status of the VM.
+
+        Return value is a process exit code (0 = online, 1 = offline, 255 = error)
+        """
+        exit_code = 255
         try:
             if self.qemu.is_running():
-                status = 0
+                exit_code = 0
                 self.log.info("vm-status", result="online")
                 for device in list(self.qemu.block_info().values()):
                     self.log.info(
@@ -1324,7 +1329,7 @@ class Agent(object):
                         iops=device["inserted"]["iops"],
                     )
             else:
-                status = 1
+                exit_code = 1
                 self.log.info("vm-status", result="offline")
         except VMStateInconsistent:
             self.log.exception("vm-status", result="inconsistent")
@@ -1337,12 +1342,13 @@ class Agent(object):
         else:
             self.log.info("consul", service="<not registered>")
 
-        return status
+        return exit_code
 
     def telnet(self):
         """Open telnet connection to the VM monitor."""
         self.log.info("connect-via-telnet")
         telnet = distutils.spawn.find_executable("telnet")
+        assert telnet is not None
         os.execv(telnet, ("telnet", "localhost", str(self.qemu.monitor_port)))
 
     @locked()
@@ -1389,7 +1395,7 @@ class Agent(object):
         else:
             self.log.warning("kill-vm-failed", note="Check lock consistency.")
 
-    def _requires_inmigrate_from(self):
+    def _requires_inmigrate_from(self) -> Optional[str]:
         """Check whether an inmigration makes sense.
 
         This makes sense if the VM isn't running locally and (Consul knows
@@ -1403,6 +1409,11 @@ class Agent(object):
 
         if existing and existing["Address"] != self.this_host:
             # Consul knows about a running VM. Lets try a migration.
+            self.log.debug(
+                "require_inmigrate",
+                cause="consul-service",
+                address=existing["Address"],
+            )
             return existing["Address"]
 
         if self.ceph.is_unlocked():

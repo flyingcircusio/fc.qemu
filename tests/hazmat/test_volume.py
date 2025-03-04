@@ -116,12 +116,12 @@ def test_volume_locking(tmp_spec):
     volume = tmp_spec.volume
     assert volume.lock_status() is None
     volume.lock()
-    assert volume.lock_status()[1] == socket.gethostname()
+    assert volume.lock_status()[1] == "host1"
     # We want to smoothen out that some other process has locked the same image
     # for the same tag already and assume that this is another incarnation of
     # us - for that we have our own lock.
     volume.lock()
-    assert volume.lock_status()[1] == socket.gethostname()
+    assert volume.lock_status()[1] == "host1"
     volume.unlock()
     assert volume.lock_status() is None
     # We can call unlock twice if it isn't locked.

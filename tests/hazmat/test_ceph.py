@@ -99,7 +99,7 @@ start machine=simplevm subsystem=ceph volume_spec=root
 start-root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 root-found-in current_pool=rbd.ssd machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd args=status --format json rbd.ssd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd>    {"watchers":[{"address":"192.168.4.6:0/...","client":...,"cookie":...}]}
+rbd>    {"watchers":[{"address":"...:0/...","client":...,"cookie":...}]}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 
 migrate-vm-root-disk action=start machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd subsystem=ceph volume=rbd.ssd/simplevm.root
@@ -158,11 +158,11 @@ rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-rbd>    {"watchers":[{"address":"192.168.4.6:0/...","client":...,"cookie":...}],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"prepared","state_description":""}}
+rbd>    {"watchers":[{"address":"...:0/...","client":...,"cookie":...}],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"prepared","state_description":""}}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progress= status=prepared subsystem=ceph volume=rbd.hdd/simplevm.root
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 """
     )
 
@@ -179,23 +179,23 @@ rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=
     first_ensure.in_order(
         """
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-rbd>    {"watchers":[{"address":"192.168.4.6:0/...","client":...,"cookie":...}],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"prepared","state_description":""}}
+rbd>    {"watchers":[{"address":"...:0/...","client":...,"cookie":...}],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"prepared","state_description":""}}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progress= status=prepared subsystem=ceph volume=rbd.hdd/simplevm.root
 
 root-migration-execute machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 ceph args=rbd task add migration execute rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-ceph>   {"sequence": 1, "id": "...-...-...-...-...", "message": "Migrating image rbd.ssd/simplevm.root to rbd.ssd/simplevm.root", "refs": {"action": "migrate execute", "pool_name": "rbd.hdd", "pool_namespace": "", "image_name": "simplevm.root", "image_id": "..."}}
+ceph>   {"sequence": ..., "id": "...-...-...-...-...", "message": "Migrating image rbd.ssd/simplevm.root to rbd.ssd/simplevm.root", "refs": {"action": "migrate execute", "pool_name": "rbd.hdd", "pool_namespace": "", "image_name": "simplevm.root", "image_id": "..."}}
 ceph machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-rbd>    {"watchers":[{"address":"192.168.4.6:0/...","client":...,"cookie":...}],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"...","state_description":...}}
+rbd>    {"watchers":[{"address":"...:0/...","client":...,"cookie":...}],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"...","state_description":...}}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progress=...status=... subsystem=ceph volume=rbd.hdd/simplevm.root
 
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 """
     )
 
@@ -211,7 +211,7 @@ rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=
     commit_ensure.in_order(
         """
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-rbd>    {"watchers":[{"address":"192.168.4.6:0/...","client":...,"cookie":...}],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"executed","state_description":""}}
+rbd>    {"watchers":[{"address":"...:0/...","client":...,"cookie":...}],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"executed","state_description":""}}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 
 root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progress= status=executed subsystem=ceph volume=rbd.hdd/simplevm.root
@@ -221,11 +221,11 @@ rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-rbd>    {"watchers":[{"address":"192.168.4.6:0/...","client":...,"cookie":...}]}
+rbd>    {"watchers":[{"address":"...:0/...","client":...,"cookie":...}]}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 """
     )
 

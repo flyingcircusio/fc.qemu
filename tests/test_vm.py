@@ -3,6 +3,7 @@ import os
 import os.path
 import re
 import shutil
+import socket
 import subprocess
 import textwrap
 import time
@@ -20,14 +21,48 @@ from tests.ellipsis import Ellipsis
 
 def clean_output(output):
     output = re.sub(
-        r"^[a-zA-Z0-9\-:\. ]+ (I|D) ", "", output, flags=re.MULTILINE
+        r"^[a-zA-Z0-9\-:\. ]+ (E|C|I|D|W) ", "", output, flags=re.MULTILINE
     )
     output = re.sub(r"[\t ]+$", "", output, flags=re.MULTILINE)
     output = re.sub(r"\t", " ", output, flags=re.MULTILINE)
     return output
 
 
-@pytest.mark.timeout(90)
+def test_clean_output():
+    assert (
+        clean_output(
+            """
+2025-01-23T18:09:22.747052 561232 D simplevm              waiting                        interval=3 remaining=3599
+2025-01-23T18:09:25.747839 561232 D simplevm              check-staging-config           result='none'
+2025-01-23T18:09:25.749856 561232 W simplevm              multiple-services-found        action='trying newest first' service='vm-inmigrate-simplevm'
+2025-01-23T18:09:25.749912 561232 I simplevm              located-inmigration-service    url='http://host2.srv.test.gocept.net:32849'
+2025-01-23T18:09:25.751980 561232 D simplevm              started-heartbeat-ping
+2025-01-23T18:09:25.752032 561232 D simplevm              heartbeat-ping
+2025-01-23T18:09:25.752188 561232 I simplevm              acquire-migration-locks
+2025-01-23T18:09:25.752293 561232 D simplevm              check-staging-config           result='none'
+2025-01-23T18:09:25.752418 561232 D simplevm         qemu acquire-migration-lock         result='success'
+2025-01-23T18:09:25.752455 561232 D simplevm              acquire-local-migration-lock   result='success'
+2025-01-23T18:09:25.752481 561232 D simplevm              acquire-remote-migration-lock
+2025-01-23T18:09:25.754060 561232 D simplevm              acquire-remote-migration-lock  result='success
+"""
+        )
+        == """
+simplevm              waiting                        interval=3 remaining=3599
+simplevm              check-staging-config           result='none'
+simplevm              multiple-services-found        action='trying newest first' service='vm-inmigrate-simplevm'
+simplevm              located-inmigration-service    url='http://host2.srv.test.gocept.net:32849'
+simplevm              started-heartbeat-ping
+simplevm              heartbeat-ping
+simplevm              acquire-migration-locks
+simplevm              check-staging-config           result='none'
+simplevm         qemu acquire-migration-lock         result='success'
+simplevm              acquire-local-migration-lock   result='success'
+simplevm              acquire-remote-migration-lock
+simplevm              acquire-remote-migration-lock  result='success
+"""
+    )
+
+
 @pytest.mark.live
 def test_simple_vm_lifecycle_start_stop(vm, patterns):
     status = patterns.status
@@ -160,11 +195,11 @@ create-vm machine=simplevm subsystem=ceph volume=simplevm.root
 fc-create-vm>
 fc-create-vm> Establishing system identity
 fc-create-vm> ----------------------------
-fc-create-vm> $ rbd --format json --id host1 snap ls rbd.hdd/fc-21.05-dev
+fc-create-vm> $ rbd --format json --id ... snap ls rbd.hdd/fc-21.05-dev
 fc-create-vm> Snapshots:
 fc-create-vm> snapid name size
 fc-create-vm> 4 v1 524288000
-fc-create-vm> $ rbd --id host1 clone rbd.hdd/fc-21.05-dev@v1 rbd.ssd/simplevm.root
+fc-create-vm> $ rbd --id ... clone rbd.hdd/fc-21.05-dev@v1 rbd.ssd/simplevm.root
 fc-create-vm>
 fc-create-vm> Finished
 fc-create-vm> --------
@@ -224,9 +259,9 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     vm.stop()
@@ -279,7 +314,6 @@ mkswap> mkswap: /dev/rbd/rbd.ssd/simplevm.swap: warning: wiping old swap signatu
     assert second_start == out
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.live
 def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys, caplog):
     print(
@@ -317,9 +351,9 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     vm.enc["parameters"]["online"] = False
@@ -375,12 +409,8 @@ rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simpl
     )
 
 
-# This test is really slow and it appears that a lot of time is due to
-# locking/unlocking (or rather: breaking locks) in Ceph taking around 5
-# seconds each time ...
-@pytest.mark.timeout(90)
 @pytest.mark.live
-def test_crashed_vm_clean_restart(vm):
+def test_crashed_vm_clean_restart(vm, patterns):
     util.test_log_options["show_events"] = [
         "rbd-status",
         "vm-status",
@@ -413,9 +443,9 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     util.test_log_print("=== Killing the qemu process ===")
@@ -429,9 +459,9 @@ rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=
     assert get_log() == Ellipsis(
         """\
 vm-status machine=simplevm result=offline
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     util.test_log_print("=== Running ensure() ===")
@@ -448,9 +478,9 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
     )
 
     util.test_log_options["show_events"] = [
@@ -458,38 +488,53 @@ rbd-status locker=('client...', 'host1') machine=simplevm subsystem=ceph volume=
         "kill",
         "unlock",
         "vm-status",
+        "vm-destroy",
         "consul",
         "clean",
         "rbd-status",
     ]
     util.test_log_print("=== Running stop() ===")
     vm.stop()
-    util.test_log_print("=== Running status() ===")
-    vm.status()
-    assert get_log() == Ellipsis(
-        """\
+
+    stop = patterns.stop
+    stop.in_order(
+        """
 graceful-shutdown machine=simplevm
 graceful-shutdown-failed machine=simplevm reason=timeout
 kill-vm machine=simplevm
 vm-destroy-kill-supervisor attempt=1 machine=simplevm subsystem=qemu
-vm-destroy-kill-supervisor attempt=2 machine=simplevm subsystem=qemu
-vm-destroy-kill-vm attempt=1 machine=simplevm subsystem=qemu
-vm-destroy-kill-vm attempt=2 machine=simplevm subsystem=qemu
+vm-destroy-vm-via-qmp machine=simplevm subsystem=qemu
 killed-vm machine=simplevm
 unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 consul-deregister machine=simplevm
 clean-run-files machine=simplevm subsystem=qemu
+"""
+    )
+    stop.optional(
+        """
+vm-destroy-kill-supervisor attempt=2 machine=simplevm subsystem=qemu
+"""
+    )
+    assert stop == get_log()
+
+    util.test_log_print("=== Running status() ===")
+    vm.status()
+
+    status = patterns.status
+    status.in_order(
+        """
 vm-status machine=simplevm result=offline
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-consul machine=simplevm service=<not registered>"""
+consul machine=simplevm service=<not registered>
+"""
     )
+    assert status == get_log()
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.live
 def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
     vm.ensure()
@@ -508,7 +553,6 @@ def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
 
 
 @pytest.mark.live
-@pytest.mark.timeout(60)
 def test_vm_snapshot_only_if_running(vm):
     vm.ceph.specs["root"].ensure_presence()
     assert list(x.fullname for x in vm.ceph.volumes["root"].snapshots) == []
@@ -516,7 +560,6 @@ def test_vm_snapshot_only_if_running(vm):
         vm.snapshot("asdf")
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.live
 def test_vm_snapshot_with_missing_guest_agent(vm, monkeypatch):
     util.test_log_options["show_events"] = [
@@ -568,7 +611,6 @@ snapshot-ignore machine=simplevm reason=not frozen"""
     )
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.live
 def test_vm_throttle_iops(vm):
     vm.start()
@@ -610,7 +652,6 @@ ensure-throttle action=none current_iops=10 device=virtio2 machine=simplevm targ
     )
 
 
-@pytest.mark.timeout(80)
 @pytest.mark.live
 def test_vm_resize_disk(vm, patterns):
     vm.start()
@@ -680,21 +721,6 @@ def test_tmp_size():
 
 
 @pytest.fixture
-def kill_vms():
-    def _kill_vms():
-        subprocess.call("pkill -A -f qemu", shell=True)
-        subprocess.call(
-            "ssh -oStrictHostKeyChecking=no -i/etc/ssh_key host2 'pkill -f qemu'",
-            shell=True,
-        )
-        subprocess.call("fc-qemu force-unlock simplevm", shell=True)
-
-    _kill_vms()
-    yield
-    _kill_vms()
-
-
-@pytest.fixture
 def outmigrate_pattern(patterns):
     outmigrate = patterns.outmigrate
     outmigrate.in_order(
@@ -712,7 +738,7 @@ simplevm              consul-register
 simplevm              setup-outgoing-migration       cookie='...'
 simplevm              locate-inmigration-service
 simplevm              check-staging-config           result='none'
-simplevm              located-inmigration-service    url='http://host2.mgm.test.gocept.net:...'
+simplevm              located-inmigration-service    url='http://...test.gocept.net:...'
 
 simplevm              acquire-migration-locks
 simplevm              check-staging-config           result='none'
@@ -726,11 +752,11 @@ simplevm         ceph unlock                         volume='rbd.ssd/simplevm.sw
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.tmp'
 
 simplevm              prepare-remote-environment
-simplevm              start-migration                target='tcp:192.168.4.7:...'
+simplevm              start-migration                target='tcp:...:...'
 simplevm         qemu migrate
 simplevm     qemu/qmp migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None
 simplevm     qemu/qmp migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None
-simplevm     qemu/qmp migrate                        arguments={'uri': 'tcp:192.168.4.7:...'} id=None
+simplevm     qemu/qmp migrate                        arguments={'uri': 'tcp:...:...'} id=None
 
 simplevm     qemu/qmp query-migrate-parameters       arguments={} id=None
 simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
@@ -744,9 +770,8 @@ simplevm     qemu/qmp query-status                   arguments={} id=None
 simplevm              finish-migration
 
 simplevm         qemu vm-destroy-kill-supervisor     attempt=1
-simplevm         qemu vm-destroy-kill-supervisor     attempt=2
-simplevm         qemu vm-destroy-kill-vm             attempt=1
-simplevm         qemu vm-destroy-kill-vm             attempt=2
+simplevm         qemu vm-destroy-vm-via-qmp
+simplevm     qemu/qmp quit                           arguments={} id=None
 simplevm         qemu clean-run-files
 simplevm              finish-remote
 simplevm              consul-deregister
@@ -759,12 +784,17 @@ simplevm              release-lock                   result='unlocked' target='/
     # timings,so this may or may not appear more often:
     outmigrate.optional(
         """
+simplevm              multiple-services-found        action='trying newest first' service='vm-inmigrate-simplevm'
+simplevm         qemu vm-destroy-kill-supervisor     attempt=2
 simplevm              waiting                        interval=3 remaining=...
 simplevm              check-staging-config           result='none'
 simplevm     qemu/qmp query-migrate                  arguments={} id=None
 simplevm              migration-status               mbps=... remaining='...' status='active'
 simplevm              migration-status               mbps='-' remaining='0' status='setup'
-simplevm         qemu vm-destroy-kill-vm             attempt=...    """
+simplevm         qemu vm-destroy-kill-vm             attempt=...
+simplevm              connect                        reason='[Errno 111] Connection refused' result='failed'
+simplevm              located-inmigration-service    url='http://...test.gocept.net:...'
+"""
     )
     # Expect debug output that doesn't matter as much
     patterns.debug.optional("simplevm> ...")
@@ -823,11 +853,11 @@ simplevm         ceph unlock                         volume='rbd.ssd/simplevm.ro
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.swap'
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.tmp'
 simplevm              prepare-remote-environment
-simplevm              start-migration                target='tcp:192.168.4.7:2345'
+simplevm              start-migration                target='tcp:...:2345'
 simplevm         qemu migrate
 simplevm     qemu/qmp migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None
 simplevm     qemu/qmp migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None
-simplevm     qemu/qmp migrate                        arguments={'uri': 'tcp:192.168.4.7:2345'} id=None
+simplevm     qemu/qmp migrate                        arguments={'uri': 'tcp:...:2345'} id=None
 simplevm     qemu/qmp query-migrate-parameters       arguments={} id=None
 simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
 simplevm     qemu/qmp query-migrate                  arguments={} id=None
@@ -1053,8 +1083,8 @@ simplevm     qemu/qmp query-status                   arguments={} id=None
 simplevm              finish-migration
 simplevm         qemu vm-destroy-kill-supervisor     attempt=1
 simplevm         qemu vm-destroy-kill-supervisor     attempt=2
-simplevm         qemu vm-destroy-kill-vm             attempt=1
-simplevm         qemu vm-destroy-kill-vm             attempt=2
+simplevm         qemu vm-destroy-vm-via-qmp
+simplevm     qemu/qmp quit                           arguments={} id=None
 simplevm         qemu clean-run-files
 simplevm              finish-remote
 simplevm              stopped-heartbeat-ping
@@ -1097,11 +1127,11 @@ simplevm         ceph unlock                         volume='rbd.ssd/simplevm.ro
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.swap'
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.tmp'
 simplevm              prepare-remote-environment
-simplevm              start-migration                target='tcp:192.168.4.7:2345'
+simplevm              start-migration                target='tcp:...:2345'
 simplevm         qemu migrate
 simplevm     qemu/qmp migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None
 simplevm     qemu/qmp migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None
-simplevm     qemu/qmp migrate                        arguments={'uri': 'tcp:192.168.4.7:2345'} id=None
+simplevm     qemu/qmp migrate                        arguments={'uri': 'tcp:...:2345'} id=None
 simplevm     qemu/qmp query-migrate-parameters       arguments={} id=None
 simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
 simplevm     qemu/qmp query-migrate                  arguments={} id=None
@@ -1327,9 +1357,8 @@ simplevm>  'total-time': 68526}
 simplevm     qemu/qmp query-status                   arguments={} id=None
 simplevm              finish-migration
 simplevm         qemu vm-destroy-kill-supervisor     attempt=1
-simplevm         qemu vm-destroy-kill-supervisor     attempt=2
-simplevm         qemu vm-destroy-kill-vm             attempt=1
-simplevm         qemu vm-destroy-kill-vm             attempt=2
+simplevm         qemu vm-destroy-vm-via-qmp
+simplevm     qemu/qmp quit                           arguments={} id=None
 simplevm         qemu clean-run-files
 simplevm              finish-remote
 simplevm              consul-deregister
@@ -1342,7 +1371,7 @@ simplevm              release-lock                   result='unlocked' target='/
 
 @pytest.mark.live
 @pytest.mark.timeout(300)
-def test_vm_migration(vm, kill_vms, outmigrate_pattern, patterns):
+def test_vm_migration(request, vm, outmigrate_pattern, patterns):
     def call(cmd, wait=True, host=None, fail_on_exit_code=True):
         for ssh_cmd in ["scp", "ssh"]:
             if not cmd.startswith(ssh_cmd):
@@ -1407,7 +1436,7 @@ simplevm              acquire-lock                   target='/run/qemu.simplevm.
 simplevm              acquire-lock                   count=1 result='locked' target='/run/qemu.simplevm.lock'
 
 simplevm              inmigrate
-simplevm              start-server                   type='incoming' url='http://host2.mgm.test.gocept.net:.../'
+simplevm              start-server                   type='incoming' url='http://...test.gocept.net:.../'
 simplevm              setup-incoming-api             cookie='...'
 simplevm              consul-register-inmigrate
 
@@ -1424,8 +1453,8 @@ simplevm         qemu global-lock-acquire            result='locked' target='/ru
 simplevm         qemu global-lock-status             count=1 target='/run/fc-qemu.lock'
 simplevm         qemu sufficient-host-memory         available_real=... bookable=... required=768
 simplevm         qemu start-qemu
-simplevm         qemu qemu-system-x86_64             additional_args=['-incoming tcp:192.168.4.7:...'] local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-chroot /srv/vm/simplevm', '-runas nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg']
-simplevm         qemu exec                           cmd='supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -chroot /srv/vm/simplevm -runas nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -incoming tcp:192.168.4.7:2345 -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log'
+simplevm         qemu qemu-system-x86_64             additional_args=['-incoming tcp:...:...'] local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-chroot /srv/vm/simplevm', '-runas nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg']
+simplevm         qemu exec                           cmd='supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -chroot /srv/vm/simplevm -runas nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -incoming tcp:...:2345 -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log'
 simplevm         qemu supervised-qemu-stdout
 simplevm         qemu supervised-qemu-stderr
 
@@ -1480,9 +1509,9 @@ simplevm              consul                         address='host2' service='qe
     assert remote_status == Ellipsis(
         """\
 simplevm              vm-status                      result='online'
-simplevm              disk-throttle                  device='virtio0' iops=0
-simplevm              disk-throttle                  device='virtio1' iops=0
-simplevm              disk-throttle                  device='virtio2' iops=0
+simplevm              disk-throttle                  device='virtio0' iops=...
+simplevm              disk-throttle                  device='virtio1' iops=...
+simplevm              disk-throttle                  device='virtio2' iops=...
 simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.root'
 simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.swap'
 simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.tmp'
@@ -1491,7 +1520,6 @@ simplevm              consul                         address='host2' service='qe
     )
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.live
 def test_simple_cancelled_migration_doesnt_clean_up(vm, monkeypatch):
     import fc.qemu.outgoing
@@ -1507,7 +1535,6 @@ def test_simple_cancelled_migration_doesnt_clean_up(vm, monkeypatch):
     assert os.path.exists("/run/qemu.simplevm.pid")
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.live
 def test_new_vm(vm):
     # A new VM gets created by consul adding the staging filename and then
@@ -1538,7 +1565,6 @@ generate-config machine=simplevm
     )
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.live
 def test_create_vm_shows_error(vm, tmpdir):
     # A new VM gets created by consul adding the staging filename and then
@@ -1560,14 +1586,14 @@ def test_create_vm_shows_error(vm, tmpdir):
 ...
 fc-create-vm>\tEstablishing system identity
 fc-create-vm>\t----------------------------
-fc-create-vm>\t$ rbd --format json --id host1 snap ls rbd.hdd/does-not-exist
+fc-create-vm>\t$ rbd --format json --id ... snap ls rbd.hdd/does-not-exist
 fc-create-vm>\t> return code: 2
 fc-create-vm>\t> stdout:
 fc-create-vm>\t
 fc-create-vm>\t> stderr:
 fc-create-vm>\trbd: error opening image does-not-exist: (2) No such file or directory
 ...
-fc-create-vm>\tsubprocess.CalledProcessError: Command ...'rbd', '--format', 'json', '--id', 'host1', 'snap', 'ls', 'rbd.hdd/does-not-exist'... returned non-zero exit status 2.
+fc-create-vm>\tsubprocess.CalledProcessError: Command ...'rbd', '--format', 'json', '--id', '...', 'snap', 'ls', 'rbd.hdd/does-not-exist'... returned non-zero exit status 2.
 ...
 """
         )
@@ -1575,7 +1601,6 @@ fc-create-vm>\tsubprocess.CalledProcessError: Command ...'rbd', '--format', 'jso
     )
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.live
 def test_agent_check(vm, capsys):
     util.test_log_options["show_events"] = ["vm-status", "rbd-status"]

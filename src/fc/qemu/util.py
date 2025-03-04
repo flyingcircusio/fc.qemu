@@ -7,15 +7,20 @@ import os.path
 import subprocess
 import sys
 import time
-from typing import Dict
+from typing import Callable, Dict, List
 
 from structlog import get_logger
 
 MiB = 2**20
 GiB = 2**30
 
-
 log = get_logger()
+
+# Test harnesses
+log_data: List[str]
+test_log_start: float
+test_log_options: Dict[str, List[str]]
+test_log_print: Callable
 
 
 # workaround for ValueError: can't have unbuffered text I/O
