@@ -1217,7 +1217,7 @@ class Agent(object):
             if self.svc_name not in self.consul.agent.services():
                 return
             self.log.info("consul-deregister")
-            self.consul.agent.service.deregister("qemu-{}".format(self.name))
+            self.consul.agent.service.deregister(self.svc_name)
         except requests.exceptions.ConnectionError:
             pass
         except Exception:
