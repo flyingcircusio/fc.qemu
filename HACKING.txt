@@ -1,10 +1,25 @@
-fc.qemu development
-===================
+# fc.qemu development
 
-We assume that you have a local checkout on your machine for editing
-and that you synchronize that code (e.g. with rsync when saving) to
-a remote machine, typically our hydra server. To run the tests of your development version, you need a (current or "suitable") checkout of
-the platform code as well:
+## DevHost-based individual development environments
+
+We leverage our devhost abilities so that you can easily set up a personal
+virtual development environment.
+
+```
+fc.qemu $  cd batou
+fc.qemu > batou $ ./batou deploy dev
+... This takes around 6-7 minutes ...
+fc.qemu > batou $ ssh -F ssh_config_dev host1
+host1 $ sudo -i
+host1 $ run-tests
+```
+
+## Hydra integration tests
+
+We assume that you have a local checkout on your machine for editing and that
+you synchronize that code (e.g. with rsync when saving) to a remote machine,
+typically our hydra server. To run the tests of your development version, you
+need a (current or "suitable") checkout of the platform code as well:
 
     local$ ssh hydra01.fcio.net
     hydra01 ~ $ cd fc-nixos
@@ -18,27 +33,15 @@ To run only some tests you can pass arguments to pytest:
 
 To interact with the tests using PDB you can add breakpoints and/or cause the tests to fail and then:
 
-Keep the build outputs:
-
-    hydra01 ~/fc-nixos $ nix-build --arg useCheckout true --argstr testOpts "-k test_agent_check"  tests/kvm_host_ceph-nautilus.nix -K
-
-Get a live pdb session:
-
-   sudo -i
-   cd /tmp/nix-build-python3.8-fc.qemu-dev.drv-50/build/fc.qemu
-   grep
-   source ../env-vars
+    hydra01 ~/fc-nixos $ nix-build tests/kvm_host_ceph-nautilus.nix -A driverInteractive && sudo ./result/bin/nixos-test-driver
 
 
 
+## Real-world testing on FCIO DEV network
 
-
-Real-world testing on FCIO DEV network
---------------------------------------
-
-* create branch on fc-nixos
-* commit your fc.qemu changes
-* update the qemu package reference to your commit
-* use fc-nixos dev-checkout on the host(s) you want to test
+* switch a host to your fc-nixos development environment
+* sync your fc.qemu code to that machine
+* switch the system-installed fc.qemu package to the fc.qemu dev package referencing your code
+* rebuild the system, enjoy
 
 .. vim: set ft=rst:

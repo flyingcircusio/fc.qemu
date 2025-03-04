@@ -25,3 +25,8 @@ share/python-wheels/
 *.sw[po]
 tags
 .vagrant
+batou/.appenv
+batou/.batou*
+batou/**/hostmap.json
+batou/ssh_config*
+batou/insecure-private.key

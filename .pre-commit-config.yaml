@@ -2,6 +2,7 @@ exclude: ^secrets/|^appenv$
 repos:
 - hooks:
   - id: detect-private-key
+    exclude: "(batou/components/ceph/ceph.nix|batou/components/kvm/kvm.nix)"
   - id: check-added-large-files
   - exclude: "(?x)^(\n  secrets/|environments/.*/secret.*|\n  .*\\.patch\n)$\n"
     id: trailing-whitespace
