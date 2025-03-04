@@ -257,6 +257,19 @@ def ceph_live_setup():
 
     call(f"fc-ceph osd prepare-journal {journal_loopback}")
     call("fc-ceph mon create --no-encrypt --size 500m --bootstrap-cluster")
+
+    # Give the monitor a chance to come up, otherwise the next commands have a high chance
+    # of getting stuck.
+    while (
+        subprocess.run(
+            ["ceph", "-s", "--connect-timeout", "1"], env=env
+        ).returncode
+        == 1
+    ):
+        print(
+            subprocess.getoutput(["tail", "/var/log/ceph/ceph-mon.host1.log"])
+        )
+
     call(
         "fc-ceph keys mon-update-single-client host1 ceph_osd,ceph_mon,kvm_host salt-for-host-dhkasjy9"
     )
@@ -296,8 +309,6 @@ def ceph_mock(request, monkeypatch, tmp_path):
         # This is a live test. Perform a real Ceph setup.
         # We expect our roles and software to be installed, but
         # no Ceph cluster bootstrapping to have been performed.
-        capmanager = request.config.pluginmanager.getplugin("capturemanager")
-        capmanager.suspend_global_capture()
         ceph_live_setup()
         yield
         return

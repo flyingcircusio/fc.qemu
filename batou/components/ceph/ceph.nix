@@ -33,8 +33,12 @@ in
     ''
   );
 
+  # Try to disable as many cronjobs as possible as they're really just in the
+  # way in the test suite.
   systemd.timers.fc-ceph-load-vm-images.enable = lib.mkForce false;
   systemd.timers.fc-ceph-mon-update-client-keys.enable = lib.mkForce false;
+  systemd.timers.fc-ceph-clean-deleted-vms.enable = lib.mkForce false;
+  systemd.timers.fc-ceph-purge-old-snapshots.enable = lib.mkForce false;
 
   flyingcircus.roles.ceph_osd.network = fclib.network.srv;
 
