@@ -6,6 +6,8 @@ import time
 import pytest
 import rbd
 
+from fc.qemu.timeout import TimeOut
+
 
 @pytest.fixture
 def tmp_spec(ceph_inst):
@@ -13,7 +15,12 @@ def tmp_spec(ceph_inst):
         volume.snapshots.purge()
         name, ioctx = volume.name, volume.ioctx
         volume.close()
-        rbd.RBD().remove(ioctx, name)
+        timeout = TimeOut(10, interval=1)
+        while timeout.tick():
+            try:
+                rbd.RBD().remove(ioctx, name)
+            except rbd.ImageBusy:
+                pass
 
     spec = ceph_inst.specs["tmp"]
 
