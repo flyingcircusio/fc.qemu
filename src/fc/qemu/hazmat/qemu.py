@@ -5,7 +5,6 @@ import fcntl
 import os
 import socket
 import subprocess
-import time
 from codecs import encode
 from pathlib import Path
 
@@ -108,7 +107,7 @@ class Qemu(object):
     # QMP runs in the main thread and can block. Our original 15s timeout
     # is definitely too short. Many discussions mention that 5 minutes have
     # stabilized the situation even under adverse situations.
-    qmp_timeout = 5 * 60
+    qmp_timeout: float = 5 * 60
     thaw_retry_timeout = 2
     vm_max_total_memory = 0  # MiB: maximum amount of booked memory (-m)
     # on this host

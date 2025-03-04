@@ -145,8 +145,6 @@ def test_force_unlock(tmp_spec):
     assert volume.lock_status() is None
 
 
-# increase timeout from the default of 3s
-@pytest.mark.timeout(10)
 def test_volume_mkswap(ceph_inst):
     swap = ceph_inst.specs["swap"]
     swap.ensure_presence()
@@ -157,7 +155,6 @@ def test_volume_mkswap(ceph_inst):
         assert "Linux swap file" in output
 
 
-@pytest.mark.timeout(60)
 def test_volume_tmp_mkfs(tmp_spec):
     tmp_spec.desired_size = 400 * 1024 * 1024
     tmp_spec.ensure_presence()
@@ -202,7 +199,6 @@ def test_mount_should_fail_if_not_mapped(tmp_spec):
         volume.mount()
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.live()
 def test_mount_snapshot(tmp_spec):
     tmp_spec.desired_size = 500 * 1024 * 1024

@@ -51,7 +51,6 @@ def test_multiple_images_raises_error(ceph_inst):
         root_spec.exists_in_pool()
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.live()
 def test_rbd_pool_migration(ceph_inst, patterns) -> None:
     ceph_inst.cfg["tmp_size"] = 500 * 1024 * 1024

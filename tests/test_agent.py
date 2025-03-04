@@ -105,7 +105,6 @@ def test_ensure_inconsistent_state_detected(simplevm_cfg, ceph_inst):
             a.raise_if_inconsistent()
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.live
 def test_maintenance():
     with pytest.raises(SystemExit, match="0"):
