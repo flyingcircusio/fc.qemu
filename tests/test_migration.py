@@ -31,7 +31,7 @@ def test_parse_address_ipv4():
     assert ("10.1.2.3", 4567) == parse_address("10.1.2.3:4567")
 
 
-def test_parse_address_ipv5():
+def test_parse_address_ipv6():
     assert ("2001:db8:1::45", 1234) == parse_address("[2001:db8:1::45]:1234")
 
 
