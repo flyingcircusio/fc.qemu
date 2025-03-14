@@ -1,5 +1,6 @@
 import json
 import os.path
+import socket
 import typing
 from codecs import encode
 from io import StringIO
@@ -237,7 +238,6 @@ def test_qemu_config_change_physical():
     ]
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.live
 def test_snapshot_online_vm(vm):
     util.test_log_options["show_events"] = [
@@ -296,7 +296,6 @@ finish-consul-events"""
 
 
 @pytest.mark.live
-@pytest.mark.timeout(60)
 def test_snapshot_offline_vm(vm):
     vm.enc["parameters"]["kvm_host"] = "foobar"
     vm.stage_new_config()

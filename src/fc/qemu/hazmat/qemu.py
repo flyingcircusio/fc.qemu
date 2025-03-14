@@ -5,7 +5,6 @@ import fcntl
 import os
 import socket
 import subprocess
-import time
 from codecs import encode
 from pathlib import Path
 
@@ -108,7 +107,7 @@ class Qemu(object):
     # QMP runs in the main thread and can block. Our original 15s timeout
     # is definitely too short. Many discussions mention that 5 minutes have
     # stabilized the situation even under adverse situations.
-    qmp_timeout = 5 * 60
+    qmp_timeout: float = 5 * 60
     thaw_retry_timeout = 2
     vm_max_total_memory = 0  # MiB: maximum amount of booked memory (-m)
     # on this host
@@ -609,11 +608,27 @@ class Qemu(object):
                     except psutil.NoSuchProcess:
                         break
 
+        # Graceful destruction: ask qemu via qmp to stop
+        self.log.debug("vm-destroy-vm-via-qmp")
+        try:
+            self.qmp.command("quit")
+        except Exception:
+            # QMP doesn't promise to respond if the process actually quits.
+            pass
+
+        timeout = TimeOut(15, interval=1, raise_on_timeout=False)
+        while p.is_running() and timeout.tick():
+            pass
+
+        if not p.is_running():
+            return
+
+        # Be more forceful: use a SIGTERM
         timeout = TimeOut(100, interval=2, raise_on_timeout=True)
         attempt = 0
         while p.is_running() and timeout.tick():
             attempt += 1
-            self.log.debug("vm-destroy-kill-vm", attempt=attempt)
+            self.log.debug("vm-destroy-vm-via-sigterm", attempt=attempt)
             try:
                 p.terminate()
             except psutil.NoSuchProcess:

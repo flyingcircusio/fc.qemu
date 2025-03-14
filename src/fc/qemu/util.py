@@ -7,27 +7,35 @@ import os.path
 import subprocess
 import sys
 import time
-from typing import Dict
+from typing import IO, Any, Callable, Dict, List
 
 from structlog import get_logger
 
 MiB = 2**20
 GiB = 2**30
 
-
 log = get_logger()
+
+# Test harnesses
+log_data: List[str]
+test_log_start: float
+test_log_options: Dict[str, List[str]]
+test_log_print: Callable
 
 
 # workaround for ValueError: can't have unbuffered text I/O
-class FlushingStream(object):
-    def __init__(self, stream):
+class FlushingStream(IO[Any]):
+    def __init__(self, stream: IO[Any]) -> None:
         self.stream = stream
 
-    def write(self, data):
-        self.stream.write(data)
+    def write(self, s: Any, /) -> int:
+        written = self.stream.write(s)
         self.stream.flush()
+        return written
 
-    def __getattr__(self, name):
+    def __getattribute__(self, name: str) -> Any:
+        if name in ["write", "stream"]:
+            return super().__getattribute__(name)
         return getattr(self.stream, name)
 
 

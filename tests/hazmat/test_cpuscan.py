@@ -3,7 +3,6 @@ import pytest
 from fc.qemu.hazmat.cpuscan import AbstractHost, AMDHost, IntelHost, scan_cpus
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.slow
 def test_cpuscan_intel():
     host = AMDHost()
@@ -14,7 +13,6 @@ def test_cpuscan_intel():
     assert "qemu64-v1" in [x.cpu_arg for x in results]
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.slow
 def test_cpuscan_amd():
     host = IntelHost()
@@ -25,7 +23,6 @@ def test_cpuscan_amd():
     assert "qemu64-v1" in [x.cpu_arg for x in results]
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.slow
 def test_cpuscan_detects_something():
     host = AbstractHost()

@@ -6,6 +6,8 @@ import time
 import pytest
 import rbd
 
+from fc.qemu.timeout import TimeOut
+
 
 @pytest.fixture
 def tmp_spec(ceph_inst):
@@ -13,7 +15,12 @@ def tmp_spec(ceph_inst):
         volume.snapshots.purge()
         name, ioctx = volume.name, volume.ioctx
         volume.close()
-        rbd.RBD().remove(ioctx, name)
+        timeout = TimeOut(10, interval=1)
+        while timeout.tick():
+            try:
+                rbd.RBD().remove(ioctx, name)
+            except rbd.ImageBusy:
+                pass
 
     spec = ceph_inst.specs["tmp"]
 
@@ -116,12 +123,12 @@ def test_volume_locking(tmp_spec):
     volume = tmp_spec.volume
     assert volume.lock_status() is None
     volume.lock()
-    assert volume.lock_status()[1] == socket.gethostname()
+    assert volume.lock_status()[1] == "host1"
     # We want to smoothen out that some other process has locked the same image
     # for the same tag already and assume that this is another incarnation of
     # us - for that we have our own lock.
     volume.lock()
-    assert volume.lock_status()[1] == socket.gethostname()
+    assert volume.lock_status()[1] == "host1"
     volume.unlock()
     assert volume.lock_status() is None
     # We can call unlock twice if it isn't locked.
@@ -145,8 +152,6 @@ def test_force_unlock(tmp_spec):
     assert volume.lock_status() is None
 
 
-# increase timeout from the default of 3s
-@pytest.mark.timeout(10)
 def test_volume_mkswap(ceph_inst):
     swap = ceph_inst.specs["swap"]
     swap.ensure_presence()
@@ -157,7 +162,6 @@ def test_volume_mkswap(ceph_inst):
         assert "Linux swap file" in output
 
 
-@pytest.mark.timeout(60)
 def test_volume_tmp_mkfs(tmp_spec):
     tmp_spec.desired_size = 400 * 1024 * 1024
     tmp_spec.ensure_presence()
@@ -202,7 +206,6 @@ def test_mount_should_fail_if_not_mapped(tmp_spec):
         volume.mount()
 
 
-@pytest.mark.timeout(60)
 @pytest.mark.live()
 def test_mount_snapshot(tmp_spec):
     tmp_spec.desired_size = 500 * 1024 * 1024

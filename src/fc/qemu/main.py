@@ -56,6 +56,7 @@ def daemonize(log=None):
     else:
         so = open("/dev/null", "a+")
         se = open("/dev/null", "a+")
+
     os.dup2(si.fileno(), sys.stdin.fileno())
     os.dup2(so.fileno(), sys.stdout.fileno())
     os.dup2(se.fileno(), sys.stderr.fileno())
@@ -149,7 +150,7 @@ def main():
 
     p = sub.add_parser(
         "force-unlock",
-        help="Release all locks of a VM even " "if we don't own them.",
+        help="Release all locks of a VM even if we don't own them.",
     )
     p.add_argument("vm", metavar="VM", help="name of the VM")
     p.set_defaults(func="force_unlock")
