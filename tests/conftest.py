@@ -250,6 +250,7 @@ def ceph_live_setup():
 
     env = os.environ.copy()
     del env["PYTHONPATH"]
+    env.pop("CEPH_ARGS", None)
 
     def call(cmd):
         print(f"$ {cmd}")
