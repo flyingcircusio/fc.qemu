@@ -1582,7 +1582,12 @@ class Agent(object):
 
         netconfig = []
         for net, net_config in sorted(self.cfg["interfaces"].items()):
-            ifname = "t{}{}".format(net, self.cfg["id"])
+            ifname = f"t{net}{self.cfg['id']}"
+
+            iface_type = "vrf" if net_config.get("routed") else "bridge"
+            ifup_path = self.network_hooks[f"ifup-{iface_type}"]
+            ifdown_path = self.network_hooks[f"ifdown-{iface_type}"]
+
             netconfig.append(
                 """
 [device]
@@ -1593,11 +1598,15 @@ class Agent(object):
 [netdev "{ifname}"]
   type = "tap"
   ifname = "{ifname}"
-  script = "/etc/kvm/kvm-ifup"
-  downscript = "/etc/kvm/kvm-ifdown"
+  script = "{ifup}"
+  downscript = "{ifdown}"
 {vhost}
 """.format(
-                    ifname=ifname, mac=net_config["mac"], vhost=vhost
+                    ifname=ifname,
+                    mac=net_config["mac"],
+                    vhost=vhost,
+                    ifup=ifup_path,
+                    ifdown=ifdown_path,
                 )
             )
 
