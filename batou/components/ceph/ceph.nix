@@ -33,6 +33,21 @@ in
     ''
   );
 
+  environment.systemPackages = [
+    (pkgs.writeShellScriptBin "cleanup-ceph" ''
+      systemctl stop fc-ceph-mon
+      systemctl stop fc-ceph-mgr
+      systemctl stop fc-ceph-osd@0.service
+      umount /srv/ceph/mgr/ceph-host1
+      umount /srv/ceph/mon/ceph-host1
+      umount /srv/ceph/osd/ceph-0
+      vgremove vgjnl00 -y
+      vgremove vgosd-0 -y
+      losetup -D
+      rm -rf /ceph
+    '')
+  ];
+
   # Try to disable as many cronjobs as possible as they're really just in the
   # way in the test suite.
   systemd.timers.fc-ceph-load-vm-images.enable = lib.mkForce false;
