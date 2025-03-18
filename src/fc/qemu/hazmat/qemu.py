@@ -571,14 +571,17 @@ class Qemu(object):
     def graceful_shutdown(self):
         if not self.qmp:
             return
-        self.qmp.command(
-            "send-key",
-            keys=[
-                {"type": "qcode", "data": "ctrl"},
-                {"type": "qcode", "data": "alt"},
-                {"type": "qcode", "data": "delete"},
-            ],
-        )
+        if self.cfg["environment_class"].lower() == "puppet":
+            self.qmp.command(
+                "send-key",
+                keys=[
+                    {"type": "qcode", "data": "ctrl"},
+                    {"type": "qcode", "data": "alt"},
+                    {"type": "qcode", "data": "delete"},
+                ],
+            )
+            return
+        self.qmp.command("system_powerdown")
 
     def destroy(self, kill_supervisor=False):
         # We use this destroy command in "fire-and-forget"-style because
