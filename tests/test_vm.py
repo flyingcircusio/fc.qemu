@@ -72,6 +72,7 @@ vm-status machine=simplevm result=offline
 rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
 rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.cidata
 """
     )
 
@@ -150,6 +151,31 @@ umount args="/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volu
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 rbd args=unmap "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+pre-start machine=simplevm subsystem=ceph volume_spec=cidata
+ensure-presence machine=simplevm subsystem=ceph volume_spec=cidata
+lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+ensure-size machine=simplevm subsystem=ceph volume_spec=cidata
+start machine=simplevm subsystem=ceph volume_spec=cidata
+start-cloud-init machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+rbd args=map "rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+rbd> /dev/rbd0
+rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+create-fs machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+sgdisk args=-o "/dev/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+sgdisk> The operation has completed successfully.
+sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+sgdisk args=-n 1:: -c "1:cidata" -t 1:8300 "/dev/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+sgdisk> The operation has completed successfully.
+sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+partprobe args=/dev/rbd/rbd.ssd/simplevm.cidata machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+mkfs.vfat args=-n "cidata" /dev/rbd/rbd.ssd/simplevm.cidata-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+mkfs.vfat> mkfs.fat: Warning: lowercase labels might not work properly on some systems
+mkfs.vfat> mkfs.fat ...
+mkfs.vfat machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+seed machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+rbd args=unmap "/dev/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 generate-config machine=simplevm
 acquire-global-lock machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 global-lock-acquire machine=simplevm result=locked subsystem=qemu target=/run/fc-qemu.lock
@@ -173,6 +199,8 @@ ensure-throttle action=throttle current_iops=0 device=virtio1 machine=simplevm t
 block_set_io_throttle arguments={'device': 'virtio1', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
 ensure-throttle action=throttle current_iops=0 device=virtio2 machine=simplevm target_iops=10000
 block_set_io_throttle arguments={'device': 'virtio2', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle current_iops=0 device=virtio3 machine=simplevm target_iops=10000
+block_set_io_throttle arguments={'device': 'virtio3', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
 ensure-watchdog action=none machine=simplevm
 human-monitor-command arguments={'command-line': 'watchdog_action action=none'} id=None machine=simplevm subsystem=qemu/qmp
 release-lock count=0 machine=simplevm target=/run/qemu.simplevm.lock
@@ -184,6 +212,7 @@ release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
 sgdisk> Creating new GPT entries in memory.
 rbd> /dev/rbd0
 waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/simplevm.tmp
+waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/simplevm.cidata
 sgdisk> Setting name!
 sgdisk> partNum is 0
 """
@@ -259,9 +288,11 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
+disk-throttle device=virtio3 iops=10000 machine=simplevm
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
     )
 
     vm.stop()
@@ -274,7 +305,8 @@ rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rb
 vm-status machine=simplevm result=offline
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
     )
 
     # Starting a second time doesn't show the bootstrap code!
@@ -334,7 +366,8 @@ def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys, caplog):
 vm-status machine=simplevm result=offline
 rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
     )
 
     vm.ensure()
@@ -351,9 +384,11 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
+disk-throttle device=virtio3 iops=10000 machine=simplevm
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
     )
 
     vm.enc["parameters"]["online"] = False
@@ -376,7 +411,8 @@ ensure-state action=stop found=online machine=simplevm wanted=offline"""
 vm-status machine=simplevm result=offline
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
     )
 
 
@@ -391,7 +427,8 @@ def test_vm_not_running_here(vm, capsys):
 vm-status machine=simplevm result=offline
 rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
     )
 
     vm.enc["parameters"]["kvm_host"] = "otherhost"
@@ -405,7 +442,8 @@ rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simpl
 vm-status machine=simplevm result=offline
 rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
     )
 
 
@@ -427,7 +465,8 @@ def test_crashed_vm_clean_restart(vm, patterns):
 vm-status machine=simplevm result=offline
 rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
     )
 
     util.test_log_print("=== Running ensure() ... ===")
@@ -443,9 +482,11 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
+disk-throttle device=virtio3 iops=10000 machine=simplevm
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
     )
 
     util.test_log_print("=== Killing the qemu process ===")
@@ -461,7 +502,8 @@ rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rb
 vm-status machine=simplevm result=offline
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
     )
 
     util.test_log_print("=== Running ensure() ===")
@@ -478,9 +520,11 @@ vm-status machine=simplevm result=online
 disk-throttle device=virtio0 iops=10000 machine=simplevm
 disk-throttle device=virtio1 iops=10000 machine=simplevm
 disk-throttle device=virtio2 iops=10000 machine=simplevm
+disk-throttle device=virtio3 iops=10000 machine=simplevm
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp"""
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
     )
 
     util.test_log_options["show_events"] = [
@@ -508,6 +552,7 @@ killed-vm machine=simplevm
 unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 consul-deregister machine=simplevm
 clean-run-files machine=simplevm subsystem=qemu
 """
@@ -529,6 +574,7 @@ vm-status machine=simplevm result=offline
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 consul machine=simplevm service=<not registered>
 """
     )
@@ -623,7 +669,8 @@ def test_vm_throttle_iops(vm):
 query-block arguments={} id=None machine=simplevm subsystem=qemu/qmp
 ensure-throttle action=none current_iops=10000 device=virtio0 machine=simplevm target_iops=10000
 ensure-throttle action=none current_iops=10000 device=virtio1 machine=simplevm target_iops=10000
-ensure-throttle action=none current_iops=10000 device=virtio2 machine=simplevm target_iops=10000"""
+ensure-throttle action=none current_iops=10000 device=virtio2 machine=simplevm target_iops=10000
+ensure-throttle action=none current_iops=10000 device=virtio3 machine=simplevm target_iops=10000"""
     )
 
     vm.cfg["iops"] = 10
@@ -638,7 +685,9 @@ block_set_io_throttle arguments={'device': 'virtio0', 'iops': 10, 'iops_rd': 0, 
 ensure-throttle action=throttle current_iops=10000 device=virtio1 machine=simplevm target_iops=10
 block_set_io_throttle arguments={'device': 'virtio1', 'iops': 10, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
 ensure-throttle action=throttle current_iops=10000 device=virtio2 machine=simplevm target_iops=10
-block_set_io_throttle arguments={'device': 'virtio2', 'iops': 10, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp"""
+block_set_io_throttle arguments={'device': 'virtio2', 'iops': 10, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle current_iops=10000 device=virtio3 machine=simplevm target_iops=10
+block_set_io_throttle arguments={'device': 'virtio3', 'iops': 10, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp"""
     )
 
     vm.ensure_online_disk_throttle()
@@ -648,7 +697,8 @@ block_set_io_throttle arguments={'device': 'virtio2', 'iops': 10, 'iops_rd': 0, 
 query-block arguments={} id=None machine=simplevm subsystem=qemu/qmp
 ensure-throttle action=none current_iops=10 device=virtio0 machine=simplevm target_iops=10
 ensure-throttle action=none current_iops=10 device=virtio1 machine=simplevm target_iops=10
-ensure-throttle action=none current_iops=10 device=virtio2 machine=simplevm target_iops=10"""
+ensure-throttle action=none current_iops=10 device=virtio2 machine=simplevm target_iops=10
+ensure-throttle action=none current_iops=10 device=virtio3 machine=simplevm target_iops=10"""
     )
 
 
@@ -750,6 +800,7 @@ simplevm              acquire-remote-migration-lock  result='success'
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.root'
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.swap'
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.tmp'
+simplevm         ceph unlock                         volume='rbd.ssd/simplevm.cidata'
 
 simplevm              prepare-remote-environment
 simplevm              start-migration                target='tcp:...:...'
@@ -852,6 +903,7 @@ simplevm              acquire-remote-migration-lock  result='success'
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.root'
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.swap'
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.tmp'
+simplevm         ceph unlock                         volume='rbd.ssd/simplevm.cidata'
 simplevm              prepare-remote-environment
 simplevm              start-migration                target='tcp:...:2345'
 simplevm         qemu migrate
@@ -1126,6 +1178,7 @@ simplevm              acquire-remote-migration-lock  result='success'
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.root'
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.swap'
 simplevm         ceph unlock                         volume='rbd.ssd/simplevm.tmp'
+simplevm         ceph unlock                         volume='rbd.ssd/simplevm.cidata'
 simplevm              prepare-remote-environment
 simplevm              start-migration                target='tcp:...:2345'
 simplevm         qemu migrate
@@ -1446,6 +1499,7 @@ simplevm              received-acquire-ceph-locks
 simplevm         ceph lock                           volume='rbd.ssd/simplevm.root'
 simplevm         ceph lock                           volume='rbd.ssd/simplevm.swap'
 simplevm         ceph lock                           volume='rbd.ssd/simplevm.tmp'
+simplevm         ceph lock                           volume='rbd.ssd/simplevm.cidata'
 
 simplevm              received-prepare-incoming
 simplevm         qemu acquire-global-lock            target='/run/fc-qemu.lock'
@@ -1501,6 +1555,7 @@ simplevm              vm-status                      result='offline'
 simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.root'
 simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.swap'
 simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.tmp'
+simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.cidata'
 simplevm              consul                         address='host2' service='qemu-simplevm'
 """
     )
@@ -1512,9 +1567,11 @@ simplevm              vm-status                      result='online'
 simplevm              disk-throttle                  device='virtio0' iops=...
 simplevm              disk-throttle                  device='virtio1' iops=...
 simplevm              disk-throttle                  device='virtio2' iops=...
+simplevm              disk-throttle                  device='virtio3' iops=...
 simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.root'
 simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.swap'
 simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.tmp'
+simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.cidata'
 simplevm              consul                         address='host2' service='qemu-simplevm'
 """
     )

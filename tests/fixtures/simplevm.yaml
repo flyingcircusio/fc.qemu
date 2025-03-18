@@ -5,8 +5,12 @@ parameters:
   disk: 2
   id: 2345
   interfaces:
-    fe: {mac: aa-bb-cc-00-ee-ff}
-    srv: {mac: aa-bb-cc-dd-ee-ff}
+    fe:
+      mac: aa-bb-cc-00-ee-ff
+      networks:
+    srv:
+      mac: aa-bb-cc-dd-ee-ff
+      networks:
   kvm_host: host1
   memory: 256
   location: test
@@ -17,3 +21,5 @@ parameters:
   swap_size: 1073741824
   tmp_size: 5368709120
   environment: fc-21.05-dev
+  environment_class: NixOS
+  environment_class_type: nixos

@@ -370,9 +370,10 @@ def ceph_inst(ceph_mock):
         "tmp_size": 1024 * 1024,
         "swap_size": 1024 * 1024,
         "root_size": 1024 * 1024,
+        "cidata_size": 1024 * 1024,
         "binary_generation": 2,
     }
-    enc = {"parameters": {}}
+    enc = {"parameters": {"environment_class_type": "nixos"}}
     ceph = Ceph(cfg, enc)
     ceph.CREATE_VM = "echo {name}"
     ceph.MKFS_XFS = "-q -f -K"
@@ -381,6 +382,42 @@ def ceph_inst(ceph_mock):
         yield ceph
     finally:
         ceph.__exit__(None, None, None)
+
+
+@pytest.fixture
+def ceph_inst_cloudinit_enc(ceph_inst):
+    ceph_inst.cfg["tmp_size"] = 500 * 1024 * 1024
+    ceph_inst.cfg["cidata_size"] = 10 * 1024 * 1024
+    ceph_inst.enc = {
+        "name": "simplevm",
+        "parameters": {
+            "environment_class": "Ubuntu",
+            "environment_class_type": "cloudinit",
+            "resource_group": "test",
+            "interfaces": {
+                "pub": {
+                    "bridged": False,
+                    "gateways": {
+                        "203.0.113.0/24": "293.0.113.1",
+                        "2001:db8:300:2::/64": "2001:db8:300:2::1",
+                        "2001:db8:500:2::/64": "2001:db8:500:2::1",
+                    },
+                    "mac": "02:00:00:02:1d:e4",
+                    "networks": {
+                        "203.0.113.0/24": ["203.0.113.10"],
+                        "2001:db8:300:2::/64": [],
+                        "2001:db8:500:2::/64": ["2001:db8:500:2::5"],
+                    },
+                    "nics": [
+                        {"external_label": "fe", "mac": "02:00:00:02:1d:e4"}
+                    ],
+                    "policy": "puppet",
+                    "routed": False,
+                },
+            },
+        },
+    }
+    yield ceph_inst
 
 
 @pytest.fixture(autouse=True)
