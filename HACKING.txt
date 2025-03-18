@@ -14,6 +14,12 @@ host1 $ sudo -i
 host1 $ run-tests
 ```
 
+If your Ceph setup becomes unclean/stuck, you can reboot `host1` or run (without rebooting):
+
+```
+fc.qemu $ cleanup-ceph
+```
+
 ## Hydra integration tests
 
 We assume that you have a local checkout on your machine for editing and that
