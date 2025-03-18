@@ -261,12 +261,16 @@ def ceph_live_setup():
 
     # Give the monitor a chance to come up, otherwise the next commands have a high chance
     # of getting stuck.
+    counter = 0
     while (
         subprocess.run(
             ["ceph", "-s", "--connect-timeout", "1"], env=env
         ).returncode
         == 1
     ):
+        if counter >= 10:
+            raise RuntimeError()
+        counter += 1
         print(
             subprocess.getoutput(["tail", "/var/log/ceph/ceph-mon.host1.log"])
         )
@@ -321,19 +325,19 @@ def ceph_mock(request, monkeypatch, tmp_path):
         if self.device:
             return
         self.device = tmp_path / self.fullname.replace("/", "-")
-        raw = self.device.with_name("{self.device.name}.raw")
+        raw = self.device.with_name(f"{self.device.name}.raw")
         if not raw.exists():
             with raw.open("wb") as f:
-                f.seek(self.size)
+                f.seek(self.size - 1)
                 f.write(b"\0")
                 f.close()
         raw.rename(self.device)
 
         # create an implicit first partition as we can't really do the
         # partprobe dance.
-        raw = self.part1dev.with_name("{self.part1dev.name}.raw")
+        raw = self.part1dev.with_name(f"{self.part1dev.name}.raw")
         with raw.open("wb") as f:
-            f.seek(self.size)
+            f.seek(self.size - 1)
             f.write(b"\0")
             f.close()
         raw.rename(self.part1dev)
@@ -341,9 +345,9 @@ def ceph_mock(request, monkeypatch, tmp_path):
     def image_unmap(self):
         if self.device is None:
             return
-        self.device.rename(self.device.with_name("{self.device.name}.raw"))
+        self.device.rename(self.device.with_name(f"{self.device.name}.raw"))
         self.part1dev.rename(
-            self.part1dev.with_name("{self.part1dev.name}.raw")
+            self.part1dev.with_name(f"{self.part1dev.name}.raw")
         )
         self.device = None
 
