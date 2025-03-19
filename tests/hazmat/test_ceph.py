@@ -108,7 +108,7 @@ def test_cloud_init_seed(ceph_inst_cloudinit_enc):
         directory_mock.list_users.assert_called_once_with("test")
     with cidata_spec.volume.mounted() as target:
         metadata_file = target / "meta-data"
-        assert metadata_file.read_text() == "instance-id: simplevm\n"
+        assert metadata_file.read_text() == "instance-id: e0999536194a42170cde0d3698fb47ee\n"
         userdata_file = target / "user-data"
         userdata_content = userdata_file.read_text()
         assert userdata_content.startswith("#cloud-config\n")
@@ -139,6 +139,8 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg
             "runcmd": [
                 "systemctl enable --now qemu-guest-agent",
                 "systemctl restart ssh",
+                "sed -ie 's/- ssh/- [ssh, once]/' /etc/cloud/cloud.cfg",
+                "sed -ie 's/- set_passwords/- [set_passwords, once]/' /etc/cloud/cloud.cfg",
             ],
         }
         network_config_file = target / "network-config"
@@ -172,6 +174,32 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg
             ],
             "version": 1,
         }
+
+
+@pytest.mark.live()
+def test_cloud_init_seed_instance_id_hashing(ceph_inst_cloudinit_enc):
+    ceph = ceph_inst_cloudinit_enc
+    rbd.RBD().create(
+        ceph.ioctxs["rbd.ssd"],
+        "simplevm.cidata",
+        ceph.cfg["cidata_size"],
+    )
+
+    cidata_spec = ceph.specs["cidata"]
+    cidata_spec.ensure_presence()
+    cidata_spec.start()
+    with cidata_spec.volume.mounted() as target:
+        metadata_file = target / "meta-data"
+        metadata_config = yaml.safe_load(metadata_file.read_text())
+        previous_instance_id = metadata_config["instance-id"]
+
+    ceph_inst_cloudinit_enc.enc["disk"] = 20
+    cidata_spec = ceph.specs["cidata"]
+    cidata_spec.start()
+    with cidata_spec.volume.mounted() as target:
+        metadata_file = target / "meta-data"
+        metadata_config = yaml.safe_load(metadata_file.read_text())
+        assert metadata_config["instance-id"] != previous_instance_id
 
 
 @pytest.mark.live()
@@ -305,7 +333,6 @@ sgdisk> The operation has completed successfully.
 sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
 partprobe args=/dev/rbd/rbd.hdd/simplevm.cidata machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
-waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.hdd/simplevm.cidata
 mkfs.vfat args=-n "cidata" /dev/rbd/rbd.hdd/simplevm.cidata-part1 machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
 mkfs.vfat>      mkfs.fat: Warning: lowercase labels might not work properly on some systems
 mkfs.vfat>      mkfs.fat 4.2 (2021-01-31)

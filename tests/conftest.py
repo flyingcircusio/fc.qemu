@@ -396,6 +396,7 @@ def ceph_inst_cloudinit_enc(ceph_inst):
             "environment_class": "Ubuntu",
             "environment_class_type": "cloudinit",
             "resource_group": "test",
+            "disk": 10,
             "interfaces": {
                 "pub": {
                     "bridged": False,
@@ -420,6 +421,7 @@ def ceph_inst_cloudinit_enc(ceph_inst):
         },
     }
     yield ceph_inst
+    Path("/etc/qemu/users/test.json").unlink(missing_ok=True)
 
 
 @pytest.fixture(autouse=True)

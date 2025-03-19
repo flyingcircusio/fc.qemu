@@ -416,11 +416,17 @@ class CloudInitSpec(VolumeSpecification):
             }
         )
 
+        enc_to_hash = enc.copy()
+        enc_to_hash.pop("last_maintenance_end", None)
+        enc_to_hash.pop("consul-generation", None)
+        enc_to_hash["parameters"].pop("kvm_host", None)
+        enc_hash = hashlib.md5(json.dumps(enc_to_hash, sort_keys=True).encode())
+        instance_id = enc_hash.hexdigest()
         with self.volume.mounted() as target:
             metadata = target / "meta-data"
             metadata.touch()
             with metadata.open("w") as f:
-                yaml.safe_dump({"instance-id": enc["name"]}, f)
+                yaml.safe_dump({"instance-id": instance_id}, f)
             userdata = target / "user-data"
             userdata.touch()
             with userdata.open("w") as f:
@@ -439,6 +445,8 @@ class CloudInitSpec(VolumeSpecification):
                         "runcmd": [
                             "systemctl enable --now qemu-guest-agent",
                             "systemctl restart ssh",
+                            "sed -ie 's/- ssh/- [ssh, once]/' /etc/cloud/cloud.cfg",
+                            "sed -ie 's/- set_passwords/- [set_passwords, once]/' /etc/cloud/cloud.cfg",
                         ],
                     },
                     f,
