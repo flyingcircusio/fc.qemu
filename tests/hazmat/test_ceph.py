@@ -1,4 +1,4 @@
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
 
 import pytest
 import rbd
@@ -79,36 +79,36 @@ def test_cloud_init_seed(ceph_inst_cloudinit_enc):
 
     cidata_spec = ceph.specs["cidata"]
     cidata_spec.ensure_presence()
-    with patch("fc.qemu.directory.connect", autospec=True) as directory_connect_mock:
+    with patch(
+        "fc.qemu.directory.connect", autospec=True
+    ) as directory_connect_mock:
         directory_mock = Mock()
         directory_connect_mock.return_value = directory_mock
-        directory_mock.list_users.side_effect = lambda _rg: [{
-            "class": "human",
-            "email_addresses": [
-                "test@example.com"
-            ],
-            "gid": 100,
-            "home_directory": "/home/test",
-            "id": 1000,
-            "login_shell": "/bin/zsh",
-            "name": "Test Benutzer",
-            "password": "{CRYPT}$6$rounds=656000$foobar",
-            "permissions": {
-                "test": [
-                    "login",
-                    "sudo-srv"
-                ]
-            },
-            "ssh_pubkey": [
-                "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg"
-            ],
-            "uid": "test"
-        }]
+        directory_mock.list_users.side_effect = lambda _rg: [
+            {
+                "class": "human",
+                "email_addresses": ["test@example.com"],
+                "gid": 100,
+                "home_directory": "/home/test",
+                "id": 1000,
+                "login_shell": "/bin/zsh",
+                "name": "Test Benutzer",
+                "password": "{CRYPT}$6$rounds=656000$foobar",
+                "permissions": {"test": ["login", "sudo-srv"]},
+                "ssh_pubkey": [
+                    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg"
+                ],
+                "uid": "test",
+            }
+        ]
         cidata_spec.start()
         directory_mock.list_users.assert_called_once_with("test")
     with cidata_spec.volume.mounted() as target:
         metadata_file = target / "meta-data"
-        assert metadata_file.read_text() == "instance-id: e0999536194a42170cde0d3698fb47ee\n"
+        assert (
+            metadata_file.read_text()
+            == "instance-id: e0999536194a42170cde0d3698fb47ee\n"
+        )
         userdata_file = target / "user-data"
         userdata_content = userdata_file.read_text()
         assert userdata_content.startswith("#cloud-config\n")
@@ -133,8 +133,8 @@ def test_cloud_init_seed(ceph_inst_cloudinit_enc):
 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg
 """,
                     "path": "/root/.ssh/authorized_keys_fc",
-                    "permissions": "0600"
-                }
+                    "permissions": "0600",
+                },
             ],
             "runcmd": [
                 "systemctl enable --now qemu-guest-agent",

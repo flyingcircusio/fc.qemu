@@ -1151,7 +1151,7 @@ class Agent(object):
             self.log.error("mark-qemu-binary-generation", reason=str(e))
 
     def update_root_ssh_keys_cloudinit(self):
-        if self.cfg["environment_class_type"] != 'cloudinit':
+        if self.cfg["environment_class_type"] != "cloudinit":
             return
         self.log.info("update-root-ssh-keys-cloudinit")
         try:
@@ -1163,9 +1163,7 @@ class Agent(object):
                 "/root/.ssh/authorized_keys_fc",
                 to_write_text.encode("utf-8"),
             )
-            self.qemu.exec(
-                "chmod", ["0600", "/root/.ssh/authorized_keys_fc"]
-            )
+            self.qemu.exec("chmod", ["0600", "/root/.ssh/authorized_keys_fc"])
         except Exception as e:
             self.log.error("update-root-ssh-keys-cloudinit", reason=str(e))
 

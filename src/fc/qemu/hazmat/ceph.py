@@ -7,16 +7,21 @@ import hashlib
 import ipaddress
 import json
 import os
+import xmlrpc.client
 from pathlib import Path
 from typing import Dict, Optional
 
 import rados
 import rbd
 import yaml
-import xmlrpc.client
 
 import fc.qemu.directory
-from fc.qemu.util import generate_cloudinit_ssh_keyfile, inplace_update, conditional_update
+from fc.qemu.util import (
+    conditional_update,
+    generate_cloudinit_ssh_keyfile,
+    inplace_update,
+)
+
 from ..sysconfig import sysconfig
 from ..timeout import TimeoutError
 from ..util import cmd, log, parse_export_format
@@ -399,9 +404,7 @@ class CloudInitSpec(VolumeSpecification):
 
         ssh_authorized_keys_content = ""
         try:
-            with Path(
-                f"/etc/qemu/users/{rg}.json"
-            ).open() as f:
+            with Path(f"/etc/qemu/users/{rg}.json").open() as f:
                 users = json.load(f)
                 ssh_authorized_keys_content = generate_cloudinit_ssh_keyfile(
                     users, rg

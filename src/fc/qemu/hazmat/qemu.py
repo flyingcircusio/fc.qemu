@@ -7,6 +7,7 @@ import socket
 import subprocess
 from codecs import encode
 from pathlib import Path
+from typing import List
 
 import psutil
 import yaml
@@ -18,7 +19,7 @@ from ..util import ControlledRuntimeException, log
 from .guestagent import ClientError, GuestAgent
 from .qmp import QEMUMonitorProtocol as Qmp
 from .qmp import QMPConnectError
-from typing import List
+
 # Freeze requests may take a _long_ _long_ time and the default
 # timeout of 3 seconds will cause everything to explode when
 # the guest takes too long. We've seen 16 seconds as a regular
@@ -434,13 +435,15 @@ class Qemu(object):
             if status["exited"] is True:
                 if "exitcode" in status:
                     if status["exitcode"] != 0:
-                        raise RuntimeError(f"Command failed with exitcode {status['exitcode']}")
+                        raise RuntimeError(
+                            f"Command failed with exitcode {status['exitcode']}"
+                        )
                     return
                 if "signal" in status:
-                    raise RuntimeError(f"Command was terminated with signal number {status['signal']}")
+                    raise RuntimeError(
+                        f"Command was terminated with signal number {status['signal']}"
+                    )
                 raise RuntimeError("Command was terminated abnormaly")
-
-
 
     def inmigrate(self):
         self._start([f"-incoming {self.migration_address}"])

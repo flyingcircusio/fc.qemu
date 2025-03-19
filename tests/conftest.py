@@ -731,7 +731,7 @@ def reset_structlog(setup_structlog):
 
 
 @pytest.fixture()
-@patch('fc.qemu.directory.connect', autospec=True)
+@patch("fc.qemu.directory.connect", autospec=True)
 def directory_mock(directory_connect_mock):
     directory_mock = mock.Mock()
     directory_connect_mock.side_effect = lambda _: directory_mock
