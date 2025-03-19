@@ -2,10 +2,13 @@
 
 import contextlib
 import datetime
+import filecmp
+import json
 import os
 import os.path
 import subprocess
 import sys
+import tempfile
 import time
 from typing import IO, Any, Callable, Dict, List
 
@@ -176,6 +179,44 @@ def parse_export_format(data: str) -> Dict[str, str]:
         v = v.strip("'\"")
         result[k] = v
     return result
+
+
+def conditional_update(filename, data, mode=0o640, encode_json=True):
+    """Updates JSON file on disk only if there is different content."""
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".tmp",
+        prefix=os.path.basename(filename),
+        dir=os.path.dirname(filename),
+        delete=False,
+    ) as tf:
+        if encode_json:
+            json.dump(data, tf, ensure_ascii=False, indent=1, sort_keys=True)
+        else:
+            tf.write(data)
+        tf.write("\n")
+        os.chmod(tf.fileno(), mode)
+    if not (os.path.exists(filename)) or not (filecmp.cmp(filename, tf.name)):
+        with open(tf.name, "a") as f:
+            os.fsync(f.fileno())
+        os.rename(tf.name, filename)
+    else:
+        os.unlink(tf.name)
+
+
+def inplace_update(filename, data):
+    """Last-resort JSON update for added robustness.
+
+    If there is no free disk space, `conditional_update` will fail
+    because it is not able to create tempfiles. As an emergency measure,
+    we fall back to rewriting the file in-place.
+    """
+    with open(filename, "r+") as f:
+        f.seek(0)
+        json.dump(data, f, ensure_ascii=False)
+        f.flush()
+        f.truncate()
+        os.fsync(f.fileno())
 
 
 def generate_cloudinit_ssh_keyfile(

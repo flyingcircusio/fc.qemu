@@ -18,7 +18,7 @@ from ..util import ControlledRuntimeException, log
 from .guestagent import ClientError, GuestAgent
 from .qmp import QEMUMonitorProtocol as Qmp
 from .qmp import QMPConnectError
-
+from typing import List
 # Freeze requests may take a _long_ _long_ time and the default
 # timeout of 3 seconds will cause everything to explode when
 # the guest takes too long. We've seen 16 seconds as a regular
@@ -417,6 +417,30 @@ class Qemu(object):
             )
         finally:
             self.guestagent.cmd("guest-file-close", handle=handle)
+
+    def exec(self, executable: str, arg: List[str]):
+        output = self.guestagent.cmd(
+            "guest-exec",
+            path=executable,
+            arg=arg,
+        )
+        try:
+            pid = output["pid"]
+        except KeyError:
+            raise RuntimeError("Command could not be started. No PID")
+        timeout = TimeOut(5, 1, raise_on_timeout=True)
+        while timeout.tick():
+            status = self.guestagent.cmd("guest-exec-status", pid=pid)
+            if status["exited"] is True:
+                if "exitcode" in status:
+                    if status["exitcode"] != 0:
+                        raise RuntimeError(f"Command failed with exitcode {status['exitcode']}")
+                    return
+                if "signal" in status:
+                    raise RuntimeError(f"Command was terminated with signal number {status['signal']}")
+                raise RuntimeError("Command was terminated abnormaly")
+
+
 
     def inmigrate(self):
         self._start([f"-incoming {self.migration_address}"])

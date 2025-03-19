@@ -1,3 +1,5 @@
+from unittest.mock import patch, Mock
+
 import pytest
 import rbd
 import yaml
@@ -77,7 +79,33 @@ def test_cloud_init_seed(ceph_inst_cloudinit_enc):
 
     cidata_spec = ceph.specs["cidata"]
     cidata_spec.ensure_presence()
-    cidata_spec.start()
+    with patch("fc.qemu.directory.connect", autospec=True) as directory_connect_mock:
+        directory_mock = Mock()
+        directory_connect_mock.return_value = directory_mock
+        directory_mock.list_users.side_effect = lambda _rg: [{
+            "class": "human",
+            "email_addresses": [
+                "test@example.com"
+            ],
+            "gid": 100,
+            "home_directory": "/home/test",
+            "id": 1000,
+            "login_shell": "/bin/zsh",
+            "name": "Test Benutzer",
+            "password": "{CRYPT}$6$rounds=656000$foobar",
+            "permissions": {
+                "test": [
+                    "login",
+                    "sudo-srv"
+                ]
+            },
+            "ssh_pubkey": [
+                "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg"
+            ],
+            "uid": "test"
+        }]
+        cidata_spec.start()
+        directory_mock.list_users.assert_called_once_with("test")
     with cidata_spec.volume.mounted() as target:
         metadata_file = target / "meta-data"
         assert metadata_file.read_text() == "instance-id: simplevm\n"
@@ -98,6 +126,14 @@ def test_cloud_init_seed(ceph_inst_cloudinit_enc):
                     "content": "AuthorizedKeysFile .ssh/authorized_keys .ssh/authorized_keys_fc\n",
                     "path": "/etc/ssh/sshd_config.d/10-cloud-init-fc.conf",
                     "permissions": "0644",
+                },
+                {
+                    "content": """\
+### managed by Flying Circus - do not edit! ###
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg
+""",
+                    "path": "/root/.ssh/authorized_keys_fc",
+                    "permissions": "0600"
                 }
             ],
             "runcmd": [

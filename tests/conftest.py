@@ -10,7 +10,9 @@ import traceback
 from pathlib import Path
 from subprocess import check_call, getoutput
 from typing import List
+from unittest.mock import patch
 
+import mock
 import pytest
 import rados
 import rbd
@@ -724,6 +726,14 @@ def reset_structlog(setup_structlog):
     util.log_data = []
     util.test_log_start = time.time()
     util.test_log_options = {"show_methods": [], "show_events": []}
+
+
+@pytest.fixture()
+@patch('fc.qemu.directory.connect', autospec=True)
+def directory_mock(directory_connect_mock):
+    directory_mock = mock.Mock()
+    directory_connect_mock.side_effect = lambda _: directory_mock
+    yield directory_mock
 
 
 def get_log():

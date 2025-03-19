@@ -13,9 +13,10 @@ from typing import Dict, Optional
 import rados
 import rbd
 import yaml
+import xmlrpc.client
 
-from fc.qemu.util import generate_cloudinit_ssh_keyfile
-
+import fc.qemu.directory
+from fc.qemu.util import generate_cloudinit_ssh_keyfile, inplace_update, conditional_update
 from ..sysconfig import sysconfig
 from ..timeout import TimeoutError
 from ..util import cmd, log, parse_export_format
@@ -380,24 +381,40 @@ class CloudInitSpec(VolumeSpecification):
             }
         ]
 
-        # Improve factoring
+        rg = enc["parameters"]["resource_group"]
+        users_file = Path(f"/etc/qemu/users/{rg}.json")
+        if not users_file.exists():
+            directory = fc.qemu.directory.connect(ring="max")
+            try:
+                users = directory.list_users(rg)
+                Path("/etc/qemu/users").mkdir(exist_ok=True)
+                try:
+                    conditional_update(
+                        f"/etc/qemu/users/{rg}.json", users, 0o640
+                    )
+                except (IOError, OSError):
+                    inplace_update(f"/etc/qemu/users/{rg}.json", users)
+            except (Exception, xmlrpc.client.Fault):
+                self.log.warning("retrieve-all-rg-users-failed", exc_info=True)
+
+        ssh_authorized_keys_content = ""
         try:
             with Path(
-                f"/etc/qemu/users/{self.ceph.cfg['resource_group']}.json"
+                f"/etc/qemu/users/{rg}.json"
             ).open() as f:
                 users = json.load(f)
                 ssh_authorized_keys_content = generate_cloudinit_ssh_keyfile(
-                    users, self.ceph.cfg["resource_group"]
-                )
-                managed_files.append(
-                    {
-                        "path": "/root/.ssh/authorized_keys_fc",
-                        "content": ssh_authorized_keys_content,
-                        "permissions": "0600",
-                    }
+                    users, rg
                 )
         except IOError:
             self.log.error("users-file-not-existing")
+        managed_files.append(
+            {
+                "path": "/root/.ssh/authorized_keys_fc",
+                "content": ssh_authorized_keys_content,
+                "permissions": "0600",
+            }
+        )
 
         with self.volume.mounted() as target:
             metadata = target / "meta-data"
