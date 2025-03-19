@@ -12,6 +12,7 @@ import sys
 import time
 import typing
 from codecs import decode
+from ipaddress import ip_interface
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Optional
@@ -250,6 +251,18 @@ def tmp_size(disk):
     """Returns the tmp partition size in bytes."""
     tmp_gib = max(5, math.sqrt(disk))
     return int(tmp_gib) * GiB
+
+
+def iproute2_json(log, args):
+    cmd = "ip -j {}".format(" ".join(args))
+    data = util.cmd(cmd, log, encoding="utf-8")
+    return json.loads(data) if data else None
+
+
+# The iteration order of items in a set is non-deterministic which is
+# a problem the integration tests
+def sorted_ipset(items):
+    return sorted(items, key=lambda x: (x.version, x.ip))
 
 
 class Agent(object):
@@ -1089,6 +1102,7 @@ class Agent(object):
 
         # Perform ongoing adjustments of the operational parameters of the
         # running VM.
+        self.ensure_online_host_routes()
         self.consul_register()
         self.ensure_online_disk_size()
         self.ensure_online_disk_throttle()
@@ -1212,6 +1226,98 @@ class Agent(object):
                     action="none",
                 )
 
+    def ensure_online_host_routes(self):
+        """Ensure that host VRF routes are configured for this VM."""
+        for net, net_config in sorted(self.cfg["interfaces"].items()):
+            if not net_config.get("routed"):
+                continue
+            ifname = f"t{net}{self.cfg['id']}"
+            vrfname = f"vrf{net}"
+            target_routes = {
+                ip_interface(addr)
+                for addrs in net_config["networks"].values()
+                for addr in addrs
+            }
+            current_routes = {}
+
+            self.log.info(
+                "ensure-routes",
+                iface=ifname,
+                vrf=vrfname,
+                action="start",
+            )
+
+            try:
+                current_v4 = iproute2_json(
+                    self.log,
+                    ["-4", "route", "show", "vrf", vrfname, "dev", ifname],
+                )
+                current_v6 = iproute2_json(
+                    self.log,
+                    ["-6", "route", "show", "vrf", vrfname, "dev", ifname],
+                )
+
+                current_routes = {
+                    ip_interface(x["dst"])
+                    for x in (current_v4 + current_v6)
+                    # ignore routes managed by the kernel
+                    if "protocol" not in x or x["protocol"] != "kernel"
+                }
+
+                add = target_routes - current_routes
+                remove = current_routes - target_routes
+
+                if add or remove:
+                    self.log.info(
+                        "ensure-routes",
+                        iface=ifname,
+                        vrf=vrfname,
+                        current_routes=[
+                            x.with_prefixlen
+                            for x in sorted_ipset(current_routes)
+                        ],
+                        target_routes=[
+                            x.with_prefixlen
+                            for x in sorted_ipset(target_routes)
+                        ],
+                        action="reconciling",
+                    )
+
+                for x in add:
+                    iproute2_json(
+                        self.log,
+                        [
+                            # fmt: off
+                            f"-{x.version}", "route", "add", f"{x}",
+                            "dev", ifname, "vrf", vrfname, "proto", "fc-qemu"
+                            # fmt: on
+                        ],
+                    )
+                for x in remove:
+                    iproute2_json(
+                        self.log,
+                        [
+                            # fmt: off
+                            f"-{x.version}", "route", "del", f"{x}",
+                            "dev", ifname, "vrf", vrfname
+                            # fmt: on
+                        ],
+                    )
+
+                self.log.info(
+                    "ensure-routes",
+                    iface=ifname,
+                    vrf=vrfname,
+                    action="finished",
+                )
+            except subprocess.CalledProcessError:
+                self.log.exception(
+                    "ensure-routes-failed",
+                    iface=ifname,
+                    vrf=vrfname,
+                    exc_info=True,
+                )
+
     def ensure_watchdog(self, action="none"):
         """Ensure watchdog settings."""
         self.log.info("ensure-watchdog", action=action)
@@ -1259,6 +1365,7 @@ class Agent(object):
         self.ceph.start()
         self.generate_config()
         self.qemu.start()
+        self.ensure_online_host_routes()
         self.consul_register()
         self.ensure_online_disk_throttle()
         self.ensure_watchdog()
