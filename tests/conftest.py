@@ -10,7 +10,9 @@ import traceback
 from pathlib import Path
 from subprocess import check_call, getoutput
 from typing import List
+from unittest.mock import patch
 
+import mock
 import pytest
 import rados
 import rbd
@@ -261,12 +263,16 @@ def ceph_live_setup():
 
     # Give the monitor a chance to come up, otherwise the next commands have a high chance
     # of getting stuck.
+    counter = 0
     while (
         subprocess.run(
             ["ceph", "-s", "--connect-timeout", "1"], env=env
         ).returncode
         == 1
     ):
+        if counter >= 10:
+            raise RuntimeError()
+        counter += 1
         print(
             subprocess.getoutput(["tail", "/var/log/ceph/ceph-mon.host1.log"])
         )
@@ -321,19 +327,19 @@ def ceph_mock(request, monkeypatch, tmp_path):
         if self.device:
             return
         self.device = tmp_path / self.fullname.replace("/", "-")
-        raw = self.device.with_name("{self.device.name}.raw")
+        raw = self.device.with_name(f"{self.device.name}.raw")
         if not raw.exists():
             with raw.open("wb") as f:
-                f.seek(self.size)
+                f.seek(self.size - 1)
                 f.write(b"\0")
                 f.close()
         raw.rename(self.device)
 
         # create an implicit first partition as we can't really do the
         # partprobe dance.
-        raw = self.part1dev.with_name("{self.part1dev.name}.raw")
+        raw = self.part1dev.with_name(f"{self.part1dev.name}.raw")
         with raw.open("wb") as f:
-            f.seek(self.size)
+            f.seek(self.size - 1)
             f.write(b"\0")
             f.close()
         raw.rename(self.part1dev)
@@ -341,9 +347,9 @@ def ceph_mock(request, monkeypatch, tmp_path):
     def image_unmap(self):
         if self.device is None:
             return
-        self.device.rename(self.device.with_name("{self.device.name}.raw"))
+        self.device.rename(self.device.with_name(f"{self.device.name}.raw"))
         self.part1dev.rename(
-            self.part1dev.with_name("{self.part1dev.name}.raw")
+            self.part1dev.with_name(f"{self.part1dev.name}.raw")
         )
         self.device = None
 
@@ -366,9 +372,10 @@ def ceph_inst(ceph_mock):
         "tmp_size": 1024 * 1024,
         "swap_size": 1024 * 1024,
         "root_size": 1024 * 1024,
+        "cidata_size": 1024 * 1024,
         "binary_generation": 2,
     }
-    enc = {"parameters": {}}
+    enc = {"parameters": {"environment_class_type": "nixos"}}
     ceph = Ceph(cfg, enc)
     ceph.CREATE_VM = "echo {name}"
     ceph.MKFS_XFS = "-q -f -K"
@@ -377,6 +384,44 @@ def ceph_inst(ceph_mock):
         yield ceph
     finally:
         ceph.__exit__(None, None, None)
+
+
+@pytest.fixture
+def ceph_inst_cloudinit_enc(ceph_inst):
+    ceph_inst.cfg["tmp_size"] = 500 * 1024 * 1024
+    ceph_inst.cfg["cidata_size"] = 10 * 1024 * 1024
+    ceph_inst.enc = {
+        "name": "simplevm",
+        "parameters": {
+            "environment_class": "Ubuntu",
+            "environment_class_type": "cloudinit",
+            "resource_group": "test",
+            "disk": 10,
+            "interfaces": {
+                "pub": {
+                    "bridged": False,
+                    "gateways": {
+                        "203.0.113.0/24": "293.0.113.1",
+                        "2001:db8:300:2::/64": "2001:db8:300:2::1",
+                        "2001:db8:500:2::/64": "2001:db8:500:2::1",
+                    },
+                    "mac": "02:00:00:02:1d:e4",
+                    "networks": {
+                        "203.0.113.0/24": ["203.0.113.10"],
+                        "2001:db8:300:2::/64": [],
+                        "2001:db8:500:2::/64": ["2001:db8:500:2::5"],
+                    },
+                    "nics": [
+                        {"external_label": "fe", "mac": "02:00:00:02:1d:e4"}
+                    ],
+                    "policy": "puppet",
+                    "routed": False,
+                },
+            },
+        },
+    }
+    yield ceph_inst
+    Path("/etc/qemu/users/test.json").unlink(missing_ok=True)
 
 
 @pytest.fixture(autouse=True)
@@ -683,6 +728,14 @@ def reset_structlog(setup_structlog):
     util.log_data = []
     util.test_log_start = time.time()
     util.test_log_options = {"show_methods": [], "show_events": []}
+
+
+@pytest.fixture()
+@patch("fc.qemu.directory.connect", autospec=True)
+def directory_mock(directory_connect_mock):
+    directory_mock = mock.Mock()
+    directory_connect_mock.side_effect = lambda _: directory_mock
+    yield directory_mock
 
 
 def get_log():

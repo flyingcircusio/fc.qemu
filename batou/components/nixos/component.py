@@ -1,9 +1,9 @@
-import copy
 import json
 from pathlib import Path
 
 from batou.component import Attribute, Component
 from batou.lib.file import File
+from batou.utils import Address
 
 
 def update_merge(d1, d2):
@@ -106,6 +106,9 @@ class NixOS(Component):
                 + list(self.require("enc", host=self.host, reverse=True)),
             )
         )
+
+        self.host1_addr = Address("host1:0")
+        self.host2_addr = Address("host2:0")
         self += (base := File("/etc/local/nixos/base.nix"))
 
         # Those snippets would typically be File components that place

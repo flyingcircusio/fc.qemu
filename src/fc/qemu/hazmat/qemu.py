@@ -7,6 +7,7 @@ import socket
 import subprocess
 from codecs import encode
 from pathlib import Path
+from typing import List
 
 import psutil
 import yaml
@@ -418,6 +419,29 @@ class Qemu(object):
         finally:
             self.guestagent.cmd("guest-file-close", handle=handle)
 
+    def exec(self, executable: str, arg: List[str]):
+        output = self.guestagent.cmd(
+            "guest-exec",
+            path=executable,
+            arg=arg,
+        )
+        try:
+            pid = output["pid"]
+        except KeyError:
+            raise RuntimeError("Command could not be started. No PID")
+        timeout = TimeOut(5, 1, raise_on_timeout=True)
+        while timeout.tick():
+            status = self.guestagent.cmd("guest-exec-status", pid=pid)
+            if not status["exited"]:
+                continue
+            if signal := status.get("signal"):
+                raise RuntimeError(
+                    f"Command was terminated with signal number {signal}"
+                )
+            if exitcode := status["exitcode"]:
+                raise RuntimeError(f"Command failed with exitcode {exitcode}")
+            break
+
     def inmigrate(self):
         self._start([f"-incoming {self.migration_address}"])
 
@@ -571,14 +595,17 @@ class Qemu(object):
     def graceful_shutdown(self):
         if not self.qmp:
             return
-        self.qmp.command(
-            "send-key",
-            keys=[
-                {"type": "qcode", "data": "ctrl"},
-                {"type": "qcode", "data": "alt"},
-                {"type": "qcode", "data": "delete"},
-            ],
-        )
+        if self.cfg["environment_class"].lower() == "puppet":
+            self.qmp.command(
+                "send-key",
+                keys=[
+                    {"type": "qcode", "data": "ctrl"},
+                    {"type": "qcode", "data": "alt"},
+                    {"type": "qcode", "data": "delete"},
+                ],
+            )
+            return
+        self.qmp.command("system_powerdown")
 
     def destroy(self, kill_supervisor=False):
         # We use this destroy command in "fire-and-forget"-style because

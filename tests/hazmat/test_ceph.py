@@ -1,11 +1,28 @@
+from unittest.mock import Mock, patch
+
 import pytest
 import rbd
+import yaml
 
 from tests.conftest import get_log
 
 
 @pytest.fixture
 def ceph_with_volumes(ceph_inst):
+    for vol in ceph_inst.specs.values():
+        vol.ensure_presence()
+    ceph_inst.lock()
+    yield ceph_inst
+    for volume in ceph_inst.opened_volumes:
+        volume.unlock(force=True)
+        volume.snapshots.purge()
+        volume.close()
+        rbd.RBD().remove(volume.ioctx, volume.name)
+
+
+@pytest.fixture
+def ceph_with_volumes_ci(ceph_inst_cloudinit_enc):
+    ceph_inst = ceph_inst_cloudinit_enc
     for vol in ceph_inst.specs.values():
         vol.ensure_presence()
     ceph_inst.lock()
@@ -52,10 +69,145 @@ def test_multiple_images_raises_error(ceph_inst):
 
 
 @pytest.mark.live()
+def test_cloud_init_seed(ceph_inst_cloudinit_enc):
+    ceph = ceph_inst_cloudinit_enc
+    rbd.RBD().create(
+        ceph.ioctxs["rbd.ssd"],
+        "simplevm.cidata",
+        ceph.cfg["cidata_size"],
+    )
+
+    cidata_spec = ceph.specs["cidata"]
+    cidata_spec.ensure_presence()
+    with patch(
+        "fc.qemu.directory.connect", autospec=True
+    ) as directory_connect_mock:
+        directory_mock = Mock()
+        directory_connect_mock.return_value = directory_mock
+        directory_mock.list_users.side_effect = lambda _rg: [
+            {
+                "class": "human",
+                "email_addresses": ["test@example.com"],
+                "gid": 100,
+                "home_directory": "/home/test",
+                "id": 1000,
+                "login_shell": "/bin/zsh",
+                "name": "Test Benutzer",
+                "password": "{CRYPT}$6$rounds=656000$foobar",
+                "permissions": {"test": ["login", "sudo-srv"]},
+                "ssh_pubkey": [
+                    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg"
+                ],
+                "uid": "test",
+            }
+        ]
+        cidata_spec.start()
+        directory_mock.list_users.assert_called_once_with("test")
+    with cidata_spec.volume.mounted() as target:
+        metadata_file = target / "meta-data"
+        assert (
+            metadata_file.read_text()
+            == "instance-id: e0999536194a42170cde0d3698fb47ee\n"
+        )
+        userdata_file = target / "user-data"
+        userdata_content = userdata_file.read_text()
+        assert userdata_content.startswith("#cloud-config\n")
+        userdata_content_parsed = yaml.safe_load(userdata_content)
+        assert userdata_content_parsed == {
+            "allow_public_ssh_keys": True,
+            "ssh_pwauth": False,
+            "disable_root": False,
+            "package_update": True,
+            "packages": ["qemu-guest-agent"],
+            "hostname": "simplevm",
+            "users": [{"name": "root"}],
+            "write_files": [
+                {
+                    "content": "AuthorizedKeysFile .ssh/authorized_keys .ssh/authorized_keys_fc\n",
+                    "path": "/etc/ssh/sshd_config.d/10-cloud-init-fc.conf",
+                    "permissions": "0644",
+                },
+                {
+                    "content": """\
+### managed by Flying Circus - do not edit! ###
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg
+""",
+                    "path": "/root/.ssh/authorized_keys_fc",
+                    "permissions": "0600",
+                },
+            ],
+            "runcmd": [
+                "systemctl enable --now qemu-guest-agent",
+                "systemctl restart ssh",
+                "sed -ie 's/- ssh/- [ssh, once]/' /etc/cloud/cloud.cfg",
+                "sed -ie 's/- set_passwords/- [set_passwords, once]/' /etc/cloud/cloud.cfg",
+            ],
+        }
+        network_config_file = target / "network-config"
+        network_config_content = network_config_file.read_text()
+        network_config_content_parsed = yaml.safe_load(network_config_content)
+        assert network_config_content_parsed == {
+            "config": [
+                {
+                    "accept-ra": False,
+                    "mac_address": "02:00:00:02:1d:e4",
+                    "name": "ethpub",
+                    "subnets": [
+                        {
+                            "address": "203.0.113.10/24",
+                            "dns_nameservers": ["9.9.9.9", "8.8.8.8"],
+                            "gateway": "293.0.113.1",
+                            "type": "static",
+                        },
+                        {
+                            "address": "2001:db8:500:2::5/64",
+                            "dns_nameservers": [
+                                "2620:fe::fe",
+                                "2001:4860:4860::8888",
+                            ],
+                            "gateway": "2001:db8:500:2::1",
+                            "type": "static6",
+                        },
+                    ],
+                    "type": "physical",
+                }
+            ],
+            "version": 1,
+        }
+
+
+@pytest.mark.live()
+def test_cloud_init_seed_instance_id_hashing(ceph_inst_cloudinit_enc):
+    ceph = ceph_inst_cloudinit_enc
+    rbd.RBD().create(
+        ceph.ioctxs["rbd.ssd"],
+        "simplevm.cidata",
+        ceph.cfg["cidata_size"],
+    )
+
+    cidata_spec = ceph.specs["cidata"]
+    cidata_spec.ensure_presence()
+    cidata_spec.start()
+    with cidata_spec.volume.mounted() as target:
+        metadata_file = target / "meta-data"
+        metadata_config = yaml.safe_load(metadata_file.read_text())
+        previous_instance_id = metadata_config["instance-id"]
+
+    ceph_inst_cloudinit_enc.enc["disk"] = 20
+    cidata_spec = ceph.specs["cidata"]
+    cidata_spec.start()
+    with cidata_spec.volume.mounted() as target:
+        metadata_file = target / "meta-data"
+        metadata_config = yaml.safe_load(metadata_file.read_text())
+        assert metadata_config["instance-id"] != previous_instance_id
+
+
+@pytest.mark.live()
 def test_rbd_pool_migration(ceph_inst, patterns) -> None:
     ceph_inst.cfg["tmp_size"] = 500 * 1024 * 1024
     ceph_inst.cfg["swap_size"] = 50 * 1024 * 1024
     ceph_inst.cfg["root_size"] = 50 * 1024 * 1024
+    ceph_inst.cfg["cidata_size"] = 10 * 1024 * 1024
     rbd.RBD().create(
         ceph_inst.ioctxs["rbd.ssd"],
         "simplevm.root",
@@ -71,9 +223,15 @@ def test_rbd_pool_migration(ceph_inst, patterns) -> None:
         "simplevm.swap",
         ceph_inst.cfg["swap_size"],
     )
+    rbd.RBD().create(
+        ceph_inst.ioctxs["rbd.ssd"],
+        "simplevm.cidata",
+        ceph_inst.cfg["cidata_size"],
+    )
     assert ceph_inst.specs["root"].exists_in_pool() == "rbd.ssd"
     assert ceph_inst.specs["swap"].exists_in_pool() == "rbd.ssd"
     assert ceph_inst.specs["tmp"].exists_in_pool() == "rbd.ssd"
+    assert ceph_inst.specs["cidata"].exists_in_pool() == "rbd.ssd"
 
     ceph_inst.start()
     ceph_inst.status()
@@ -155,7 +313,33 @@ umount args="/mnt/rbd/rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volu
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 rbd args=unmap "/dev/rbd/rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
-
+pre-start machine=simplevm subsystem=ceph volume_spec=cidata
+delete-outdated-cloud-init image=simplevm.cidata machine=simplevm pool=rbd.ssd subsystem=ceph volume=simplevm.cidata
+ensure-presence machine=simplevm subsystem=ceph volume_spec=cidata
+lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+ensure-size machine=simplevm subsystem=ceph volume_spec=cidata
+start machine=simplevm subsystem=ceph volume_spec=cidata
+start-cloud-init machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+rbd args=map "rbd.hdd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+rbd>    /dev/rbd0
+rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
+create-fs machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+sgdisk args=-o "/dev/rbd/rbd.hdd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+sgdisk> Creating new GPT entries in memory.
+sgdisk> The operation has completed successfully.
+sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
+sgdisk args=-n 1:: -c "1:cidata" -t 1:8300 "/dev/rbd/rbd.hdd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+sgdisk> The operation has completed successfully.
+sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
+partprobe args=/dev/rbd/rbd.hdd/simplevm.cidata machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
+mkfs.vfat args=-n "cidata" /dev/rbd/rbd.hdd/simplevm.cidata-part1 machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+mkfs.vfat>      mkfs.fat: Warning: lowercase labels might not work properly on some systems
+mkfs.vfat>      mkfs.fat 4.2 (2021-01-31)
+mkfs.vfat machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
+seed machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+rbd args=unmap "/dev/rbd/rbd.hdd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd>    {"watchers":[{"address":"...:0/...","client":...,"cookie":...}],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"prepared","state_description":""}}
@@ -163,6 +347,7 @@ rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progress= status=prepared subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
 """
     )
 
@@ -171,6 +356,7 @@ rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rb
     assert ceph_inst.specs["root"].exists_in_pool() == "rbd.hdd"
     assert ceph_inst.specs["swap"].exists_in_pool() == "rbd.hdd"
     assert ceph_inst.specs["tmp"].exists_in_pool() == "rbd.hdd"
+    assert ceph_inst.specs["cidata"].exists_in_pool() == "rbd.hdd"
 
     ceph_inst.ensure()
     ceph_inst.status()
@@ -196,6 +382,7 @@ root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progres
 
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
 """
     )
 
@@ -226,6 +413,7 @@ rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
 """
     )
 

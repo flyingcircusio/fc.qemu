@@ -18,6 +18,10 @@ Release notes
 
 - rbd: fix cluster load issue due to overuse of rbd.list (PL-133194)
 
+- Add support for cloud-init ubuntu VMs (PL-133325, PL-133372)
+  Add cloud-init `cidata` volume unconditionally for all VMs.
+  Sync SSH root keys for ubuntu VMs via qmp in ensure.
+
 1.6 (2024-10-23)
 ----------------
 
