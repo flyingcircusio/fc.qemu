@@ -432,18 +432,15 @@ class Qemu(object):
         timeout = TimeOut(5, 1, raise_on_timeout=True)
         while timeout.tick():
             status = self.guestagent.cmd("guest-exec-status", pid=pid)
-            if status["exited"] is True:
-                if "exitcode" in status:
-                    if status["exitcode"] != 0:
-                        raise RuntimeError(
-                            f"Command failed with exitcode {status['exitcode']}"
-                        )
-                    return
-                if "signal" in status:
-                    raise RuntimeError(
-                        f"Command was terminated with signal number {status['signal']}"
-                    )
-                raise RuntimeError("Command was terminated abnormaly")
+            if not status["exited"]:
+                continue
+            if signal := status.get("signal"):
+                raise RuntimeError(
+                    f"Command was terminated with signal number {signal}"
+                )
+            if exitcode := status["exitcode"]:
+                raise RuntimeError(f"Command failed with exitcode {exitcode}")
+            break
 
     def inmigrate(self):
         self._start([f"-incoming {self.migration_address}"])
