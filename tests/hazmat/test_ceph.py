@@ -239,7 +239,8 @@ def test_rbd_pool_migration(ceph_inst, patterns) -> None:
     first_start = patterns.first_start
     first_start.optional(
         """
-waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.hdd/simplevm.tmp
+waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.hdd/simplevm.tmp
+waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.hdd/simplevm.cidata
 sgdisk> Setting name!
 sgdisk> partNum is 0
 mkfs.xfs>       mkfs.xfs: small data volume, ignoring data volume stripe unit 128 and stripe width 128
