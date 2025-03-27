@@ -64,6 +64,19 @@ in
       echo "if down"
     '';
   };
+  environment.etc."kvm/kvm-ifup-vrf" = {
+    text = lib.mkForce ''
+      #!${pkgs.stdenv.shell}
+      ${pkgs.iproute2}/bin/ip link set $1 master vrfpub
+      ${pkgs.iproute2}/bin/ip link set $1 up
+    '';
+  };
+  environment.etc."kvm/kvm-ifdown-vrf" = {
+    text = lib.mkForce ''
+      #!${pkgs.stdenv.shell}
+      ${pkgs.iproute2}/bin/ip link set $1 nomaster
+    '';
+  };
 
   flyingcircus.services.ceph.client = {
     mons = [ "host1" ];
