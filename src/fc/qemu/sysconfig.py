@@ -71,6 +71,10 @@ class SysConfig(object):
         )
         self.agent["vhost"] = self.cp.getboolean("qemu", "vhost")
 
+        self.agent["network_hooks"] = nh = {}
+        for key, path in self.cp.items("network"):
+            nh[key.lstrip("tap-")] = path
+
         # Ceph
         self.agent["this_host"] = self.cp.get("ceph", "lock_host")
         self.agent["ceph_id"] = self.cp.get("ceph", "client-id")
