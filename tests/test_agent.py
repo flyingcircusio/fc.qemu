@@ -10,18 +10,27 @@ from fc.qemu.exc import VMStateInconsistent
 from fc.qemu.hazmat.qemu import Qemu, detect_current_machine_type
 
 
-@pytest.fixture
-def simplevm_cfg(monkeypatch):
+def named_vm_cfg(name, monkeypatch):
     fixtures = Path(__file__).parent / "fixtures"
-    source = fixtures / "simplevm.yaml"
+    source = fixtures / f"{name}.yaml"
     # The Qemu prefix gets adjusted automatically in the synhetic_root
     # auto-use fixture that checks whether this is a live test or not.
-    dest = Qemu.prefix / "etc/qemu/vm/simplevm.cfg"
+    dest = Qemu.prefix / f"etc/qemu/vm/{name}.cfg"
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(source, dest)
-    yield "simplevm"
-    a = Agent("simplevm")
+    yield name
+    a = Agent(name)
     a.system_config_template.unlink(missing_ok=True)
+
+
+@pytest.fixture
+def simplevm_cfg(monkeypatch):
+    yield from named_vm_cfg("simplevm", monkeypatch)
+
+
+@pytest.fixture
+def simplepubvm_cfg(monkeypatch):
+    yield from named_vm_cfg("simplepubvm", monkeypatch)
 
 
 @pytest.mark.live
