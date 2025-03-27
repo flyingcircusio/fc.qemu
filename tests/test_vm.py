@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 import os.path
 import re
@@ -700,6 +701,297 @@ ensure-throttle action=none current_iops=10 device=virtio1 machine=simplevm targ
 ensure-throttle action=none current_iops=10 device=virtio2 machine=simplevm target_iops=10
 ensure-throttle action=none current_iops=10 device=virtio3 machine=simplevm target_iops=10"""
     )
+
+
+@pytest.fixture
+def kernel_vrf_device():
+    subprocess.run(["ip", "link", "delete", "vrfpub"])
+    subprocess.check_call(
+        ["ip", "link", "add", "vrfpub", "type", "vrf", "table", "21"]
+    )
+    subprocess.check_call(["ip", "link", "set", "vrfpub", "up"])
+    yield "vrfpub"
+    subprocess.check_call(["ip", "link", "delete", "vrfpub"])
+
+
+@pytest.fixture
+def kernel_tap_device(kernel_vrf_device):
+    subprocess.run(["ip", "link", "delete", "taptest"])
+    subprocess.check_call(["ip", "tuntap", "add", "taptest", "mode", "tap"])
+    subprocess.check_call(["ip", "link", "set", "taptest", "master", "vrfpub"])
+    subprocess.check_call(["ip", "link", "set", "taptest", "up"])
+    yield "taptest"
+    subprocess.check_call(["ip", "link", "delete", "taptest"])
+
+
+def manage_routes_for_vrf(vrfname):
+    def func(*args):
+        subprocess.check_call(["ip", "route"] + list(args) + ["vrf", vrfname])
+
+    return func
+
+
+def show_routes_for_vrf(vrfname):
+    def func():
+        routes = []
+        for family in ["-4", "-6"]:
+            data = subprocess.check_output(
+                ["ip", "-j", family, "route", "show", "vrf", vrfname]
+            )
+            data = data.decode("utf-8", errors="replace")
+            if data:
+                routes.extend(json.loads(data))
+        return [
+            x
+            for x in routes
+            if "protocol" not in x or x["protocol"] != "kernel"
+        ]
+
+    return func
+
+
+def route_json_v4(dst, iface, protocol="fc-qemu", flags=[]):
+    data = {
+        "dst": dst,
+        "dev": iface,
+        "scope": "link",
+        "flags": flags,
+    }
+    if protocol:
+        data["protocol"] = protocol
+    return data
+
+
+def route_json_v6(dst, iface, protocol="fc-qemu", flags=[]):
+    data = {
+        "dst": dst,
+        "dev": iface,
+        "metric": 1024,
+        "flags": flags,
+        "pref": "medium",
+    }
+    if protocol:
+        data["protocol"] = protocol
+    return data
+
+
+@pytest.mark.live
+def test_vm_host_routes(vm_with_pub, kernel_vrf_device):
+    vm = vm_with_pub
+
+    manage_routes = manage_routes_for_vrf(kernel_vrf_device)
+    show_routes = show_routes_for_vrf(kernel_vrf_device)
+
+    guest_v4 = route_json_v4("192.0.2.23", "tpub3456")
+    guest_v6 = route_json_v6("2001:db8:0:42::23", "tpub3456")
+
+    assert show_routes() == []
+
+    # Starting the VM should set the host routes correctly.
+    vm.start()
+    assert get_log() == Ellipsis(
+        """\
+...
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=reconciling current_routes=[] iface=tpub3456 machine=simplepubvm target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub
+..."""
+    )
+    assert show_routes() == [guest_v4, guest_v6]
+
+    # ensure_online_host_routes() should be idempotent if nothing has
+    # changed.
+    vm.ensure_online_host_routes()
+    assert get_log() == Ellipsis(
+        """\
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+    )
+    assert show_routes() == [guest_v4, guest_v6]
+
+    # If routes belonging to a VM are deleted they should be restored.
+    manage_routes("delete", "2001:db8:0:42::23/128", "dev", "tpub3456")
+    assert show_routes() == [guest_v4]
+
+    vm.ensure_online_host_routes()
+    assert get_log() == Ellipsis(
+        """\
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=reconciling current_routes=['192.0.2.23/32'] iface=tpub3456 machine=simplepubvm target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+    )
+    assert show_routes() == [guest_v4, guest_v6]
+
+    # If there are extra routes for the guest's tap device which are
+    # not in ENC, these should be removed.
+    manage_routes("add", "192.0.2.24/32", "dev", "tpub3456")
+    assert show_routes() == [
+        guest_v4,
+        route_json_v4("192.0.2.24", "tpub3456", protocol=None),
+        guest_v6,
+    ]
+
+    vm.ensure_online_host_routes()
+    assert get_log() == Ellipsis(
+        """\
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=reconciling current_routes=['192.0.2.23/32', '192.0.2.24/32', '2001:db8:0:42::23/128'] iface=tpub3456 machine=simplepubvm target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+    )
+    assert show_routes() == [guest_v4, guest_v6]
+
+    # If the addresses assigned to the guest in ENC change then the
+    # routes should be updated correctly
+    vm.cfg["interfaces"]["pub"]["networks"] = {
+        "203.0.113.38/24": ["203.0.113.38"],
+        "2001:db8:0:47::2014/64": ["2001:db8:0:47::2014"],
+    }
+    new_guest_v4 = route_json_v4("203.0.113.38", "tpub3456")
+    new_guest_v6 = route_json_v6("2001:db8:0:47::2014", "tpub3456")
+
+    vm.ensure_online_host_routes()
+    assert get_log() == Ellipsis(
+        """\
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=reconciling current_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] iface=tpub3456 machine=simplepubvm target_routes=['203.0.113.38/32', '2001:db8:0:47::2014/128'] vrf=vrfpub
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+    )
+    assert show_routes() == [new_guest_v4, new_guest_v6]
+
+
+@pytest.mark.live
+def test_vm_host_routes_orthogonal(
+    vm_with_pub, kernel_vrf_device, kernel_tap_device
+):
+    vm = vm_with_pub
+
+    manage_routes = manage_routes_for_vrf(kernel_vrf_device)
+    show_routes = show_routes_for_vrf(kernel_vrf_device)
+
+    guest_v4 = route_json_v4("192.0.2.23", "tpub3456")
+    guest_v6 = route_json_v6("2001:db8:0:42::23", "tpub3456")
+
+    assert show_routes() == []
+
+    manage_routes("add", "192.0.2.111/32", "dev", kernel_tap_device)
+    tap_v4 = route_json_v4(
+        "192.0.2.111", kernel_tap_device, protocol=None, flags=["linkdown"]
+    )
+
+    assert show_routes() == [tap_v4]
+
+    # Starting the VM should set the host routes correctly and ignore
+    # routes for other tap interfaces in the same VRF.
+    vm.start()
+    assert get_log() == Ellipsis(
+        """\
+...
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=reconciling current_routes=[] iface=tpub3456 machine=simplepubvm target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub
+..."""
+    )
+    assert show_routes() == [guest_v4, tap_v4, guest_v6]
+
+    # ensure_online_host_routes() should be idempotent if nothing has
+    # changed.
+    vm.ensure_online_host_routes()
+    assert get_log() == Ellipsis(
+        """\
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+    )
+    assert show_routes() == [guest_v4, tap_v4, guest_v6]
+
+    # If there are extra routes for the guest's tap device which are
+    # not in ENC, these should be removed without affecting other tap
+    # devices in the same VRF.
+    manage_routes("add", "192.0.2.24/32", "dev", "tpub3456")
+    assert show_routes() == [
+        guest_v4,
+        route_json_v4("192.0.2.24", "tpub3456", protocol=None),
+        tap_v4,
+        guest_v6,
+    ]
+
+    vm.ensure_online_host_routes()
+    assert get_log() == Ellipsis(
+        """\
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=reconciling current_routes=['192.0.2.23/32', '192.0.2.24/32', '2001:db8:0:42::23/128'] iface=tpub3456 machine=simplepubvm target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+    )
+    assert show_routes() == [guest_v4, tap_v4, guest_v6]
 
 
 @pytest.mark.live

@@ -7,6 +7,7 @@ import tests.conftest
 REQUIRED_BINARIES = set(
     [  # production
         "blkid",
+        "ip",
         "mkfs.vfat",
         "mkfs.xfs",
         "mkswap",
@@ -22,7 +23,6 @@ REQUIRED_BINARIES = set(
         "umount",
         "xfs_admin",
         "xfs_db",
-        "parted",
     ]
 )
 

@@ -5,7 +5,8 @@ import mock
 import psutil
 import pytest
 
-from fc.qemu.agent import Agent
+import fc.qemu.util as util
+from fc.qemu.agent import Agent, iproute2_json
 from fc.qemu.exc import VMStateInconsistent
 from fc.qemu.hazmat.qemu import Qemu, detect_current_machine_type
 
@@ -54,6 +55,26 @@ def test_userdefined_config_template(simplevm_cfg, ceph_inst):
         a.ceph.start()
         a.generate_config()
     assert "user defined config template" in a.qemu.config
+
+
+@pytest.mark.live
+def test_config_template_netscripts(simplevm_cfg, ceph_inst):
+    a = Agent(simplevm_cfg)
+    with a:
+        a.ceph.start()
+        a.generate_config()
+    assert 'script = "/etc/kvm/kvm-ifup"' in a.qemu.config
+    assert 'downscript = "/etc/kvm/kvm-ifdown"' in a.qemu.config
+
+
+@pytest.mark.live
+def test_config_template_vrf_netscripts(simplepubvm_cfg, ceph_inst):
+    a = Agent(simplepubvm_cfg)
+    with a:
+        a.ceph.start()
+        a.generate_config()
+    assert 'script = "/etc/kvm/kvm-ifup-vrf"' in a.qemu.config
+    assert 'downscript = "/etc/kvm/kvm-ifdown-vrf"' in a.qemu.config
 
 
 def test_consistency_vm_running(simplevm_cfg, ceph_inst):
@@ -119,3 +140,44 @@ def test_maintenance():
     with pytest.raises(SystemExit, match="0"):
         Agent.maintenance_enter()
     Agent.maintenance_leave()
+
+
+@pytest.mark.live
+def test_iproute2_json_loopback():
+    """Basic functional test of iproute2 JSON output handling."""
+    data = iproute2_json(util.log, ["address", "show", "lo"])
+    assert data == [
+        {
+            "ifindex": 1,
+            "ifname": "lo",
+            "flags": ["LOOPBACK", "UP", "LOWER_UP"],
+            "mtu": 65536,
+            "qdisc": "noqueue",
+            "operstate": "UNKNOWN",
+            "group": "default",
+            "txqlen": 1000,
+            "link_type": "loopback",
+            "address": "00:00:00:00:00:00",
+            "broadcast": "00:00:00:00:00:00",
+            "addr_info": [
+                {
+                    "family": "inet",
+                    "local": "127.0.0.1",
+                    "prefixlen": 8,
+                    "scope": "host",
+                    "label": "lo",
+                    "valid_life_time": 4294967295,
+                    "preferred_life_time": 4294967295,
+                },
+                {
+                    "family": "inet6",
+                    "local": "::1",
+                    "prefixlen": 128,
+                    "scope": "host",
+                    "noprefixroute": True,
+                    "valid_life_time": 4294967295,
+                    "preferred_life_time": 4294967295,
+                },
+            ],
+        }
+    ]
