@@ -11,11 +11,10 @@ import xmlrpc.client
 from pathlib import Path
 from typing import Dict, Optional
 
-import rados
-import rbd
 import yaml
 
 import fc.qemu.directory
+import fc.qemu.hazmat.libceph as libceph
 from fc.qemu.util import (
     conditional_update,
     generate_cloudinit_ssh_keyfile,
@@ -99,10 +98,11 @@ class VolumeSpecification:
 
     def exists_in_pools(self):
         result = []
+
         for pool, ioctx in self.ceph.ioctxs.items():
             try:
-                rbd.Image(ioctx, self.name)
-            except rbd.ImageNotFound:
+                libceph.Image(ioctx, self.name)
+            except libceph.ImageNotFound:
                 continue
             result.append(pool)
         return result
@@ -539,8 +539,8 @@ class Ceph(object):
         self.enc = enc
 
         self.rados = None
-        self.ioctxs: Dict[str, rados.Ioctx] = {}
-        self.rbd = rbd.RBD()
+        self.ioctxs: Dict[str, libceph.Ioctx] = {}
+        self.rbd = libceph.RBD()
 
         self.specs = {}
         self.volumes = {}
@@ -551,9 +551,10 @@ class Ceph(object):
         # Rados binding does ... :/
         self.log.debug("connect-rados")
         os.environ["CEPH_ARGS"] = f"--id {self.CEPH_CLIENT} -c {self.CEPH_CONF}"
-        self.rados = rados.Rados(
+        self.rados = libceph.Rados(
             conffile=self.CEPH_CONF,
             name="client." + self.CEPH_CLIENT,
+            log=self.log,
         )
         self.rados.connect()
 
@@ -614,8 +615,8 @@ class Ceph(object):
     def ensure_volume_presence(self, name, pool, size):
         for ioctx in self.ioctxs.values():
             try:
-                rbd.Image(ioctx, name)
-            except rbd.ImageNotFound:
+                libceph.Image(ioctx, name)
+            except libceph.ImageNotFound:
                 continue
             else:
                 return

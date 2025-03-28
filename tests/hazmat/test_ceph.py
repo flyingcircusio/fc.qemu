@@ -1,9 +1,9 @@
 from unittest.mock import Mock, patch
 
 import pytest
-import rbd
 import yaml
 
+from fc.qemu.hazmat import libceph
 from tests.conftest import get_log
 
 
@@ -17,7 +17,7 @@ def ceph_with_volumes(ceph_inst):
         volume.unlock(force=True)
         volume.snapshots.purge()
         volume.close()
-        rbd.RBD().remove(volume.ioctx, volume.name)
+        libceph.RBD().remove(volume.ioctx, volume.name)
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def ceph_with_volumes_ci(ceph_inst_cloudinit_enc):
         volume.unlock(force=True)
         volume.snapshots.purge()
         volume.close()
-        rbd.RBD().remove(volume.ioctx, volume.name)
+        libceph.RBD().remove(volume.ioctx, volume.name)
 
 
 def test_ceph_stop_should_unlock_all_volumes(ceph_with_volumes):
@@ -53,6 +53,19 @@ def test_ceph_stop_remove_only_own_locks(ceph_with_volumes):
     assert ceph_with_volumes.volumes["tmp"].lock_status() is None
 
 
+@pytest.mark.live()
+def test_ceph_exclusive_lock_can_be_taken_twice_with_same_cookie(ceph_inst):
+    """Test case where failed migrations leave inconsistent locking."""
+    ceph = ceph_inst
+    pool = ceph.ioctxs["rbd.ssd"]
+    libceph.RBD().create(pool, "test", 1024)
+    img = libceph.Image(pool, "test")
+    img.lock_exclusive("cookie-1")
+    img.lock_exclusive("cookie-1")
+    with pytest.raises(libceph.ImageBusy):
+        img.lock_exclusive("cookie-2")
+
+
 def test_is_unlocked(ceph_with_volumes):
     assert ceph_with_volumes.is_unlocked() is False
     ceph_with_volumes.unlock()
@@ -60,8 +73,8 @@ def test_is_unlocked(ceph_with_volumes):
 
 
 def test_multiple_images_raises_error(ceph_inst):
-    rbd.RBD().create(ceph_inst.ioctxs["rbd.hdd"], "simplevm.root", 1024)
-    rbd.RBD().create(ceph_inst.ioctxs["rbd.ssd"], "simplevm.root", 1024)
+    libceph.RBD().create(ceph_inst.ioctxs["rbd.hdd"], "simplevm.root", 1024)
+    libceph.RBD().create(ceph_inst.ioctxs["rbd.ssd"], "simplevm.root", 1024)
     root_spec = ceph_inst.specs["root"]
     assert sorted(root_spec.exists_in_pools()) == ["rbd.hdd", "rbd.ssd"]
     with pytest.raises(RuntimeError):
@@ -69,9 +82,9 @@ def test_multiple_images_raises_error(ceph_inst):
 
 
 @pytest.mark.live()
-def test_cloud_init_seed(ceph_inst_cloudinit_enc):
+def test_cloud_init_seed_simple(ceph_inst_cloudinit_enc):
     ceph = ceph_inst_cloudinit_enc
-    rbd.RBD().create(
+    libceph.RBD().create(
         ceph.ioctxs["rbd.ssd"],
         "simplevm.cidata",
         ceph.cfg["cidata_size"],
@@ -179,7 +192,7 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg
 @pytest.mark.live()
 def test_cloud_init_seed_instance_id_hashing(ceph_inst_cloudinit_enc):
     ceph = ceph_inst_cloudinit_enc
-    rbd.RBD().create(
+    libceph.RBD().create(
         ceph.ioctxs["rbd.ssd"],
         "simplevm.cidata",
         ceph.cfg["cidata_size"],
@@ -208,22 +221,22 @@ def test_rbd_pool_migration(ceph_inst, patterns) -> None:
     ceph_inst.cfg["swap_size"] = 50 * 1024 * 1024
     ceph_inst.cfg["root_size"] = 50 * 1024 * 1024
     ceph_inst.cfg["cidata_size"] = 10 * 1024 * 1024
-    rbd.RBD().create(
+    libceph.RBD().create(
         ceph_inst.ioctxs["rbd.ssd"],
         "simplevm.root",
         ceph_inst.cfg["root_size"],
     )
-    rbd.RBD().create(
+    libceph.RBD().create(
         ceph_inst.ioctxs["rbd.ssd"],
         "simplevm.tmp",
         ceph_inst.cfg["tmp_size"],
     )
-    rbd.RBD().create(
+    libceph.RBD().create(
         ceph_inst.ioctxs["rbd.ssd"],
         "simplevm.swap",
         ceph_inst.cfg["swap_size"],
     )
-    rbd.RBD().create(
+    libceph.RBD().create(
         ceph_inst.ioctxs["rbd.ssd"],
         "simplevm.cidata",
         ceph_inst.cfg["cidata_size"],
@@ -258,7 +271,7 @@ start machine=simplevm subsystem=ceph volume_spec=root
 start-root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 root-found-in current_pool=rbd.ssd machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd args=status --format json rbd.ssd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd>    {"watchers":[{"address":"...:0/...","client":...,"cookie":...}]}
+rbd>    {"watchers":[]}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 
 migrate-vm-root-disk action=start machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd subsystem=ceph volume=rbd.ssd/simplevm.root
@@ -343,7 +356,7 @@ rbd args=unmap "/dev/rbd/rbd.hdd/simplevm.cidata" machine=simplevm subsystem=cep
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-rbd>    {"watchers":[{"address":"...:0/...","client":...,"cookie":...}],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"prepared","state_description":""}}
+rbd>    {"watchers":[],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"prepared","state_description":""}}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progress= status=prepared subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
@@ -366,7 +379,7 @@ rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rb
     first_ensure.in_order(
         """
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-rbd>    {"watchers":[{"address":"...:0/...","client":...,"cookie":...}],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"prepared","state_description":""}}
+rbd>    {"watchers":[],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"prepared","state_description":""}}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progress= status=prepared subsystem=ceph volume=rbd.hdd/simplevm.root
 
@@ -377,7 +390,7 @@ ceph machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-rbd>    {"watchers":[{"address":"...:0/...","client":...,"cookie":...}],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"...","state_description":...}}
+rbd>    {"watchers":[],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"...","state_description":...}}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progress=...status=... subsystem=ceph volume=rbd.hdd/simplevm.root
 
@@ -399,7 +412,7 @@ rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rb
     commit_ensure.in_order(
         """
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-rbd>    {"watchers":[{"address":"...:0/...","client":...,"cookie":...}],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"executed","state_description":""}}
+rbd>    {"watchers":[],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"executed","state_description":""}}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 
 root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progress= status=executed subsystem=ceph volume=rbd.hdd/simplevm.root
@@ -409,7 +422,7 @@ rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-rbd>    {"watchers":[{"address":"...:0/...","client":...,"cookie":...}]}
+rbd>    {"watchers":[]}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap

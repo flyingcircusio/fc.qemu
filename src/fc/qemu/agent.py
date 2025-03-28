@@ -1,7 +1,6 @@
 import contextlib
 import copy
 import datetime
-import distutils.spawn
 import fcntl
 import json
 import math
@@ -1378,8 +1377,7 @@ class Agent(object):
     def telnet(self):
         """Open telnet connection to the VM monitor."""
         self.log.info("connect-via-telnet")
-        telnet = distutils.spawn.find_executable("telnet")
-        assert telnet is not None
+        assert (telnet := shutil.which("telnet")) is not None
         os.execv(telnet, ("telnet", "localhost", str(self.qemu.monitor_port)))
 
     @locked()

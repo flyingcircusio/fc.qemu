@@ -36,7 +36,7 @@ def run_supervised(cmd, name, logfile):
     # avoid deadlocks.
 
     DELAY = 5
-    for try_ in range(60 / DELAY):
+    for try_ in range(int(60 / DELAY)):
         log(f"ensuring VM state (try {try_})")
         s = subprocess.Popen(
             ["fc-qemu", "-v", "ensure", name],

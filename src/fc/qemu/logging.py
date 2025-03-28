@@ -6,10 +6,10 @@
 
 import os
 import sys
+from io import StringIO
 from pathlib import Path
 
 import structlog
-from six import StringIO
 
 try:
     import colorama

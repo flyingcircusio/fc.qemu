@@ -40,24 +40,27 @@ def test_empty_event():
     ]
 
 
-def test_no_key_event():
+def test_no_key_event(patterns):
     stdin = StringIO('[{"ModifyIndex": 123, "Value": ""}]')
     Agent.handle_consul_event(stdin)
 
-    assert (
-        Ellipsis(
-            """\
+    p = patterns.no_key
+    p.continuous(
+        """
 start-consul-events count=1
 handle-key-failed key=None
 Traceback (most recent call last):
   File ".../fc/qemu/agent.py", line ..., in handle
     log.debug("handle-key", key=event["Key"])
+                                ~~~~~^^^^^^^
 KeyError: 'Key'
 finish-handle-key key=None
-finish-consul-events"""
-        )
-        == get_log()
+finish-consul-events
+"""
     )
+
+    log = get_log()
+    assert log == p
 
 
 @pytest.fixture
