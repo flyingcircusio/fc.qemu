@@ -845,6 +845,7 @@ simplevm              migration-status               mbps='-' remaining='0' stat
 simplevm         qemu vm-destroy-kill-vm             attempt=...
 simplevm              connect                        reason='[Errno 111] Connection refused' result='failed'
 simplevm              located-inmigration-service    url='http://...test.gocept.net:...'
+simplevm      libceph ...
 """
     )
     # Expect debug output that doesn't matter as much

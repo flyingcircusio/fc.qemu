@@ -1,11 +1,10 @@
 import os.path
-import socket
 import subprocess
 import time
 
 import pytest
-import rbd
 
+from fc.qemu.hazmat import libceph
 from fc.qemu.timeout import TimeOut
 
 
@@ -18,8 +17,8 @@ def tmp_spec(ceph_inst):
         timeout = TimeOut(10, interval=1)
         while timeout.tick():
             try:
-                rbd.RBD().remove(ioctx, name)
-            except rbd.ImageBusy:
+                libceph.RBD().remove(ioctx, name)
+            except libceph.ImageBusy:
                 pass
 
     spec = ceph_inst.specs["tmp"]
@@ -35,8 +34,8 @@ def tmp_spec(ceph_inst):
             volume.snapshots.purge()
             name, ioctx = volume.name, volume.ioctx
             volume.close()
-            rbd.RBD().remove(ceph_inst.ioctxs["rbd.hdd"], "simplevm.root")
-    except rbd.ImageNotFound:
+            libceph.RBD().remove(ceph_inst.ioctxs["rbd.hdd"], name)
+    except libceph.ImageNotFound:
         pass
 
 
@@ -106,18 +105,6 @@ def test_volume_size(tmp_spec):
     assert volume.size == 2048
 
 
-def test_volume_shared_lock_protection(tmp_spec):
-    tmp_spec.ensure_presence()
-    volume = tmp_spec.volume
-    volume.rbdimage.lock_shared("host1", "a")
-    volume.rbdimage.lock_shared("remotehost", "a")
-    with pytest.raises(NotImplementedError):
-        volume.lock_status()
-    lockers = volume.rbdimage.list_lockers()
-    for client, cookie, _ in lockers["lockers"]:
-        volume.rbdimage.break_lock(client, cookie)
-
-
 def test_volume_locking(tmp_spec):
     tmp_spec.ensure_presence()
     volume = tmp_spec.volume
@@ -135,7 +122,7 @@ def test_volume_locking(tmp_spec):
     volume.unlock()
 
     volume.rbdimage.lock_exclusive("someotherhost")
-    with pytest.raises(rbd.ImageBusy):
+    with pytest.raises(libceph.ImageBusy):
         volume.lock()
 
     # Can not unlock locks that someone else holds.

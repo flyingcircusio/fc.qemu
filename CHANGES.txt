@@ -22,6 +22,11 @@ Release notes
   Add cloud-init `cidata` volume unconditionally for all VMs.
   Sync SSH root keys for ubuntu VMs via qmp in ensure.
 
+- Upgrade to Python 3.11.
+
+- Remove dependencies on librados and friends. Only leverage JSON/CLI interfaces
+  to reduce complexity. (PL-133553)
+
 1.6 (2024-10-23)
 ----------------
 

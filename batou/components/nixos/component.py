@@ -126,6 +126,7 @@ class NixOS(Component):
         self.assert_no_subcomponent_changes()
 
     def update(self):
-        with self.chdir("/home/developer/fc-nixos"):
-            self.cmd("./dev-setup")
+        if Path("/home/developer/fc-nixos").exists():
+            with self.chdir("/home/developer/fc-nixos"):
+                self.cmd("./dev-setup")
         self.cmd("fc-manage --build")

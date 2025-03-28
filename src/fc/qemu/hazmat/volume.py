@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import rbd
+import fc.qemu.hazmat.libceph as libceph
 
 from ..timeout import TimeOut
 from ..util import cmd, remove_empty_dirs
@@ -29,7 +29,7 @@ class Image(object):
         self.ioctx = ioctx
         self.name = name
         self.log = ceph.log.bind(image=self.name)
-        self.rbd = rbd.RBD()
+        self.rbd = libceph.RBD()
 
     def __str__(self):
         return self.fullname
@@ -145,7 +145,7 @@ class Snapshots(object):
     def _list_snaps(self):
         try:
             return self.vol.rbdimage.list_snaps()
-        except rbd.ImageNotFound:
+        except libceph.ImageNotFound:
             return []
 
     def purge(self):
@@ -180,18 +180,12 @@ class Snapshot(Image):
     @property
     def rbdimage(self):
         if self._image is None:
-            self._image = rbd.Image(self.ioctx, self.name, self.snapname)
+            self._image = libceph.Image(self.ioctx, self.name, self.snapname)
         return self._image
 
     @property
     def fullname(self):
-        return (
-            self.ioctx.name.decode("ascii")
-            + "/"
-            + self.name
-            + "@"
-            + self.snapname
-        )
+        return self.ioctx.name + "/" + self.name + "@" + self.snapname
 
     def remove(self):
         """Destroy myself."""
@@ -216,7 +210,7 @@ class Volume(Image):
     @property
     def rbdimage(self):
         if not self._image:
-            self._image = rbd.Image(self.ioctx, self.name)
+            self._image = libceph.Image(self.ioctx, self.name)
         return self._image
 
     def close(self):
@@ -226,7 +220,7 @@ class Volume(Image):
 
     @property
     def fullname(self):
-        return self.ioctx.name.decode("ascii") + "/" + self.name
+        return self.ioctx.name + "/" + self.name
 
     @property
     def size(self):
@@ -249,11 +243,11 @@ class Volume(Image):
                 self.rbdimage.lock_exclusive(self.ceph.CEPH_LOCK_HOST)
                 self.locked_by_me = True
                 return
-            except rbd.ImageExists:
+            except libceph.ImageExists:
                 # This client and cookie already locked this. This is
                 # definitely fine.
                 return
-            except rbd.ImageBusy:
+            except libceph.ImageBusy:
                 # Maybe the same client but different cookie. We're fine with
                 # different cookies - ignore this. Must be same client, though.
                 status = self.lock_status()
@@ -269,7 +263,7 @@ class Volume(Image):
                 # Its locked for some other client.
                 self.log.error("assume-lock-failed", competing=status)
                 raise
-        raise rbd.ImageBusy(
+        raise libceph.ImageBusy(
             "Could not acquire lock - tried multiple times. "
             "Someone seems to be racing me."
         )
@@ -278,13 +272,15 @@ class Volume(Image):
         """Return None if not locked and (client_id, lock_id) if it is."""
         try:
             lockers = self.rbdimage.list_lockers()
-        except rbd.ImageNotFound:
+        except libceph.ImageNotFound:
             return None
         if not lockers:
-            return
+            return None
         # For some reasons list_lockers may just return an empty list instead
         # of a dict. Say what?
         lockers = lockers["lockers"]
+        if not lockers:
+            return None
         if not len(lockers) == 1:
             raise NotImplementedError("I'm not prepared for shared locks")
         client_id, lock_id, addr = lockers[0]
@@ -295,30 +291,17 @@ class Volume(Image):
         if not locked_by:
             return
         client_id, lock_id = locked_by
-        if self.locked_by_me:
+
+        if client_id == "client.?":
+            self.log.warn("buggy-lock", action="continuing")
+
+        if self.locked_by_me or lock_id == self.ceph.CEPH_LOCK_HOST:
             self.log.info("unlock")
             self.rbdimage.unlock(lock_id)
             self.locked_by_me = False
             return
 
-        def _break_lock():
-            try:
-                self.rbdimage.break_lock(client_id, lock_id)
-            except rbd.InvalidArgument:
-                if client_id == "client.?":
-                    self.log.warn("buggy-lock", action="low-level-delete")
-                    # This looks a lot like a broken hammer installation.
-                    # Be cruel.
-                    img_id = self.ioctx.read(f"rbd_id.{self.name}").strip()
-                    img_id = img_id[4:]
-                    self.ioctx.rm_xattr(f"rbd_header.{img_id}", "lock.rbd_lock")
-
-        if lock_id == self.ceph.CEPH_LOCK_HOST:
-            # This host owns this lock but from a different connection. This
-            # means we have to break it.
-            self.log.info("unlock")
-            _break_lock()
         # We do not own this lock: need to explicitly ask for breaking.
         elif force:
             self.log.info("break-lock")
-            _break_lock()
+            self.rbdimage.unlock(lock_id)

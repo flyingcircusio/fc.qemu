@@ -44,14 +44,18 @@ TEST_BINARIES = set(
         "tail",
         "top",
         "true",
+        "losetup",
     ]
 )
 
 
 @pytest.mark.unit
 def test_known_binaries_reachable():
+    missing = set()
     for binary in REQUIRED_BINARIES:
-        assert shutil.which(binary)
+        if not shutil.which(binary):
+            missing.add(binary)
+    assert missing == set()
 
 
 @pytest.mark.live
@@ -66,5 +70,4 @@ def test_no_unexpected_binaries():
 
 @pytest.mark.unit
 def test_ensure_critical_module_imports():
-    import rados  # noqa
     import structlog  # noqa

@@ -14,15 +14,13 @@ from unittest.mock import patch
 
 import mock
 import pytest
-import rados
-import rbd
 import structlog
 
 import fc.qemu.agent
 import fc.qemu.hazmat.qemu
 import fc.qemu.logging
 from fc.qemu.agent import Agent
-from fc.qemu.hazmat import volume
+from fc.qemu.hazmat import libceph, volume
 from fc.qemu.hazmat.ceph import Ceph, RootSpec, VolumeSpecification
 from fc.qemu.util import GiB
 
@@ -31,7 +29,7 @@ from fc.qemu.util import GiB
 
 
 class RadosMock(object):
-    def __init__(self, conffile, name):
+    def __init__(self, conffile, name, log):
         self.conffile = conffile
         self.name = name
         self._ioctx = {}
@@ -60,7 +58,7 @@ class IoctxMock(object):
     def __init__(self, name: str):
         # the rados implementation takes the name as a str, but later returns
         # that attribute as bytes
-        self.name = name.encode("ascii")
+        self.name = name
         self.rbd_images = {}
         self._snapids = 0
 
@@ -113,7 +111,7 @@ class ImageMock(object):
             self._name += "@" + self.snapname
 
         if self._name not in ioctx.rbd_images:
-            raise rbd.ImageNotFound(self.name)
+            raise libceph.ImageNotFound(self.name)
 
     def size(self):
         assert not self.closed
@@ -136,41 +134,14 @@ class ImageMock(object):
         else:
             assert lock["exclusive"]
             if not lock["lockers"][0][1] == cookie:
-                raise rbd.ImageBusy(errno.EBUSY, "Image is busy")
-            return
-        raise RuntimeError("unsupported mock path")
-
-    def lock_shared(self, cookie, tag):
-        assert not self.closed
-        lock = self.ioctx.rbd_images[self.name]["lock"]
-        if lock is None:
-            self.ioctx.rbd_images[self.name]["lock"] = {
-                "tag": tag,
-                "exclusive": False,
-                "lockers": [("client.xyz", cookie, "127.0.0.1:9999")],
-            }
-            return
-        else:
-            if lock["exclusive"]:
-                raise rbd.ImageBusy("already exclusively locked")
-            if lock["tag"] != tag:
-                raise rbd.ImageBusy("wrong tag")
-            for l_client, l_cookie, l_addr in list(lock["lockers"]):
-                if l_cookie != cookie:
-                    lock["lockers"].append(
-                        ("client.xyz", cookie, "127.0.0.1:9999")
-                    )
-                else:
-                    raise rbd.ImageExists()
-            # XXX we every only calls this from the same host so we never
-            # actually get multiple lockers, just valid noops.
+                raise libceph.ImageBusy(errno.EBUSY, "Image is busy")
             return
         raise RuntimeError("unsupported mock path")
 
     def list_lockers(self):
         assert not self.closed
         if self.name not in self.ioctx.rbd_images:
-            raise rbd.ImageNotFound(self.name)
+            raise libceph.ImageNotFound(self.name)
         lock = self.ioctx.rbd_images[self.name]["lock"]
         return [] if lock is None else lock
 
@@ -256,6 +227,8 @@ def ceph_live_setup():
 
     def call(cmd):
         print(f"$ {cmd}")
+        with open("/tmp/test.log", "a") as f:
+            print(f"$ {cmd}", file=f)
         check_call(cmd, env=env, shell=True)
 
     call(f"fc-ceph osd prepare-journal {journal_loopback}")
@@ -353,9 +326,9 @@ def ceph_mock(request, monkeypatch, tmp_path):
         )
         self.device = None
 
-    monkeypatch.setattr(rados, "Rados", RadosMock)
-    monkeypatch.setattr(rbd, "RBD", RBDMock)
-    monkeypatch.setattr(rbd, "Image", ImageMock)
+    monkeypatch.setattr(libceph, "Rados", RadosMock)
+    monkeypatch.setattr(libceph, "RBD", RBDMock)
+    monkeypatch.setattr(libceph, "Image", ImageMock)
     monkeypatch.setattr(volume.Image, "map", image_map)
     monkeypatch.setattr(volume.Image, "unmap", image_unmap)
     monkeypatch.setattr(RootSpec, "ensure_presence", ensure_presence)
@@ -363,7 +336,7 @@ def ceph_mock(request, monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def ceph_inst(ceph_mock):
+def ceph_inst(request, ceph_mock):
     cfg = {
         "resource_group": "test",
         "rbd_pool": "rbd.hdd",
@@ -377,7 +350,11 @@ def ceph_inst(ceph_mock):
     }
     enc = {"parameters": {"environment_class_type": "nixos"}}
     ceph = Ceph(cfg, enc)
-    ceph.CREATE_VM = "echo {name}"
+    is_live = request.node.get_closest_marker("live")
+    if is_live is not None:
+        ceph.CREATE_VM = "rbd create rbd.hdd/{name} --size 10G"
+    else:
+        ceph.CREATE_VM = "echo {name}"
     ceph.MKFS_XFS = "-q -f -K"
     ceph.__enter__()
     try:
@@ -424,6 +401,12 @@ def ceph_inst_cloudinit_enc(ceph_inst):
     Path("/etc/qemu/users/test.json").unlink(missing_ok=True)
 
 
+def print2(*args, **kw):
+    print(*args, **kw)
+    with open("/tmp/test.log", "a") as f:
+        print(*args, file=f, **kw)
+
+
 @pytest.fixture(autouse=True)
 def clean_rbd_pools(request, kill_vms, ceph_mock):
     is_live = request.node.get_closest_marker("live")
@@ -433,6 +416,7 @@ def clean_rbd_pools(request, kill_vms, ceph_mock):
     def images_to_clean() -> List[str]:
         images = []
         for pool in ["rbd.hdd", "rbd.ssd"]:
+            print2(f"rbd ls {pool}")
             with subprocess.Popen(
                 ["rbd", "ls", pool],
                 stdout=subprocess.PIPE,
@@ -455,6 +439,7 @@ def clean_rbd_pools(request, kill_vms, ceph_mock):
             # Use temporary blacklisting to ensure all watchers are gone.
             ips = [socket.gethostbyname(host) for host in ["host1", "host2"]]
             for ip in ips:
+                print2(f"ceph osd blacklist add {ip}")
                 subprocess.run(
                     f"ceph osd blacklist add {ip}",
                     shell=True,
@@ -463,21 +448,24 @@ def clean_rbd_pools(request, kill_vms, ceph_mock):
             # to time out ...
             time.sleep(5)
             for ip in ips:
-                print(f"blacklist rm {ip}")
+                print2(f"blacklist rm {ip}")
                 subprocess.run(
                     f"ceph osd blacklist rm {ip}",
                     shell=True,
                 )
             time.sleep(5)
         for image in images:
+            print2(f"rbd snap purge {image}")
             subprocess.run(
                 f"rbd snap purge {image}",
                 shell=True,
             )
+            print2(f"rbd migration abort {image}")
             subprocess.run(
                 f"rbd migration abort {image}",
                 shell=True,
             )
+            print2(f"rbd rm {image}")
             subprocess.run(f"rbd rm {image}", shell=True)
         passes += 1
 
@@ -672,15 +660,24 @@ def setup_structlog():
 
         # Ensure we get something to read on stdout in case we have errors.
         reltime = time.time() - util.test_log_start
-        print(f"{reltime:08.4f} {result}")
-        if stack:
-            print(stack)
-        if exc:
-            print(exc)
+        with open("/tmp/test.log", "a") as f:
+            print(f"{reltime:08.4f} {result}")
+            print(f"{reltime:08.4f} {result}", file=f)
+            print(f"{reltime:08.4f} {result}")
+            if stack:
+                print(stack)
+                print(stack, file=f)
+            if exc:
+                print(exc)
+                print(exc, file=f)
 
         # Allow tests to inspect only methods and events they are interested
         # in. This reduces noise in our test outputs and comparisons and
         # reduces fragility.
+        hide_subsystems = util.test_log_options["hide_subsystems"]
+        if hide_subsystems and event.get("subsystem") in hide_subsystems:
+            raise structlog.DropEvent
+
         show_methods = util.test_log_options["show_methods"]
         if show_methods and method_name not in show_methods:
             raise structlog.DropEvent
@@ -710,6 +707,8 @@ def setup_structlog():
         """
         reltime = time.time() - util.test_log_start
         print(f"{reltime:08.4f}", *args)
+        with open("/tmp/test.log", "a") as f:
+            print(f"{reltime:08.4f}", *args, file=f)
 
     util.test_log_print = test_log_print
 
@@ -727,7 +726,11 @@ def reset_structlog(setup_structlog):
 
     util.log_data = []
     util.test_log_start = time.time()
-    util.test_log_options = {"show_methods": [], "show_events": []}
+    util.test_log_options = {
+        "show_methods": [],
+        "show_events": [],
+        "hide_subsystems": ["libceph"],
+    }
 
 
 @pytest.fixture()
