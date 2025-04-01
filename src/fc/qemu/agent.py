@@ -22,7 +22,7 @@ import consulate.models.agent
 import requests
 import yaml
 
-from . import directory, util
+from . import aramaki, directory, util
 from .exc import (
     ConfigChanged,
     InvalidCommand,
@@ -1032,6 +1032,7 @@ class Agent(object):
                 found="offline",
                 action="none",
             )
+        self.send_status_beacon()
 
     def ensure_online_remote(self):
         if not self.qemu.is_running():
@@ -1080,6 +1081,7 @@ class Agent(object):
                     found="offline",
                     action="start",
                 )
+                self.send_status_beacon("starting")
                 self.start()
                 agent_likely_ready = False
         else:
@@ -1089,6 +1091,7 @@ class Agent(object):
 
         # Perform ongoing adjustments of the operational parameters of the
         # running VM.
+        self.send_status_beacon()
         self.consul_register()
         self.ensure_online_disk_size()
         self.ensure_online_disk_throttle()
@@ -1256,6 +1259,7 @@ class Agent(object):
     @locked()
     @running(False)
     def start(self):
+        self.send_status_beacon("starting")
         self.ceph.start()
         self.generate_config()
         self.qemu.start()
@@ -1266,6 +1270,7 @@ class Agent(object):
         # because the start may have failed because of an already running
         # process. Removing the lock in that case is dangerous. OTOH leaving
         # the lock is never dangerous. Lets go with that.
+        self.send_status_beacon()
 
     @contextlib.contextmanager
     def frozen_vm(self):
@@ -1337,6 +1342,17 @@ class Agent(object):
                 self.log.error("snapshot-ignore", reason="not frozen")
                 raise RuntimeError("VM not frozen, not making snapshot.")
 
+    @locked()
+    def send_status_beacon(self, status=None, migration=""):
+        if status is None:
+            try:
+                status = "online" if self.qemu.is_running() else "offline"
+
+            except VMStateInconsistent:
+                status = "inconsistent"
+        status = {"vm": self.name, "status": status, "migration": migration}
+        aramaki.send_status_beacon(status)
+
     # This must be locked because we're going to use the
     # QMP socket and that only supports talking to one person at a time.
     # Alternatively we'd had to connect/disconnect and do weird things
@@ -1383,7 +1399,8 @@ class Agent(object):
     @locked()
     @running(True)
     def stop(self):
-        timeout = TimeOut(self.timeout_graceful, interval=3)
+        self.send_status_beacon("stopping")
+        timeout = TimeOut(5, interval=3)
         self.log.info("graceful-shutdown")
         try:
             self.qemu.graceful_shutdown()
@@ -1401,6 +1418,7 @@ class Agent(object):
         else:
             self.log.warn("graceful-shutdown-failed", reason="timeout")
             self.kill()
+        self.send_status_beacon()
 
     @locked()
     def restart(self):
@@ -1476,12 +1494,14 @@ class Agent(object):
         if not exitcode:
             self.consul_register()
         self.log.info("inmigrate-finished", exitcode=exitcode)
+        self.send_status_beacon()
         return exitcode
 
     @locked()
     @running(True)
     def outmigrate(self):
         self.log.info("outmigrate")
+        self.send_status_beacon(migration="initialised")
         # re-register in case services got lost during Consul restart
         self.consul_register()
         client = Outgoing(self)

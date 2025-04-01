@@ -17,9 +17,13 @@ dependencies = [
     "requests",  # ==2.11.1',
     "setuptools",
     "structlog>=16.1.0",
-    "websockets>=13.1"
+    "websockets>=13.1",
+    "rfc8785>=0.1.4"
 ]
 # NOTE: Please keep this sorted!
+
+[tool.uv.sources]
+consulate = { git = "https://github.com/flyingcircusio/consulate", rev = "90e46a4f307e281bf0e050d510fa367fd2826a2f" }
 
 [build-system]
 requires = ["setuptools >= 61.0"]
