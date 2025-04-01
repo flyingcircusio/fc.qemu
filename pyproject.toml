@@ -17,7 +17,8 @@ dependencies = [
     "requests",  # ==2.11.1',
     "setuptools",
     "structlog>=16.1.0",
-    "websockets>=13.1"
+    "websockets>=13.1",
+    "rfc8785>=0.1.4"
 ]
 # NOTE: Please keep this sorted!
 
