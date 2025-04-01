@@ -146,6 +146,9 @@ class Outgoing(object):
         )
         self.log.info("locate-inmigration-service")
         while timeout.tick():
+            self.agent.send_status_beacon(
+                migration=f"waiting for connection ({timeout.remaining:,d}s remaining)"
+            )
             if self.agent.has_new_config():
                 raise ConfigChanged()
             candidates = self.consul.catalog.service(service_name)
@@ -206,6 +209,10 @@ class Outgoing(object):
             log=self.log,
         )
         while timeout.tick():
+            self.agent.send_status_beacon(
+                migration=f"waiting for locks ({timeout.remaining:,d}s remaining)"
+            )
+
             # In case that there are multiple processes waiting, randomize to
             # avoid steplock retries. We us CSMA/CD-based exponential backoff,
             # timeslot 10ms but with a max of 13 instead of 16.
@@ -265,7 +272,15 @@ class Outgoing(object):
         try:
             for stat in self.agent.qemu.poll_migration_status():
                 remaining = stat["ram"]["remaining"] if "ram" in stat else 0
+                remaining_gib = remaining / 1024**3
                 mbps = stat["ram"]["mbps"] if "ram" in stat else "-"
+                try:
+                    gibps = float(mbps) / 1024
+                except Exception:
+                    gibps = 0.0
+                self.agent.send_status_beacon(
+                    migration=f"{stat['status']} speed={gibps:,.2f}GiB/s remaining={remaining_gib:,.2f}GiB"
+                )
                 self.log.info(
                     "migration-status",
                     status=stat["status"],
@@ -278,6 +293,10 @@ class Outgoing(object):
             self.log.exception("error-waiting-for-migration", exc_info=True)
             raise
 
+        # We specify the status here explicitly because the VM doesn't appear
+        # online here yet, but we don't want to send an accidental "offline""
+        # status in the handover until we signaled the receiving side.
+        self.agent.send_status_beacon(status="online", migration="finishing")
         status = self.agent.qemu.qmp.command("query-status")
         assert not status["running"], status
         assert status["status"] == "postmigrate", status
@@ -327,6 +346,7 @@ class Outgoing(object):
             self.destroy()
         else:
             self.log.info("continue-locally", result="success")
+        self.agent.send_status_beacon()
 
     def destroy(self, kill_supervisor=False):
         self.agent.qemu.destroy(kill_supervisor)

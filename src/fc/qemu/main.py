@@ -1,3 +1,4 @@
+import asyncio
 import os.path
 import sys
 
@@ -63,12 +64,12 @@ def daemonize(log=None):
 
 
 def main():
-    ensure_separate_cgroup()
     import argparse
 
     a = argparse.ArgumentParser(description="Qemu VM agent")
     a.set_defaults(func="print_usage")
     a.set_defaults(ceph_attach_on_enter=True)
+    a.set_defaults(context_main=main_agent)
 
     a.add_argument(
         "--verbose",
@@ -188,16 +189,20 @@ def main():
     p.add_argument("vm", metavar="VM", help="name of the VM")
     p.set_defaults(func="telnet")
 
-    args = a.parse_args()
-    func = args.func
+    p = sub.add_parser("manager", help="Start the manager daemon.")
+    p.set_defaults(context_main=main_manager)
+    p.set_defaults(func="run")
 
+    args = a.parse_args()
+
+    func = args.func
     if func == "print_usage":
         a.print_usage()
         sys.exit(1)
 
-    vm = getattr(args, "vm", None)
     kwargs = dict(args._get_kwargs())
     del kwargs["func"]
+    del kwargs["context_main"]
     if "vm" in kwargs:
         del kwargs["vm"]
     del kwargs["daemonize"]
@@ -208,7 +213,6 @@ def main():
         # Needed to help spawn subprocesses from consul without blocking.
         daemonize()
 
-    from .agent import Agent, InvalidCommand, VMConfigNotFound
     from .logging import init_logging
     from .util import log
 
@@ -220,7 +224,29 @@ def main():
         from .sysconfig import sysconfig
 
         sysconfig.load_system_config()
+        args.context_main(func, args, kwargs, log)
+    except Exception:
+        log.exception("unexpected-exception", exc_info=True)
+        sys.exit(69)  # EX_UNAVAILABLE
 
+
+def main_manager(func, args, kwargs, log):
+    from .manager import Manager
+
+    manager = Manager()
+    f = getattr(manager, func)(**kwargs)
+    exit_code = asyncio.run(f)
+    sys.exit(exit_code or 0)
+
+
+def main_agent(func, args, kwargs, log):
+    from .agent import Agent, InvalidCommand, VMConfigNotFound
+
+    vm = getattr(args, "vm", None)
+
+    ensure_separate_cgroup()
+
+    try:
         if vm is None:
             # Expecting a class/static method
             agent = Agent
@@ -243,7 +269,4 @@ def main():
     except (VMConfigNotFound, InvalidCommand):
         # Those exceptions are properly logged and don't have to be shown
         # with their traceback.
-        sys.exit(69)  # EX_UNAVAILABLE
-    except Exception:
-        log.exception("unexpected-exception", exc_info=True)
         sys.exit(69)  # EX_UNAVAILABLE

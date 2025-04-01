@@ -157,6 +157,10 @@ def today():
     return datetime.date.today()
 
 
+def now():
+    return datetime.datetime.now()
+
+
 def ensure_separate_cgroup():
     "Move this process to a separate fc-qemu cgroup."
     CGROUP = "/sys/fs/cgroup/fc-qemu"

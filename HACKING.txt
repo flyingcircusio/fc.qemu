@@ -20,7 +20,47 @@ If your Ceph setup becomes unclean/stuck, you can reboot `host1` or run (without
 fc.qemu $ cleanup-ceph
 ```
 
-For some cases you can also run tests without running `fc-manage` after changing the source.
+### Running with developer version of `fc-nixos`
+
+Uncomment this line in `batou/components/nixos/component.py`:
+
+```
+                "environment_url": "file:///home/developer/fc-nixos/channels",
+```
+
+And uncomment those lines in `batou/environments/dev/provision.sh`:
+
+```
+# Use this if you want to work with a developer checkout
+# of the fc-nixos platform.
+COPY ../../../../fc-nixos /home/developer/
+RUN chown developer: -R /home/developer/fc-nixos
+RUN rm -rf /home/developer/fc-nixos/channels
+RUN /home/developer/fc-nixos/dev-setup
+```
+
+### Running editable instances
+
+```
+$ cd /home/developer/fc.qemu
+$ nix-shell -p uv -p python311
+$ uv sync
+```
+
+After that you can run fc.qemu from the local venv:
+
+```
+$ .venv/bin/fc-qemu status ...
+```
+
+This also works for live migrations if you manually start them on both hosts:
+
+```
+host1$ .venv/bin/fc-qemu inmigrate according00
+host2$ .venv/bin/fc-qemu outmigration according00
+```
+
+For some cases you can also run tests from this:
 
 ```
 $ sudo -i
