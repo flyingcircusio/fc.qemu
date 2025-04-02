@@ -20,6 +20,27 @@ If your Ceph setup becomes unclean/stuck, you can reboot `host1` or run (without
 fc.qemu $ cleanup-ceph
 ```
 
+### Running editable instances
+
+```
+$ cd /home/developer/fc.qemu
+$ nix-shell -p uv -p python311
+$ uv sync
+```
+
+After that you can run fc.qemu from the local venv:
+
+```
+$ .venv/bin/fc-qemu status ...
+```
+
+This also works for live migrations if you manually start them on both hosts:
+
+```
+host1$ .venv/bin/fc-qemu inmigrate according00
+host2$ .venv/bin/fc-qemu outmigration according00
+```
+
 ## Hydra integration tests
 
 We assume that you have a local checkout on your machine for editing and that
