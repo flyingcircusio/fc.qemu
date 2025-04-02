@@ -1473,10 +1473,12 @@ class Agent(object):
 
     @locked()
     def send_status_beacon(self, status=None, migration=""):
+        # One assumption here is that only the machine that has the running VM
+        # or the machine that is supposed to have the VM (if its offline) will ever
+        # send a status beacon.
         if status is None:
             try:
                 status = "online" if self.qemu.is_running() else "offline"
-
             except VMStateInconsistent:
                 status = "inconsistent"
         status = {"vm": self.name, "status": status, "migration": migration}
