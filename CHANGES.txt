@@ -27,6 +27,10 @@ Release notes
 - Remove dependencies on librados and friends. Only leverage JSON/CLI interfaces
   to reduce complexity. (PL-133553)
 
+- Add support for layer 3 routed guest interfaces using VRFs, including
+  management of host-side VRF kernel routes. (PL-133324)
+
+
 1.6 (2024-10-23)
 ----------------
 

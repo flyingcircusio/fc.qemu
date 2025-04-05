@@ -481,16 +481,15 @@ def clean_rbd_pools(request, kill_vms, ceph_mock):
 # qemu/kvm related fixtures
 
 
-@pytest.fixture
-def vm(clean_environment, monkeypatch, tmpdir):
+def named_vm(name, clean_environment, monkeypatch, tmpdir):
     import fc.qemu.hazmat.qemu
 
     monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "guestagent_timeout", 0.1)
-    simplevm_cfg = Path(__file__).parent / "fixtures" / "simplevm.yaml"
-    shutil.copy(simplevm_cfg, "/etc/qemu/vm/simplevm.cfg")
-    Path("/etc/qemu/vm/.simplevm.cfg.staging").unlink(missing_ok=True)
+    cfg = Path(__file__).parent / "fixtures" / f"{name}.yaml"
+    shutil.copy(cfg, f"/etc/qemu/vm/{name}.cfg")
+    Path(f"/etc/qemu/vm/.{name}.cfg.staging").unlink(missing_ok=True)
 
-    vm = Agent("simplevm")
+    vm = Agent(name)
     vm.timeout_graceful = 1
     vm.__enter__()
     vm.qemu.qmp_timeout = 0.1
@@ -531,6 +530,16 @@ def vm(clean_environment, monkeypatch, tmpdir):
     vm.__exit__(*exc_info)
     if len(exc_info):
         print(traceback.print_tb(exc_info[2]))
+
+
+@pytest.fixture
+def vm(clean_environment, monkeypatch, tmpdir):
+    yield from named_vm("simplevm", clean_environment, monkeypatch, tmpdir)
+
+
+@pytest.fixture
+def vm_with_pub(clean_environment, monkeypatch, tmpdir):
+    yield from named_vm("simplepubvm", clean_environment, monkeypatch, tmpdir)
 
 
 @pytest.fixture(autouse=True)
