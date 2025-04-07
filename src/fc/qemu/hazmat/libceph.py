@@ -9,6 +9,8 @@ This helps us to be more version-neutral.
 import errno
 import json
 import shlex
+import time
+from pathlib import Path
 
 from fc.qemu.util import cmd
 
@@ -106,9 +108,11 @@ class Image:
         self.snapname = snapname
         self.closed = False
 
+        self.mapped_device = None
+
         self._name = f"{self.ioctx.name}/{self.name}"
         if self.snapname:
-            self._name += "{self._name}@{self.snapname}"
+            self._name += f"@{self.snapname}"
 
         if self.name not in self.rbd.list(self.ioctx):
             raise ImageNotFound(self.name)
@@ -154,16 +158,19 @@ class Image:
 
     def list_snaps(self):
         assert not self.closed
+        assert "@" not in self._name
         return self.ioctx.rados._rbd("snap", "list", self._name)
 
     def create_snap(self, snapname):
         assert not self.closed
+        assert "@" not in self._name
         self.ioctx.rados._rbd(
             "snap", "create", f"{self._name}@{snapname}", use_json=False
         )
 
     def remove_snap(self, snapname):
         assert not self.closed
+        assert "@" not in self._name
         self.ioctx.rados._rbd(
             "snap", "rm", f"{self._name}@{snapname}", use_json=False
         )
@@ -180,6 +187,22 @@ class Image:
         self.ioctx.rados._rbd(
             "lock", "rm", self._name, cookie, lock["locker"], use_json=False
         )
+
+    def map(self):
+        assert not self.closed
+        if not self.mapped_device:
+            self.ioctx.rados._rbd("map", self._name, use_json=False)
+            self.mapped_device = Path("/dev/rbd") / self._name
+            while not self.mapped_device.exists():
+                time.sleep(0.1)  # pragma: no cover
+        return self.mapped_device
+
+    def unmap(self):
+        assert not self.closed
+        if not self.mapped_device:
+            return
+        self.ioctx.rados._rbd("unmap", str(self.mapped_device), use_json=False)
+        self.mapped_device = None
 
     def close(self):
         self.closed = True

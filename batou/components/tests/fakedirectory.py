@@ -19,6 +19,9 @@ class Directory(object):
     def deletions(self, type_=""):
         return {}
 
+    def list_users(self, rg):
+        return []
+
 
 # Create server
 with SimpleXMLRPCServer(

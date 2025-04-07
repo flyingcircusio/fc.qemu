@@ -34,7 +34,6 @@ def simplepubvm_cfg(monkeypatch):
     yield from named_vm_cfg("simplepubvm", monkeypatch)
 
 
-@pytest.mark.live
 def test_builtin_config_template(simplevm_cfg, ceph_inst):
     a = Agent(simplevm_cfg)
     with a:
@@ -46,7 +45,6 @@ def test_builtin_config_template(simplevm_cfg, ceph_inst):
     assert f'type = "{current_machine_type}"' in a.qemu.config
 
 
-@pytest.mark.live
 def test_userdefined_config_template(simplevm_cfg, ceph_inst):
     a = Agent(simplevm_cfg)
     with a.system_config_template.open("w") as f:
@@ -57,7 +55,6 @@ def test_userdefined_config_template(simplevm_cfg, ceph_inst):
     assert "user defined config template" in a.qemu.config
 
 
-@pytest.mark.live
 def test_config_template_netscripts(simplevm_cfg, ceph_inst):
     a = Agent(simplevm_cfg)
     with a:
@@ -67,7 +64,6 @@ def test_config_template_netscripts(simplevm_cfg, ceph_inst):
     assert 'downscript = "/etc/kvm/kvm-ifdown"' in a.qemu.config
 
 
-@pytest.mark.live
 def test_config_template_vrf_netscripts(simplepubvm_cfg, ceph_inst):
     a = Agent(simplepubvm_cfg)
     with a:
@@ -142,7 +138,6 @@ def test_maintenance():
     Agent.maintenance_leave()
 
 
-@pytest.mark.live
 def test_iproute2_json_loopback():
     """Basic functional test of iproute2 JSON output handling."""
     data = iproute2_json(util.log, ["address", "show", "lo"])

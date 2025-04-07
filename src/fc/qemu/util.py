@@ -93,8 +93,10 @@ def remove_empty_dirs(d):
         d = os.path.dirname(d)
 
 
-def cmd(cmdline, log, encoding="ascii", errors="replace"):
+def cmd(cmdline, log, encoding="ascii", errors="replace", timeout=None):
     """Execute cmdline with stdin closed to avoid questions on terminal"""
+    # XXX need to implement the timeout ... this likely requires switching to
+    # using asyncio with something like this: https://stackoverflow.com/a/34114767
     prefix = cmdline.split()[0]
     args = " ".join(cmdline.split()[1:])
     log.debug(prefix, args=args)

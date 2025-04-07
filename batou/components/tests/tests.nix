@@ -30,6 +30,7 @@ in
       PATH = lib.makeBinPath testPackages;
     in
     [
+      pkgs.uv
       (pkgs.writeShellScriptBin "run-tests" ''
         set -o pipefail
         export PYTHONPATH="${PYTHONPATH}"
