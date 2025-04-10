@@ -6,7 +6,6 @@ base class for both volumes and snapshots.
 """
 
 import contextlib
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +20,7 @@ class Image(object):
 
     device: Optional[Path] = None
     mountpoint: Optional[Path] = None
+    part1dev: Optional[Path] = None
 
     _image = None
 
@@ -30,6 +30,7 @@ class Image(object):
         self.name = name
         self.log = ceph.log.bind(image=self.name)
         self.rbd = libceph.RBD()
+        self._part1dev = None
 
     def __str__(self):
         return self.fullname
@@ -42,31 +43,25 @@ class Image(object):
     def fullname(self):  # pragma: no cover
         raise NotImplementedError
 
-    @property
-    def part1dev(self):
-        if not self.device:
-            return None
-        return self.device.with_name(self.device.name + "-part1")
-
     def wait_for_part1dev(self):
+        self.cmd(f"partprobe {self.device}")
+        candidates = [
+            self.device.with_name(self.device.name + "-part1"),
+            self.device.with_name(self.device.name + "p1"),
+        ]
         timeout = TimeOut(5, interval=0.1, raise_on_timeout=True, log=self.log)
         while timeout.tick():
-            if self.part1dev.exists():
-                break
+            for candidate in candidates:
+                if candidate.exists():
+                    self.part1dev = candidate
+                    return
 
     def map(self):
-        if self.device is not None:
-            return
-        self.cmd(f'rbd map "{self.fullname}"')
-        device = Path("/dev/rbd") / self.fullname
-        while not device.exists():
-            time.sleep(0.1)
-        self.device = device
+        self.device = self.rbdimage.map()
 
     def unmap(self):
-        if self.device is None:
-            return
-        self.cmd(f'rbd unmap "{self.device}"')
+        self.rbdimage.unmap()
+        self.part1dev = None
         self.device = None
 
     @contextlib.contextmanager

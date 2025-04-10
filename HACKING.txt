@@ -20,6 +20,17 @@ If your Ceph setup becomes unclean/stuck, you can reboot `host1` or run (without
 fc.qemu $ cleanup-ceph
 ```
 
+For some cases you can also run tests without running `fc-manage` after changing the source.
+
+```
+$ sudo -i
+$ cd /home/developers/fc.qemu
+$ uv sync
+$ uv run pytest
+```
+
+Not all tests might pass in this situation as any interaction with consul may call the wrong version of the code and doesn't interact well with old code on host1.
+
 ## Hydra integration tests
 
 We assume that you have a local checkout on your machine for editing and that

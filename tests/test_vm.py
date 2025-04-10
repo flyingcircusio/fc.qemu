@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 import os.path
 import re
@@ -108,15 +109,10 @@ lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 ensure-size machine=simplevm subsystem=ceph volume_spec=swap
 start machine=simplevm subsystem=ceph volume_spec=swap
 start-swap machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd args=map "rbd.ssd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd> /dev/rbd0
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
 mkswap args=-f -L "swap" /dev/rbd/rbd.ssd/simplevm.swap machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 mkswap> Setting up swapspace version 1, size = 1024 MiB (1073737728 bytes)
 mkswap> LABEL=swap, UUID=...-...-...-...-...
 mkswap machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd args=unmap "/dev/rbd/rbd.ssd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
 
 pre-start machine=simplevm subsystem=ceph volume_spec=tmp
 ensure-presence machine=simplevm subsystem=ceph volume_spec=tmp
@@ -124,9 +120,6 @@ lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 ensure-size machine=simplevm subsystem=ceph volume_spec=tmp
 start machine=simplevm subsystem=ceph volume_spec=tmp
 start-tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd args=map "rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd> /dev/rbd0
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 create-fs machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 sgdisk args=-o "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 sgdisk> The operation has completed successfully.
@@ -143,23 +136,20 @@ mkfs.xfs> log stripe unit (4194304 bytes) is too large (maximum is 256KiB)
 mkfs.xfs> log stripe unit adjusted to 32KiB
 mkfs.xfs machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 seed machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mount args="/dev/rbd/rbd.ssd/simplevm.tmp-part1" "/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 guest-properties machine=simplevm properties={'binary_generation': 2, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.tmp
 binary-generation generation=2 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount args="/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd args=unmap "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 pre-start machine=simplevm subsystem=ceph volume_spec=cidata
 ensure-presence machine=simplevm subsystem=ceph volume_spec=cidata
 lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 ensure-size machine=simplevm subsystem=ceph volume_spec=cidata
 start machine=simplevm subsystem=ceph volume_spec=cidata
 start-cloud-init machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
-rbd args=map "rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
-rbd> /dev/rbd0
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 create-fs machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 sgdisk args=-o "/dev/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 sgdisk> The operation has completed successfully.
@@ -174,8 +164,6 @@ mkfs.vfat> mkfs.fat: Warning: lowercase labels might not work properly on some s
 mkfs.vfat> mkfs.fat ...
 mkfs.vfat machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 seed machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
-rbd args=unmap "/dev/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 generate-config machine=simplevm
 acquire-global-lock machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 global-lock-acquire machine=simplevm result=locked subsystem=qemu target=/run/fc-qemu.lock
@@ -233,10 +221,8 @@ fc-create-vm>
 fc-create-vm> Finished
 fc-create-vm> --------
 /nix/store/.../bin/fc-create-vm machine=simplevm returncode=0 subsystem=ceph volume=simplevm.root
-rbd args=map "rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd> /dev/rbd0
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
-waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.root
+partprobe args=/dev/rbd/rbd.ssd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 blkid args=/dev/rbd/rbd.ssd/simplevm.root-part1 -o export machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 blkid> DEVNAME=/dev/rbd/rbd.ssd/simplevm.root-part1
 blkid> UUID=...-...-...-...-...
@@ -245,6 +231,8 @@ blkid> TYPE=xfs
 blkid> PARTLABEL=ROOT
 blkid> PARTUUID=...-...-...-...-...
 blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+partprobe args=/dev/rbd/rbd.ssd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 mount args="/dev/rbd/rbd.ssd/simplevm.root-part1" "/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 umount args="/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
@@ -255,12 +243,13 @@ xfs_db> Clearing log and setting UUID
 xfs_db> writing all SBs
 xfs_db> new UUID = ...-...-...-...-...
 xfs_db machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd args=unmap "/dev/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 """
 
     bootstrap = patterns.bootstrap
     bootstrap.continuous(BOOTSTRAP)
+    bootstrap.optional(
+        "waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.root"
+    )
 
     # Things that happen depending on timing:
     start.optional(
@@ -546,7 +535,6 @@ rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rb
 graceful-shutdown machine=simplevm
 graceful-shutdown-failed machine=simplevm reason=timeout
 kill-vm machine=simplevm
-vm-destroy-kill-supervisor attempt=1 machine=simplevm subsystem=qemu
 vm-destroy-vm-via-qmp machine=simplevm subsystem=qemu
 killed-vm machine=simplevm
 unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
@@ -559,7 +547,7 @@ clean-run-files machine=simplevm subsystem=qemu
     )
     stop.optional(
         """
-vm-destroy-kill-supervisor attempt=2 machine=simplevm subsystem=qemu
+vm-destroy-kill-supervisor attempt=... machine=simplevm subsystem=qemu
 """
     )
     assert stop == get_log()
@@ -617,9 +605,6 @@ def test_vm_snapshot_with_missing_guest_agent(vm, monkeypatch):
     ]
 
     monkeypatch.setattr(util, "today", lambda: datetime.date(2010, 1, 1))
-
-    monkeypatch.setattr(qemu, "FREEZE_TIMEOUT", 1)
-    monkeypatch.setattr(guestagent, "SYNC_TIMEOUT", 1)
 
     vm.ceph.specs["root"].ensure_presence()
     assert list(x.fullname for x in vm.ceph.volumes["root"].snapshots) == []
@@ -702,6 +687,297 @@ ensure-throttle action=none current_iops=10 device=virtio3 machine=simplevm targ
     )
 
 
+@pytest.fixture
+def kernel_vrf_device():
+    subprocess.run(["ip", "link", "delete", "vrfpub"])
+    subprocess.check_call(
+        ["ip", "link", "add", "vrfpub", "type", "vrf", "table", "21"]
+    )
+    subprocess.check_call(["ip", "link", "set", "vrfpub", "up"])
+    yield "vrfpub"
+    subprocess.check_call(["ip", "link", "delete", "vrfpub"])
+
+
+@pytest.fixture
+def kernel_tap_device(kernel_vrf_device):
+    subprocess.run(["ip", "link", "delete", "taptest"])
+    subprocess.check_call(["ip", "tuntap", "add", "taptest", "mode", "tap"])
+    subprocess.check_call(["ip", "link", "set", "taptest", "master", "vrfpub"])
+    subprocess.check_call(["ip", "link", "set", "taptest", "up"])
+    yield "taptest"
+    subprocess.check_call(["ip", "link", "delete", "taptest"])
+
+
+def manage_routes_for_vrf(vrfname):
+    def func(*args):
+        subprocess.check_call(["ip", "route"] + list(args) + ["vrf", vrfname])
+
+    return func
+
+
+def show_routes_for_vrf(vrfname):
+    def func():
+        routes = []
+        for family in ["-4", "-6"]:
+            data = subprocess.check_output(
+                ["ip", "-j", family, "route", "show", "vrf", vrfname]
+            )
+            data = data.decode("utf-8", errors="replace")
+            if data:
+                routes.extend(json.loads(data))
+        return [
+            x
+            for x in routes
+            if "protocol" not in x or x["protocol"] != "kernel"
+        ]
+
+    return func
+
+
+def route_json_v4(dst, iface, protocol="fc-qemu", flags=[]):
+    data = {
+        "dst": dst,
+        "dev": iface,
+        "scope": "link",
+        "flags": flags,
+    }
+    if protocol:
+        data["protocol"] = protocol
+    return data
+
+
+def route_json_v6(dst, iface, protocol="fc-qemu", flags=[]):
+    data = {
+        "dst": dst,
+        "dev": iface,
+        "metric": 1024,
+        "flags": flags,
+        "pref": "medium",
+    }
+    if protocol:
+        data["protocol"] = protocol
+    return data
+
+
+@pytest.mark.live
+def test_vm_host_routes(vm_with_pub, kernel_vrf_device):
+    vm = vm_with_pub
+
+    manage_routes = manage_routes_for_vrf(kernel_vrf_device)
+    show_routes = show_routes_for_vrf(kernel_vrf_device)
+
+    guest_v4 = route_json_v4("192.0.2.23", "tpub3456")
+    guest_v6 = route_json_v6("2001:db8:0:42::23", "tpub3456")
+
+    assert show_routes() == []
+
+    # Starting the VM should set the host routes correctly.
+    vm.start()
+    assert get_log() == Ellipsis(
+        """\
+...
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=reconciling current_routes=[] iface=tpub3456 machine=simplepubvm target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub
+..."""
+    )
+    assert show_routes() == [guest_v4, guest_v6]
+
+    # ensure_online_host_routes() should be idempotent if nothing has
+    # changed.
+    vm.ensure_online_host_routes()
+    assert get_log() == Ellipsis(
+        """\
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+    )
+    assert show_routes() == [guest_v4, guest_v6]
+
+    # If routes belonging to a VM are deleted they should be restored.
+    manage_routes("delete", "2001:db8:0:42::23/128", "dev", "tpub3456")
+    assert show_routes() == [guest_v4]
+
+    vm.ensure_online_host_routes()
+    assert get_log() == Ellipsis(
+        """\
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=reconciling current_routes=['192.0.2.23/32'] iface=tpub3456 machine=simplepubvm target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+    )
+    assert show_routes() == [guest_v4, guest_v6]
+
+    # If there are extra routes for the guest's tap device which are
+    # not in ENC, these should be removed.
+    manage_routes("add", "192.0.2.24/32", "dev", "tpub3456")
+    assert show_routes() == [
+        guest_v4,
+        route_json_v4("192.0.2.24", "tpub3456", protocol=None),
+        guest_v6,
+    ]
+
+    vm.ensure_online_host_routes()
+    assert get_log() == Ellipsis(
+        """\
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=reconciling current_routes=['192.0.2.23/32', '192.0.2.24/32', '2001:db8:0:42::23/128'] iface=tpub3456 machine=simplepubvm target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+    )
+    assert show_routes() == [guest_v4, guest_v6]
+
+    # If the addresses assigned to the guest in ENC change then the
+    # routes should be updated correctly
+    vm.cfg["interfaces"]["pub"]["networks"] = {
+        "203.0.113.38/24": ["203.0.113.38"],
+        "2001:db8:0:47::2014/64": ["2001:db8:0:47::2014"],
+    }
+    new_guest_v4 = route_json_v4("203.0.113.38", "tpub3456")
+    new_guest_v6 = route_json_v6("2001:db8:0:47::2014", "tpub3456")
+
+    vm.ensure_online_host_routes()
+    assert get_log() == Ellipsis(
+        """\
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=reconciling current_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] iface=tpub3456 machine=simplepubvm target_routes=['203.0.113.38/32', '2001:db8:0:47::2014/128'] vrf=vrfpub
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+    )
+    assert show_routes() == [new_guest_v4, new_guest_v6]
+
+
+@pytest.mark.live
+def test_vm_host_routes_orthogonal(
+    vm_with_pub, kernel_vrf_device, kernel_tap_device
+):
+    vm = vm_with_pub
+
+    manage_routes = manage_routes_for_vrf(kernel_vrf_device)
+    show_routes = show_routes_for_vrf(kernel_vrf_device)
+
+    guest_v4 = route_json_v4("192.0.2.23", "tpub3456")
+    guest_v6 = route_json_v6("2001:db8:0:42::23", "tpub3456")
+
+    assert show_routes() == []
+
+    manage_routes("add", "192.0.2.111/32", "dev", kernel_tap_device)
+    tap_v4 = route_json_v4(
+        "192.0.2.111", kernel_tap_device, protocol=None, flags=["linkdown"]
+    )
+
+    assert show_routes() == [tap_v4]
+
+    # Starting the VM should set the host routes correctly and ignore
+    # routes for other tap interfaces in the same VRF.
+    vm.start()
+    assert get_log() == Ellipsis(
+        """\
+...
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=reconciling current_routes=[] iface=tpub3456 machine=simplepubvm target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub
+..."""
+    )
+    assert show_routes() == [guest_v4, tap_v4, guest_v6]
+
+    # ensure_online_host_routes() should be idempotent if nothing has
+    # changed.
+    vm.ensure_online_host_routes()
+    assert get_log() == Ellipsis(
+        """\
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+    )
+    assert show_routes() == [guest_v4, tap_v4, guest_v6]
+
+    # If there are extra routes for the guest's tap device which are
+    # not in ENC, these should be removed without affecting other tap
+    # devices in the same VRF.
+    manage_routes("add", "192.0.2.24/32", "dev", "tpub3456")
+    assert show_routes() == [
+        guest_v4,
+        route_json_v4("192.0.2.24", "tpub3456", protocol=None),
+        tap_v4,
+        guest_v6,
+    ]
+
+    vm.ensure_online_host_routes()
+    assert get_log() == Ellipsis(
+        """\
+ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ip args=... machine=simplepubvm
+ip> ...
+ip machine=simplepubvm returncode=0
+ensure-routes action=reconciling current_routes=['192.0.2.23/32', '192.0.2.24/32', '2001:db8:0:42::23/128'] iface=tpub3456 machine=simplepubvm target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
+ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+    )
+    assert show_routes() == [guest_v4, tap_v4, guest_v6]
+
+
 @pytest.mark.live
 def test_vm_resize_disk(vm, patterns):
     vm.start()
@@ -775,7 +1051,7 @@ def outmigrate_pattern(patterns):
     outmigrate = patterns.outmigrate
     outmigrate.in_order(
         """
-/nix/store/.../bin/fc-qemu -v outmigrate simplevm
+.../bin/fc-qemu -v outmigrate simplevm
 load-system-config
 simplevm         ceph connect-rados
 simplevm              acquire-lock                   target='/run/qemu.simplevm.lock'
@@ -820,7 +1096,6 @@ simplevm              migration-status               mbps=... remaining='...' st
 simplevm     qemu/qmp query-status                   arguments={} id=None
 simplevm              finish-migration
 
-simplevm         qemu vm-destroy-kill-supervisor     attempt=1
 simplevm         qemu vm-destroy-vm-via-qmp
 simplevm     qemu/qmp quit                           arguments={} id=None
 simplevm         qemu clean-run-files
@@ -835,8 +1110,8 @@ simplevm              release-lock                   result='unlocked' target='/
     # timings,so this may or may not appear more often:
     outmigrate.optional(
         """
+simplevm         qemu vm-destroy-kill-supervisor     attempt=...
 simplevm              multiple-services-found        action='trying newest first' service='vm-inmigrate-simplevm'
-simplevm         qemu vm-destroy-kill-supervisor     attempt=2
 simplevm              waiting                        interval=3 remaining=...
 simplevm              check-staging-config           result='none'
 simplevm     qemu/qmp query-migrate                  arguments={} id=None
@@ -879,7 +1154,7 @@ def test_vm_migration_pattern(outmigrate_pattern):
     assert (
         outmigrate_pattern
         == """\
-/nix/store/.../bin/fc-qemu -v outmigrate simplevm
+.../bin/fc-qemu -v outmigrate simplevm
 load-system-config
 simplevm         ceph connect-rados
 simplevm              acquire-lock                   target='/run/qemu.simplevm.lock'
@@ -1425,7 +1700,9 @@ simplevm              release-lock                   result='unlocked' target='/
 
 @pytest.mark.live
 @pytest.mark.timeout(300)
-def test_vm_migration(request, vm, outmigrate_pattern, patterns):
+def test_vm_migration(
+    request, vm, outmigrate_pattern, patterns, kill_vms_host2
+):
     def call(cmd, wait=True, host=None, fail_on_exit_code=True):
         for ssh_cmd in ["scp", "ssh"]:
             if not cmd.startswith(ssh_cmd):
@@ -1483,7 +1760,7 @@ def test_vm_migration(request, vm, outmigrate_pattern, patterns):
     inmigrate_pattern = patterns.inmigrate
     inmigrate_pattern.in_order(
         """
-/nix/store/.../bin/fc-qemu -v inmigrate simplevm
+.../bin/fc-qemu -v inmigrate simplevm
 load-system-config
 simplevm         ceph connect-rados
 simplevm              acquire-lock                   target='/run/qemu.simplevm.lock'
@@ -1675,7 +1952,7 @@ def test_agent_check(vm, capsys):
         textwrap.dedent(
             """\
         ...
-        OK - 1 VMs - ... MiB used - 768 MiB expected
+        OK - ... VMs - ... MiB used - 768 MiB expected
         """
         )
     )

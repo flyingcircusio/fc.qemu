@@ -303,7 +303,6 @@ class TmpSpec(VolumeSpecification):
             f'sgdisk -a 8192 -n 1:8192:0 -c "1:{self.suffix}" '
             f'-t 1:8300 "{device}"'
         )
-        self.cmd(f"partprobe {device}")
         self.volume.wait_for_part1dev()
         options = getattr(self.ceph, "MKFS_XFS")
         self.cmd(
@@ -366,8 +365,8 @@ class CloudInitSpec(VolumeSpecification):
         device = self.volume.device
         assert device, f"volume must be mapped first: {device}"
         self.cmd(f'sgdisk -o "{device}"')
-        self.cmd(f'sgdisk -n 1:: -c "1:{self.suffix}" ' f'-t 1:8300 "{device}"')
-        self.cmd(f"partprobe {device}")
+        self.cmd(f'sgdisk -n 1:: -c "1:{self.suffix}" -t 1:8300 "{device}"')
+
         self.volume.wait_for_part1dev()
         options = getattr(self.ceph, "MKFS_VFAT")
         self.cmd(
@@ -583,7 +582,7 @@ class Ceph(object):
     def start(self):
         """Perform Ceph-related tasks before starting a VM."""
         for spec in self.specs.values():
-            # The pre-start phase guarantes that volumes are not locked
+            # The pre-start phase guarantees that volumes are not locked
             # and have no watchers, so that they can be deleted if needed.
             if spec.volume:
                 spec.volume.unlock()

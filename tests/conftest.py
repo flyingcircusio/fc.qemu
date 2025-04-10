@@ -29,6 +29,8 @@ from fc.qemu.util import GiB
 
 
 class RadosMock(object):
+    tmp_path: Path
+
     def __init__(self, conffile, name, log):
         self.conffile = conffile
         self.name = name
@@ -41,7 +43,7 @@ class RadosMock(object):
 
     def open_ioctx(self, pool):
         if pool not in self._ioctx:
-            self._ioctx[pool] = IoctxMock(pool)
+            self._ioctx[pool] = IoctxMock(pool, self.tmp_path)
         return self._ioctx[pool]
 
     def shutdown(self):
@@ -55,24 +57,38 @@ class RadosMock(object):
 class IoctxMock(object):
     """Mock access to a pool."""
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, tmp_path: Path):
         # the rados implementation takes the name as a str, but later returns
         # that attribute as bytes
+        self.tmp_path = tmp_path
         self.name = name
         self.rbd_images = {}
         self._snapids = 0
 
     def _rbd_create(self, name, size):
         assert name not in self.rbd_images
-        self.rbd_images[name] = dict(size=size, lock=None)
+        self.rbd_images[name] = image = dict(size=size, lock=None)
+        image["path"] = path = self.tmp_path / f"{self.name}-{name}.raw"
+        if not path.exists():
+            with path.open("wb") as f:
+                f.seek(size - 1)
+                f.write(b"\0")
+                f.close()
 
     def _rbd_create_snap(self, name, snapname):
-        self._snapids += 1
         fullname = name + "@" + snapname
         assert fullname not in self.rbd_images
+        self._snapids += 1
         self.rbd_images[fullname] = snap = self.rbd_images[name].copy()
         snap["lock"] = None
         snap["snapid"] = self._snapids
+        base_path = self.rbd_images[name]["path"]
+        snap["path"] = self.tmp_path / f"{self.name}-{name}-{snapname}.raw"
+        with base_path.open("rb") as source:
+            count = source.seek(0, os.SEEK_END)
+            source.seek(0)
+            with snap["path"].open("wb") as dest:
+                os.copy_file_range(source.fileno(), dest.fileno(), count)
 
     def _rbd_remove(self, name):
         # XXX prohibit while snapshots exist and if locked/opened
@@ -182,6 +198,28 @@ class ImageMock(object):
     def close(self):
         self.closed = True
 
+    def map(self):
+        assert not self.closed
+        image = self.ioctx.rbd_images[self._name]
+        if not image.get("mapped_device"):
+            raw = image["path"]
+            snap_readonly = ["-r"] if "snapid" in image else []
+            image["mapped_device"] = Path(
+                subprocess.check_output(
+                    ["losetup", "-f", "--show"] + snap_readonly + [raw]
+                )
+                .decode("ascii")
+                .strip()
+            )
+        return image["mapped_device"]
+
+    def unmap(self):
+        assert not self.closed
+        image = self.ioctx.rbd_images[self._name]
+        if not (device := image.pop("mapped_device")):
+            return
+        subprocess.check_output(["losetup", "-d", device]).strip()
+
 
 def setup_loopback_device(path, size):
     with path.open("w") as f:
@@ -222,7 +260,7 @@ def ceph_live_setup():
     osd_loopback = setup_loopback_device(osd_disk, 4 * GiB)
 
     env = os.environ.copy()
-    del env["PYTHONPATH"]
+    env.pop("PYTHONPATH", None)
     env.pop("CEPH_ARGS", None)
 
     def call(cmd):
@@ -296,42 +334,11 @@ def ceph_mock(request, monkeypatch, tmp_path):
     def ensure_presence(self):
         VolumeSpecification.ensure_presence(self)
 
-    def image_map(self):
-        if self.device:
-            return
-        self.device = tmp_path / self.fullname.replace("/", "-")
-        raw = self.device.with_name(f"{self.device.name}.raw")
-        if not raw.exists():
-            with raw.open("wb") as f:
-                f.seek(self.size - 1)
-                f.write(b"\0")
-                f.close()
-        raw.rename(self.device)
-
-        # create an implicit first partition as we can't really do the
-        # partprobe dance.
-        raw = self.part1dev.with_name(f"{self.part1dev.name}.raw")
-        with raw.open("wb") as f:
-            f.seek(self.size - 1)
-            f.write(b"\0")
-            f.close()
-        raw.rename(self.part1dev)
-
-    def image_unmap(self):
-        if self.device is None:
-            return
-        self.device.rename(self.device.with_name(f"{self.device.name}.raw"))
-        self.part1dev.rename(
-            self.part1dev.with_name(f"{self.part1dev.name}.raw")
-        )
-        self.device = None
-
     monkeypatch.setattr(libceph, "Rados", RadosMock)
     monkeypatch.setattr(libceph, "RBD", RBDMock)
     monkeypatch.setattr(libceph, "Image", ImageMock)
-    monkeypatch.setattr(volume.Image, "map", image_map)
-    monkeypatch.setattr(volume.Image, "unmap", image_unmap)
     monkeypatch.setattr(RootSpec, "ensure_presence", ensure_presence)
+    RadosMock.tmp_path = tmp_path
     yield
 
 
@@ -481,16 +488,22 @@ def clean_rbd_pools(request, kill_vms, ceph_mock):
 # qemu/kvm related fixtures
 
 
-@pytest.fixture
-def vm(clean_environment, monkeypatch, tmpdir):
+def named_vm(name, request, clean_environment, monkeypatch, tmpdir):
     import fc.qemu.hazmat.qemu
 
     monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "guestagent_timeout", 0.1)
-    simplevm_cfg = Path(__file__).parent / "fixtures" / "simplevm.yaml"
-    shutil.copy(simplevm_cfg, "/etc/qemu/vm/simplevm.cfg")
-    Path("/etc/qemu/vm/.simplevm.cfg.staging").unlink(missing_ok=True)
+    monkeypatch.setattr(fc.qemu.hazmat.qemu, "FREEZE_TIMEOUT", 1)
+    monkeypatch.setattr(fc.qemu.hazmat.guestagent, "SYNC_TIMEOUT", 1)
 
-    vm = Agent("simplevm")
+    cfg = Path(__file__).parent / "fixtures" / f"{name}.yaml"
+    shutil.copy(
+        cfg, fc.qemu.hazmat.qemu.Qemu.prefix / f"etc/qemu/vm/{name}.cfg"
+    )
+    Path(
+        fc.qemu.hazmat.qemu.Qemu.prefix / f"etc/qemu/vm/.{name}.cfg.staging"
+    ).unlink(missing_ok=True)
+
+    vm = Agent(name)
     vm.timeout_graceful = 1
     vm.__enter__()
     vm.qemu.qmp_timeout = 0.1
@@ -502,7 +515,7 @@ def vm(clean_environment, monkeypatch, tmpdir):
     for open_volume in vm.ceph.opened_volumes:
         for snapshot in open_volume.snapshots:
             snapshot.remove()
-    vm.unlock()
+    vm.force_unlock()
     for service in vm.consul.agent.services():
         try:
             vm.consul.agent.service.deregister(vm.svc_name)
@@ -533,8 +546,22 @@ def vm(clean_environment, monkeypatch, tmpdir):
         print(traceback.print_tb(exc_info[2]))
 
 
+@pytest.fixture
+def vm(request, clean_environment, monkeypatch, tmpdir):
+    yield from named_vm(
+        "simplevm", request, clean_environment, monkeypatch, tmpdir
+    )
+
+
+@pytest.fixture
+def vm_with_pub(request, clean_environment, monkeypatch, tmpdir):
+    yield from named_vm(
+        "simplepubvm", request, clean_environment, monkeypatch, tmpdir
+    )
+
+
 @pytest.fixture(autouse=True)
-def kill_vms(request, call_host2, ceph_mock):
+def kill_vms(request, ceph_mock):
     is_live = request.node.get_closest_marker("live")
     if not is_live:
         yield
@@ -542,16 +569,18 @@ def kill_vms(request, call_host2, ceph_mock):
 
     assert_call(["pkill", "-A", "-f", "supervised-qemu"], exit_codes=[0, 1])
     assert_call(["pkill", "-A", "-f", "qemu-system-x86_64"], exit_codes=[0, 1])
-    call_host2(["pkill", "-A", "-f", "supervised-qemu"], exit_codes=[0, 1])
-    call_host2(["pkill", "-A", "-f", "qemu-system-x86_64"], exit_codes=[0, 1])
-    subprocess.call("fc-qemu force-unlock simplevm", shell=True)
     yield
     assert_call(["pkill", "-A", "-f", "supervised-qemu"], exit_codes=[0, 1])
     assert_call(["pkill", "-A", "-f", "qemu-system-x86_64"], exit_codes=[0, 1])
+
+
+@pytest.fixture
+def kill_vms_host2(call_host2):
     call_host2(["pkill", "-A", "-f", "supervised-qemu"], exit_codes=[0, 1])
     call_host2(["pkill", "-A", "-f", "qemu-system-x86_64"], exit_codes=[0, 1])
-
-    subprocess.call("fc-qemu force-unlock simplevm", shell=True)
+    yield
+    call_host2(["pkill", "-A", "-f", "supervised-qemu"], exit_codes=[0, 1])
+    call_host2(["pkill", "-A", "-f", "qemu-system-x86_64"], exit_codes=[0, 1])
 
 
 ########################################################
@@ -572,20 +601,23 @@ def clean_tmpdir_with_flakefinder(tmpdir, pytestconfig):
 
 
 @pytest.fixture
-def clean_environment():
+def clean_environment(request):
     logpath = Path("/var/log/vm")
     if logpath.glob("*"):
         subprocess.run("rm /var/log/vm/*", shell=True)
     yield
     print(getoutput("free"))
-    print(getoutput("ceph df"))
     print(getoutput("ps auxf"))
     print(getoutput("df -h"))
-    print(getoutput("rbd showmapped"))
     print(getoutput("journalctl --since -30s"))
     if list(logpath.glob("*")):
         print(getoutput("tail -n 50 /var/log/vm/*"))
         subprocess.run("rm /var/log/vm/*", shell=True)
+
+    is_live = request.node.get_closest_marker("live")
+    if is_live:
+        print(getoutput("ceph df"))
+        print(getoutput("rbd showmapped"))
 
 
 @pytest.fixture(autouse=True)
@@ -663,7 +695,6 @@ def setup_structlog():
         with open("/tmp/test.log", "a") as f:
             print(f"{reltime:08.4f} {result}")
             print(f"{reltime:08.4f} {result}", file=f)
-            print(f"{reltime:08.4f} {result}")
             if stack:
                 print(stack)
                 print(stack, file=f)

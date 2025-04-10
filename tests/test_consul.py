@@ -1,6 +1,5 @@
 import json
 import os.path
-import socket
 import typing
 from codecs import encode
 from io import StringIO
@@ -312,18 +311,17 @@ def test_snapshot_offline_vm(vm):
     snapshot = {"vm": "simplevm", "snapshot": "backy-1234"}
     event = prepare_consul_event("snapshot/7468743", snapshot, 123)
     Agent.handle_consul_event(event)
-    assert (
-        get_log()
-        == """\
+    assert get_log() == Ellipsis(
+        """\
 start-consul-events count=1
 handle-key key=snapshot/7468743
 connect-rados machine=simplevm subsystem=ceph
 snapshot machine=simplevm snapshot=backy-1234
-acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
-acquire-lock count=1 machine=simplevm result=locked target=/run/qemu.simplevm.lock
+acquire-lock machine=simplevm target=...run/qemu.simplevm.lock
+acquire-lock count=1 machine=simplevm result=locked target=...run/qemu.simplevm.lock
 snapshot expected=VM running machine=simplevm
-release-lock count=0 machine=simplevm target=/run/qemu.simplevm.lock
-release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
+release-lock count=0 machine=simplevm target=...run/qemu.simplevm.lock
+release-lock machine=simplevm result=unlocked target=...run/qemu.simplevm.lock
 finish-handle-key key=snapshot/7468743
 finish-consul-events"""
     )

@@ -53,7 +53,7 @@ def test_ceph_stop_remove_only_own_locks(ceph_with_volumes):
     assert ceph_with_volumes.volumes["tmp"].lock_status() is None
 
 
-@pytest.mark.live()
+@pytest.mark.live
 def test_ceph_exclusive_lock_can_be_taken_twice_with_same_cookie(ceph_inst):
     """Test case where failed migrations leave inconsistent locking."""
     ceph = ceph_inst
@@ -81,7 +81,6 @@ def test_multiple_images_raises_error(ceph_inst):
         root_spec.exists_in_pool()
 
 
-@pytest.mark.live()
 def test_cloud_init_seed_simple(ceph_inst_cloudinit_enc):
     ceph = ceph_inst_cloudinit_enc
     libceph.RBD().create(
@@ -189,7 +188,6 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg
         }
 
 
-@pytest.mark.live()
 def test_cloud_init_seed_instance_id_hashing(ceph_inst_cloudinit_enc):
     ceph = ceph_inst_cloudinit_enc
     libceph.RBD().create(
@@ -215,7 +213,7 @@ def test_cloud_init_seed_instance_id_hashing(ceph_inst_cloudinit_enc):
         assert metadata_config["instance-id"] != previous_instance_id
 
 
-@pytest.mark.live()
+@pytest.mark.live
 def test_rbd_pool_migration(ceph_inst, patterns) -> None:
     ceph_inst.cfg["tmp_size"] = 500 * 1024 * 1024
     ceph_inst.cfg["swap_size"] = 50 * 1024 * 1024
@@ -286,15 +284,10 @@ lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
 ensure-size machine=simplevm subsystem=ceph volume_spec=swap
 start machine=simplevm subsystem=ceph volume_spec=swap
 start-swap machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-rbd args=map "rbd.hdd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-rbd>    /dev/rbd0
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.swap
 mkswap args=-f -L "swap" /dev/rbd/rbd.hdd/simplevm.swap machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
 mkswap> Setting up swapspace version 1, size = 50 MiB (52424704 bytes)
 mkswap> LABEL=swap, UUID=...-...-...-...-...
 mkswap machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.swap
-rbd args=unmap "/dev/rbd/rbd.hdd/simplevm.swap" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.swap
 
 pre-start machine=simplevm subsystem=ceph volume_spec=tmp
 delete-outdated-tmp image=simplevm.tmp machine=simplevm pool=rbd.ssd subsystem=ceph volume=simplevm.tmp
@@ -303,9 +296,6 @@ lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 ensure-size machine=simplevm subsystem=ceph volume_spec=tmp
 start machine=simplevm subsystem=ceph volume_spec=tmp
 start-tmp machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
-rbd args=map "rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
-rbd>    /dev/rbd0
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 create-fs machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 sgdisk args=-o "/dev/rbd/rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 sgdisk> Creating new GPT entries in memory.
@@ -319,14 +309,14 @@ partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.t
 mkfs.xfs args=-q -f -K -L "tmp" /dev/rbd/rbd.hdd/simplevm.tmp-part1 machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 mkfs.xfs machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 seed machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+partprobe args=/dev/rbd/rbd.hdd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 mount args="/dev/rbd/rbd.hdd/simplevm.tmp-part1" "/mnt/rbd/rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 guest-properties machine=simplevm properties={'binary_generation': 2} subsystem=ceph volume=rbd.hdd/simplevm.tmp
 binary-generation generation=2 machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 umount args="/mnt/rbd/rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
-rbd args=unmap "/dev/rbd/rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 pre-start machine=simplevm subsystem=ceph volume_spec=cidata
 delete-outdated-cloud-init image=simplevm.cidata machine=simplevm pool=rbd.ssd subsystem=ceph volume=simplevm.cidata
 ensure-presence machine=simplevm subsystem=ceph volume_spec=cidata
@@ -334,9 +324,6 @@ lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
 ensure-size machine=simplevm subsystem=ceph volume_spec=cidata
 start machine=simplevm subsystem=ceph volume_spec=cidata
 start-cloud-init machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
-rbd args=map "rbd.hdd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
-rbd>    /dev/rbd0
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
 create-fs machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
 sgdisk args=-o "/dev/rbd/rbd.hdd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
 sgdisk> Creating new GPT entries in memory.
@@ -352,8 +339,6 @@ mkfs.vfat>      mkfs.fat: Warning: lowercase labels might not work properly on s
 mkfs.vfat>      mkfs.fat 4.2 (2021-01-31)
 mkfs.vfat machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
 seed machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
-rbd args=unmap "/dev/rbd/rbd.hdd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
-rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd>    {"watchers":[],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"prepared","state_description":""}}

@@ -144,7 +144,7 @@ def test_volume_mkswap(ceph_inst):
     swap.ensure_presence()
     swap.start()
     with swap.volume.mapped():
-        output = subprocess.check_output(["file", swap.volume.device])
+        output = subprocess.check_output(["file", "-sL", swap.volume.device])
         output = output.decode("ascii")
         assert "Linux swap file" in output
 
@@ -163,6 +163,7 @@ def test_unmapped_volume_should_have_no_part1(tmp_spec):
     assert volume.part1dev is None
 
 
+@pytest.mark.live
 def test_volume_map_unmap_is_idempotent(tmp_spec):
     # This is more of an internal sanity test within our mocking infrastructure.
     tmp_spec.ensure_presence()
@@ -173,6 +174,7 @@ def test_volume_map_unmap_is_idempotent(tmp_spec):
     volume.map()
     assert os.path.exists(device)
     volume.unmap()
+    # Need to run live because loopback devices do not go away.
     assert not os.path.exists(device)
     volume.unmap()
     assert not os.path.exists(device)
@@ -193,7 +195,6 @@ def test_mount_should_fail_if_not_mapped(tmp_spec):
         volume.mount()
 
 
-@pytest.mark.live()
 def test_mount_snapshot(tmp_spec):
     tmp_spec.desired_size = 500 * 1024 * 1024
     tmp_spec.ensure_presence()
