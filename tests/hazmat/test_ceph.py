@@ -213,6 +213,49 @@ def test_cloud_init_seed_instance_id_hashing(ceph_inst_cloudinit_enc):
         assert metadata_config["instance-id"] != previous_instance_id
 
 
+def test_cloud_init_seed_routed_pub(ceph_inst_cloudinit_enc):
+    ceph = ceph_inst_cloudinit_enc
+    ceph.enc["parameters"]["interfaces"]["pub"]["routed"] = True
+    libceph.RBD().create(
+        ceph.ioctxs["rbd.ssd"],
+        "simplevm.cidata",
+        ceph.cfg["cidata_size"],
+    )
+
+    cidata_spec = ceph.specs["cidata"]
+    cidata_spec.ensure_presence()
+    cidata_spec.start()
+    with cidata_spec.volume.mounted() as target:
+        network_config_file = target / "network-config"
+        network_config_content = network_config_file.read_text()
+        network_config_content_parsed = yaml.safe_load(network_config_content)
+        assert network_config_content_parsed == {
+            "config": [
+                {
+                    "accept-ra": False,
+                    "mac_address": "02:00:00:02:1d:e4",
+                    "name": "ethpub",
+                    "subnets": [
+                        {
+                            "address": "203.0.113.10/32",
+                            "dns_nameservers": ["169.254.83.168"],
+                            "gateway": "169.254.83.168",
+                            "type": "static",
+                        },
+                        {
+                            "address": "2001:db8:500:2::5/128",
+                            "dns_nameservers": [],
+                            "gateway": "fe80::1",
+                            "type": "static6",
+                        },
+                    ],
+                    "type": "physical",
+                }
+            ],
+            "version": 1,
+        }
+
+
 @pytest.mark.live
 def test_rbd_pool_migration(ceph_inst, patterns) -> None:
     ceph_inst.cfg["tmp_size"] = 500 * 1024 * 1024
