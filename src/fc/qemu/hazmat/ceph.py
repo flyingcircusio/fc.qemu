@@ -114,7 +114,33 @@ class VolumeSpecification:
             result.append(pool)
         return result
 
+    def exists_in_desired_pool(self):
+        """Check whether the image exists in the desired pool.
+
+        This should be used preferably in situations where we really don't
+        want to do anything to look around whether it exists in any other
+        pools, as this can be a performance issue to always check
+        all pools all the time.
+
+        This also doesn't do a consistency check whether the image
+        also exists in other pools.
+
+        """
+        ioctx = self.ceph.ioctxs[self.desired_pool]
+        try:
+            libceph.Image(ioctx, self.name)
+        except libceph.ImageNotFound:
+            return False
+        return True
+
     def exists_in_pool(self):
+        """Show which pool the image currently exists in, independent
+        of whether it's in the desired pool or elsewhere.
+
+        This also performs a consistency check and raises an error
+        if it exists in multiple pools.
+
+        """
         pools = self.exists_in_pools()
         if len(pools) > 1:
             raise RuntimeError(f"Inconsistent pools: {pools}")
@@ -157,11 +183,12 @@ class RootSpec(VolumeSpecification):
     def start(self):
         self.log.info("start-root")
 
+        if self.exists_in_desired_pool():
+            self.log.debug("root-found-in", current_pool=self.desired_pool)
+            return
+
         current_pool = self.exists_in_pool()
         self.log.debug("root-found-in", current_pool=current_pool)
-
-        if current_pool == self.desired_pool:
-            return
 
         # Image needs migration.
         if self.ensure_migration(allow_execute=False):
@@ -195,9 +222,13 @@ class RootSpec(VolumeSpecification):
             self.ceph.get_volume(self)
 
     def ensure_presence(self):
-        if self.exists_in_pool():
+        # This is a lazy evaluation to prefer only checking the desired pool
+        # but fall back to any pool.
+
+        if self.exists_in_desired_pool() or self.exists_in_pool():
             self.ceph.get_volume(self)
             return
+
         self.log.info("create-vm")
         # We rely on the image being created in the CREATE_VM script as this
         # will perform necessary cloning (or other) operations from whatever
@@ -652,7 +683,13 @@ class Ceph(object):
         """(Re-)Attach a volume object for a spec."""
         if volume := self.volumes[spec.suffix]:
             volume.close()
-        current_pool = spec.exists_in_pool()
+        if spec.exists_in_desired_pool():
+            # Performance: prefer the desired pool and avoid superfluous
+            # checks. This doesn't trigger the consistency check, but that's
+            # way too expensive if we're doing it all the time.
+            current_pool = spec.desired_pool
+        else:
+            current_pool = spec.exists_in_pool()
         if not current_pool:
             return
         self.volumes[spec.suffix] = volume = Volume(
