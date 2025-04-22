@@ -93,7 +93,14 @@ def remove_empty_dirs(d):
         d = os.path.dirname(d)
 
 
-def cmd(cmdline, log, encoding="ascii", errors="replace", timeout=None):
+def cmd(
+    cmdline,
+    log,
+    encoding="ascii",
+    errors="replace",
+    timeout=None,
+    log_error_verbose=True,
+):
     """Execute cmdline with stdin closed to avoid questions on terminal"""
     # XXX need to implement the timeout ... this likely requires switching to
     # using asyncio with something like this: https://stackoverflow.com/a/34114767
@@ -126,8 +133,13 @@ def cmd(cmdline, log, encoding="ascii", errors="replace", timeout=None):
     output = stdout.strip()
     log.debug(prefix, returncode=returncode)
     if returncode:
-        log.warning(prefix, output=output)
-        raise subprocess.CalledProcessError(returncode=returncode, cmd=cmdline)
+        if log_error_verbose:
+            log.warning(prefix, output=output)
+        else:
+            log.debug(prefix, output=output)
+        raise subprocess.CalledProcessError(
+            returncode=returncode, cmd=cmdline, output=output
+        )
     return output
 
 
@@ -224,7 +236,6 @@ def inplace_update(filename, data):
 def generate_cloudinit_ssh_keyfile(
     users: List[Dict], resource_group: str
 ) -> str:
-
     authorized_ssh_keys = [
         u["ssh_pubkey"]
         for u in users

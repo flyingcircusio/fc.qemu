@@ -9,10 +9,11 @@ This helps us to be more version-neutral.
 import errno
 import json
 import shlex
+import subprocess
 import time
 from pathlib import Path
 
-from fc.qemu.util import cmd
+from fc.qemu import util
 
 
 class ImageNotFound(Exception):
@@ -48,9 +49,10 @@ class Rados:
     def _ceph(self, *args, use_json=True):
         shargs = shlex.join(args)
         format_arg = "--format json" if use_json else ""
-        result = cmd(
+        result = util.cmd(
             f"ceph -c {self.conffile} --name {self.name} {format_arg} {shargs}",
             log=self.log,
+            log_error_verbose=False,
         )
         if use_json:
             result = json.loads(result)
@@ -59,9 +61,10 @@ class Rados:
     def _rbd(self, *args, use_json=True):
         shargs = shlex.join(args)
         format_arg = "--format json" if use_json else ""
-        result = cmd(
+        result = util.cmd(
             f"rbd -c {self.conffile} --name {self.name} {format_arg} {shargs}",
             log=self.log,
+            log_error_verbose=False,
         )
         if use_json:
             result = json.loads(result)
@@ -84,9 +87,6 @@ class Ioctx:
 
 
 class RBD:
-    def list(self, ioctx):
-        return ioctx.rados._rbd("ls", ioctx.name)
-
     def create(self, ioctx, name, size):
         ioctx.rados._rbd(
             "create",
@@ -114,8 +114,18 @@ class Image:
         if self.snapname:
             self._name += f"@{self.snapname}"
 
-        if self.name not in self.rbd.list(self.ioctx):
-            raise ImageNotFound(self.name)
+        try:
+            # Not using _info because we want to check the image
+            # and not the snapshot (if this is a snapshot handle)
+            self.ioctx.rados._rbd("info", f"{self.ioctx.name}/{self.name}")
+        except subprocess.CalledProcessError as e:
+            stdout = e.stdout.strip()
+            if (
+                stdout
+                == f"rbd: error opening image {self.name}: (2) No such file or directory"
+            ):
+                raise ImageNotFound(self.name)
+            raise
 
     def _info(self):
         assert not self.closed
