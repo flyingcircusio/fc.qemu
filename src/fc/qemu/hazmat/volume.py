@@ -232,6 +232,12 @@ class Volume(Image):
 
     def lock(self):
         self.log.info("lock")
+
+        # Shortcut if we already own the lock.
+        if lock_status := self.lock_status():
+            if lock_status[1] == self.ceph.CEPH_LOCK_HOST:
+                return
+
         retry = 3
         while retry:
             try:
@@ -245,18 +251,18 @@ class Volume(Image):
             except libceph.ImageBusy:
                 # Maybe the same client but different cookie. We're fine with
                 # different cookies - ignore this. Must be same client, though.
-                status = self.lock_status()
-                if status is None:
+                lock_status = self.lock_status()
+                if lock_status is None:
                     # Someone had the lock but released it in between.
                     # Lets try again
                     retry -= 1
                     continue
-                if status[1] == self.ceph.CEPH_LOCK_HOST:
+                if lock_status[1] == self.ceph.CEPH_LOCK_HOST:
                     # That's locked for us already. We just re-use
                     # the existing lock.
                     return
                 # Its locked for some other client.
-                self.log.error("assume-lock-failed", competing=status)
+                self.log.error("assume-lock-failed", competing=lock_status)
                 raise
         raise libceph.ImageBusy(
             "Could not acquire lock - tried multiple times. "
