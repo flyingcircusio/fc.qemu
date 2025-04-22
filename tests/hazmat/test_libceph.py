@@ -1,15 +1,20 @@
 from pathlib import Path
+from subprocess import CalledProcessError
 
 import pytest
 
-from fc.qemu.hazmat.libceph import Image, ImageBusy
+from fc.qemu import util
+from fc.qemu.hazmat.libceph import Image, ImageBusy, ImageNotFound
 
 
 @pytest.mark.live
 def test_rbd_basic_api(ceph_inst):
     pool = ceph_inst.ioctxs["rbd.ssd"]
+
+    with pytest.raises(ImageNotFound):
+        Image(pool, "test")
+
     ceph_inst.rbd.create(pool, "test", 1000)
-    assert ["test"] == ceph_inst.rbd.list(pool)
 
     image = Image(pool, "test")
     assert image._info()["name"] == "test"
@@ -65,9 +70,36 @@ def test_rbd_basic_api(ceph_inst):
     assert image.list_snaps() == []
 
     ceph_inst.rbd.remove(pool, "test")
-    assert [] == ceph_inst.rbd.list(pool)
 
     image.close()
     assert image.closed
     with pytest.raises(AssertionError):
         image.size()
+
+
+@pytest.mark.live
+def test_rbd_unexpected_output_does_not_cause_image_not_found(
+    ceph_inst, monkeypatch
+):
+    pool = ceph_inst.ioctxs["rbd.ssd"]
+
+    def failing_cmd(*args, **kw):
+        raise CalledProcessError(returncode=1, cmd="foo", output="foobar")
+
+    monkeypatch.setattr(util, "cmd", failing_cmd)
+    with pytest.raises(CalledProcessError):
+        Image(pool, "test")
+
+
+@pytest.mark.live
+def test_rbd_unexpected_exception_does_not_cause_image_not_found(
+    ceph_inst, monkeypatch
+):
+    pool = ceph_inst.ioctxs["rbd.ssd"]
+
+    def failing_cmd(*args, **kw):
+        raise KeyError()
+
+    monkeypatch.setattr(util, "cmd", failing_cmd)
+    with pytest.raises(KeyError):
+        Image(pool, "test")
