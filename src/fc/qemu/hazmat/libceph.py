@@ -37,16 +37,10 @@ class Rados:
         self.log = log.bind(subsystem="libceph")
         self._ioctx = {}
 
-    def connect(self):
-        pass
-
     def open_ioctx(self, pool):
         if pool not in self._ioctx:
             self._ioctx[pool] = Ioctx(self, pool)
         return self._ioctx[pool]
-
-    def shutdown(self):
-        pass
 
     def _ceph(self, *args, use_json=True):
         shargs = shlex.join(args)

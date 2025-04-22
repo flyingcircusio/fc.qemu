@@ -404,6 +404,28 @@ rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.t
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
     )
 
+    # A VM that is offline and should stay offline should be very fast to evaluate.
+    # Specifically we do not want any Ceph connections to appear here.
+    #
+    # Force re-initialisation of Ceph structures.
+    vm.__exit__(None, None, None)
+    # This is normally set through the CLI main code
+    vm.ceph_attach_on_enter = False
+    vm.__enter__()
+    assert not vm.ceph.attached
+    assert not any(vm.ceph.volumes.values())
+
+    vm.ensure_offline()  # ensure() resets the ceph instance so we call this directly.
+    util.test_log_options["show_events"] = []
+    util.test_log_options["hide_subsystems"] = []
+    assert (
+        get_log()
+        == """\
+ensure-state action=none found=offline machine=simplevm wanted=offline"""
+    )
+    assert not vm.ceph.attached
+    assert not any(vm.ceph.volumes.values())
+
 
 @pytest.mark.live
 def test_vm_not_running_here(vm, capsys):
@@ -1058,7 +1080,6 @@ def outmigrate_pattern(patterns):
         """
 .../bin/fc-qemu -v outmigrate simplevm
 load-system-config
-simplevm         ceph connect-rados
 simplevm              acquire-lock                   target='/run/qemu.simplevm.lock'
 simplevm              acquire-lock                   count=1 result='locked' target='/run/qemu.simplevm.lock'
 simplevm     qemu/qmp qmp_capabilities               arguments={} id=None
@@ -1161,7 +1182,6 @@ def test_vm_migration_pattern(outmigrate_pattern):
         == """\
 .../bin/fc-qemu -v outmigrate simplevm
 load-system-config
-simplevm         ceph connect-rados
 simplevm              acquire-lock                   target='/run/qemu.simplevm.lock'
 simplevm              acquire-lock                   count=1 result='locked' target='/run/qemu.simplevm.lock'
 simplevm     qemu/qmp qmp_capabilities               arguments={} id=None
@@ -1436,7 +1456,6 @@ simplevm              release-lock                   result='unlocked' target='/
         == """\
 /nix/store/kj63j38ji0c8yk037yvzj9c5f27mzh58-python3.8-fc.qemu-d26a0eae29efd95fe5c328d8a9978eb5a6a4529e/bin/fc-qemu -v outmigrate simplevm
 load-system-config
-simplevm         ceph connect-rados
 simplevm              acquire-lock                   target='/run/qemu.simplevm.lock'
 simplevm              acquire-lock                   count=1 result='locked' target='/run/qemu.simplevm.lock'
 simplevm     qemu/qmp qmp_capabilities               arguments={} id=None
@@ -1767,7 +1786,6 @@ def test_vm_migration(
         """
 .../bin/fc-qemu -v inmigrate simplevm
 load-system-config
-simplevm         ceph connect-rados
 simplevm              acquire-lock                   target='/run/qemu.simplevm.lock'
 simplevm              acquire-lock                   count=1 result='locked' target='/run/qemu.simplevm.lock'
 

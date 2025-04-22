@@ -20,7 +20,7 @@ import fc.qemu.agent
 import fc.qemu.hazmat.qemu
 import fc.qemu.logging
 from fc.qemu.agent import Agent
-from fc.qemu.hazmat import libceph, volume
+from fc.qemu.hazmat import libceph
 from fc.qemu.hazmat.ceph import Ceph, RootSpec, VolumeSpecification
 from fc.qemu.util import GiB
 
@@ -35,20 +35,11 @@ class RadosMock(object):
         self.conffile = conffile
         self.name = name
         self._ioctx = {}
-        self.__connected__ = False
-
-    def connect(self):
-        assert not self.__connected__
-        self.__connected__ = True
 
     def open_ioctx(self, pool):
         if pool not in self._ioctx:
             self._ioctx[pool] = IoctxMock(pool, self.tmp_path)
         return self._ioctx[pool]
-
-    def shutdown(self):
-        assert self.__connected__
-        self.__connected__ = False
 
     def list_pools(self):
         return ["rbd", "data", "rbd.ssd", "rbd.hdd", "rbd.rgw.foo"]

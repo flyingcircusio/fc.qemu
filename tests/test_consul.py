@@ -315,7 +315,6 @@ def test_snapshot_offline_vm(vm):
         """\
 start-consul-events count=1
 handle-key key=snapshot/7468743
-connect-rados machine=simplevm subsystem=ceph
 snapshot machine=simplevm snapshot=backy-1234
 acquire-lock machine=simplevm target=...run/qemu.simplevm.lock
 acquire-lock count=1 machine=simplevm result=locked target=...run/qemu.simplevm.lock
