@@ -29,6 +29,8 @@ class ImageExists(Exception):
 
 
 class Rados:
+    POOLS_CACHE = []  # mutable on purpose as a global cache.
+
     def __init__(self, conffile, name, log):
         self.conffile = conffile
         self.name = name
@@ -71,8 +73,14 @@ class Rados:
         return result
 
     def list_pools(self):
-        pools = self._ceph("osd", "lspools")
-        return [p["poolname"] for p in pools]
+        # This is a hot-spot, cache it globally so this helps both for
+        # multiple calls on a single instances as well as for mass operations
+        # on multiple VMs. Pools are *very* slow moving and we invalidate
+        # the cache by restarting the process all the time anyway.
+        if not self.POOLS_CACHE:
+            pools = self._ceph("osd", "lspools")
+            self.POOLS_CACHE.extend([p["poolname"] for p in pools])
+        return self.POOLS_CACHE
 
 
 class Ioctx:

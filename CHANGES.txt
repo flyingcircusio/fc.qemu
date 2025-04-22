@@ -4,6 +4,8 @@ Release notes
 1.7 (unreleased)
 ----------------
 
+- libceph: fix performance for detecting presence of volumes (PL-133632)
+
 - rbd: fix command line calls that only ran interactively due to missing
   config file and client id settings. switch to environment variables
   so they can't be forgotten when writing new rbd CLI calls.  (PL-133145)
