@@ -461,6 +461,7 @@ rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simpl
     util.test_log_print("=== Running ensure() ... ===")
     vm.ensure()
     util.test_log_print("=== Running status() ===")
+
     vm.status()
     assert get_log() == Ellipsis(
         """\

@@ -582,6 +582,8 @@ class Ceph(object):
     specs: Dict[str, VolumeSpecification]
     volumes: Dict[str, Optional[Volume]]
 
+    attach_on_enter = True
+
     def __init__(self, cfg, enc) -> None:
         # Update configuration values from system or test config.
         self.__dict__.update(sysconfig.ceph)
@@ -622,8 +624,9 @@ class Ceph(object):
         SwapSpec(self)
         TmpSpec(self)
         CloudInitSpec(self)
-        for spec in self.specs.values():
-            self.get_volume(spec)
+
+        if self.attach_on_enter:
+            self.attach_volumes()
 
     def __exit__(self, exc_value, exc_type, exc_tb):
         for volume in self.opened_volumes:
@@ -633,6 +636,10 @@ class Ceph(object):
             ioctx.close()
         self.ioctxs.clear()
         self.rados.shutdown()
+
+    def attach_volumes(self):
+        for spec in self.specs.values():
+            self.get_volume(spec)
 
     def start(self):
         """Perform Ceph-related tasks before starting a VM."""

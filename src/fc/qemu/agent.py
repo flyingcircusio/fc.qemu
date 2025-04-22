@@ -308,6 +308,8 @@ class Agent(object):
     _lock_file_fd = None
     _config_file_fd = None
 
+    ceph_attach_on_enter = True
+
     def __init__(self, name, enc=None):
         # Update configuration values from system or test config.
         self.log = log.bind(machine=name)
@@ -424,6 +426,7 @@ class Agent(object):
         Gives a quick status for each VM.
         """
         for vm in cls._vm_agents_for_host():
+            vm.ceph_attach_on_enter = False
             with vm:
                 running = vm.qemu.process_exists()
 
@@ -655,6 +658,7 @@ class Agent(object):
 
         # individual VMs ok?
         for vm in vms:
+            vm.ceph_attach_on_enter = False
             with vm:
                 try:
                     vm_mem = vm.qemu.proc().memory_full_info()
@@ -931,6 +935,7 @@ class Agent(object):
         self.consul_generation = self.enc["consul-generation"]
         self.qemu = Qemu(self.cfg)
         self.ceph = Ceph(self.cfg, self.enc)
+        self.ceph.attach_on_enter = self.ceph_attach_on_enter
         self.contexts = [self.qemu, self.ceph]
         for attr in ["migration_ctl_address"]:
             setattr(self, attr, getattr(self, attr).format(**self.cfg))
@@ -1288,8 +1293,16 @@ class Agent(object):
                         self.log,
                         [
                             # fmt: off
-                            f"-{x.version}", "route", "add", f"{x}",
-                            "dev", ifname, "vrf", vrfname, "proto", "fc-qemu"
+                            f"-{x.version}",
+                            "route",
+                            "add",
+                            f"{x}",
+                            "dev",
+                            ifname,
+                            "vrf",
+                            vrfname,
+                            "proto",
+                            "fc-qemu",
                             # fmt: on
                         ],
                     )
@@ -1298,8 +1311,14 @@ class Agent(object):
                         self.log,
                         [
                             # fmt: off
-                            f"-{x.version}", "route", "del", f"{x}",
-                            "dev", ifname, "vrf", vrfname
+                            f"-{x.version}",
+                            "route",
+                            "del",
+                            f"{x}",
+                            "dev",
+                            ifname,
+                            "vrf",
+                            vrfname,
                             # fmt: on
                         ],
                     )
@@ -1603,7 +1622,7 @@ class Agent(object):
     @locked()
     def lock(self):
         self.log.info("assume-all-locks")
-        for vol in self.ceph.volumes:
+        for vol in self.ceph.volumes.values():
             vol.lock()
 
     @locked()
