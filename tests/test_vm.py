@@ -572,6 +572,10 @@ consul machine=simplevm service=<not registered>
 
 @pytest.mark.live
 def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(vm):
+    # XXX I've seen this test to be flaky and in the way that the ensure() call
+    # branches out into an incoming migration, this fails with the auth_cookie
+    # not being possible to compute. This happens relatively rarely and might be
+    # an isolation issue.
     vm.ensure()
     assert vm.qemu.is_running() is True
     proc = vm.qemu.proc()
