@@ -583,6 +583,7 @@ class Ceph(object):
     volumes: Dict[str, Optional[Volume]]
 
     attach_on_enter = True
+    attached = False
 
     def __init__(self, cfg, enc) -> None:
         # Update configuration values from system or test config.
@@ -605,20 +606,12 @@ class Ceph(object):
         # Not sure whether it makes sense that we configure the client ID
         # without 'client.': qemu doesn't want to see this, whereas the
         # Rados binding does ... :/
-        self.log.debug("connect-rados")
         os.environ["CEPH_ARGS"] = f"--id {self.CEPH_CLIENT} -c {self.CEPH_CONF}"
         self.rados = libceph.Rados(
             conffile=self.CEPH_CONF,
             name="client." + self.CEPH_CLIENT,
             log=self.log,
         )
-        self.rados.connect()
-
-        # Keep open ioctx handles to all relevant pools.
-        for pool_name in self.rados.list_pools():
-            if not valid_rbd_pool_name(pool_name):
-                continue
-            self.ioctxs[pool_name] = self.rados.open_ioctx(pool_name)
 
         RootSpec(self)
         SwapSpec(self)
@@ -635,11 +628,19 @@ class Ceph(object):
         for ioctx in self.ioctxs.values():
             ioctx.close()
         self.ioctxs.clear()
-        self.rados.shutdown()
+        self.attached = False
 
     def attach_volumes(self):
+        if self.attached:
+            return
+        # Keep open ioctx handles to all relevant pools.
+        for pool_name in self.rados.list_pools():
+            if not valid_rbd_pool_name(pool_name):
+                continue
+            self.ioctxs[pool_name] = self.rados.open_ioctx(pool_name)
         for spec in self.specs.values():
             self.get_volume(spec)
+        self.attached = True
 
     def start(self):
         """Perform Ceph-related tasks before starting a VM."""

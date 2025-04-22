@@ -68,6 +68,7 @@ def main():
 
     a = argparse.ArgumentParser(description="Qemu VM agent")
     a.set_defaults(func="print_usage")
+    a.set_defaults(ceph_attach_on_enter=True)
 
     a.add_argument(
         "--verbose",
@@ -111,6 +112,7 @@ def main():
     p = sub.add_parser("ensure", help="Ensure proper status of the VM.")
     p.add_argument("vm", metavar="VM", help="name of the VM")
     p.set_defaults(func="ensure")
+    p.set_defaults(ceph_attach_on_enter=False)
 
     p = sub.add_parser("start", help="Start a VM.")
     p.add_argument("vm", metavar="VM", help="name of the VM")
@@ -200,6 +202,7 @@ def main():
         del kwargs["vm"]
     del kwargs["daemonize"]
     del kwargs["verbose"]
+    del kwargs["ceph_attach_on_enter"]
 
     if args.daemonize:
         # Needed to help spawn subprocesses from consul without blocking.
@@ -229,6 +232,7 @@ def main():
                 # a bit more explicit.
                 vm = os.path.basename(vm).split(".")[0]
             agent = Agent(vm)
+            agent.ceph_attach_on_enter = args.ceph_attach_on_enter
             with agent:
                 sys.exit(getattr(agent, func)(**kwargs) or 0)
     except ControlledRuntimeException:

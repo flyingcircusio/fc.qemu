@@ -302,8 +302,6 @@ mkfs.xfs>       mkfs.xfs: small data volume, ignoring data volume stripe unit 12
     )
     first_start.in_order(
         """
-connect-rados machine=simplevm subsystem=ceph
-
 pre-start machine=simplevm subsystem=ceph volume_spec=root
 ensure-presence machine=simplevm subsystem=ceph volume_spec=root
 lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root

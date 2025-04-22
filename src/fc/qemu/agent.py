@@ -1042,6 +1042,7 @@ class Agent(object):
             self.log.info(
                 "ensure-state", wanted="offline", found="online", action="stop"
             )
+            self.ceph.attach_volumes()
             self.stop()
         else:
             self.log.info(
@@ -1053,11 +1054,12 @@ class Agent(object):
 
     def ensure_online_remote(self):
         if not self.qemu.is_running():
-            # This cleans up potential left-overs from a previous migration.
-            self.ceph.stop()
-            self.consul_deregister()
-            self.cleanup()
+            # We used to do cleanups for earlier remote migrations here,
+            # but this is extremely expensive during scrubbing because this
+            # is the default case for many many VMs: they run on a remote host.
             return
+
+        self.ceph.attach_volumes()
 
         migration_errors = self.outmigrate()
         if migration_errors:
@@ -1072,6 +1074,7 @@ class Agent(object):
         self.cleanup()
 
     def ensure_online_local(self):
+        self.ceph.attach_volumes()
         # Ensure state
         agent_likely_ready = True
         if not self.qemu.is_running():
