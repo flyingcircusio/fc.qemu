@@ -130,6 +130,14 @@ def test_cloud_init_seed_simple(ceph_inst_cloudinit_enc):
             "package_upgrade": True,
             "packages": ["qemu-guest-agent"],
             "hostname": "simplevm",
+            "updates": {
+                "network": {
+                    "when": [
+                        "boot-new-instance",
+                        "boot",
+                    ],
+                },
+            },
             "users": [{"name": "root"}],
             "write_files": [
                 {

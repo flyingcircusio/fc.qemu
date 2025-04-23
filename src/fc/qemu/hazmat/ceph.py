@@ -474,6 +474,11 @@ class CloudInitSpec(VolumeSpecification):
                         "package_upgrade": True,
                         "packages": ["qemu-guest-agent"],
                         "hostname": enc["name"],
+                        "updates": {
+                            "network": {
+                                "when": ["boot-new-instance", "boot"],
+                            },
+                        },
                         # don't create ubuntu user, but only root
                         "users": [{"name": "root"}],
                         "write_files": managed_files,
