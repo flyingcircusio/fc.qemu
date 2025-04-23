@@ -117,10 +117,7 @@ def test_cloud_init_seed_simple(ceph_inst_cloudinit_enc):
         directory_mock.list_users.assert_called_once_with("test")
     with cidata_spec.volume.mounted() as target:
         metadata_file = target / "meta-data"
-        assert (
-            metadata_file.read_text()
-            == "instance-id: e0999536194a42170cde0d3698fb47ee\n"
-        )
+        assert metadata_file.read_text() == "instance-id: simplevm\n"
         userdata_file = target / "user-data"
         userdata_content = userdata_file.read_text()
         assert userdata_content.startswith("#cloud-config\n")
@@ -130,8 +127,17 @@ def test_cloud_init_seed_simple(ceph_inst_cloudinit_enc):
             "ssh_pwauth": False,
             "disable_root": False,
             "package_update": True,
+            "package_upgrade": True,
             "packages": ["qemu-guest-agent"],
             "hostname": "simplevm",
+            "updates": {
+                "network": {
+                    "when": [
+                        "boot-new-instance",
+                        "boot",
+                    ],
+                },
+            },
             "users": [{"name": "root"}],
             "write_files": [
                 {
@@ -151,8 +157,6 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg
             "runcmd": [
                 "systemctl enable --now qemu-guest-agent",
                 "systemctl restart ssh",
-                "sed -ie 's/- ssh/- [ssh, once]/' /etc/cloud/cloud.cfg",
-                "sed -ie 's/- set_passwords/- [set_passwords, once]/' /etc/cloud/cloud.cfg",
             ],
         }
         network_config_file = target / "network-config"
@@ -188,31 +192,6 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg
         }
 
 
-def test_cloud_init_seed_instance_id_hashing(ceph_inst_cloudinit_enc):
-    ceph = ceph_inst_cloudinit_enc
-    libceph.RBD().create(
-        ceph.ioctxs["rbd.ssd"],
-        "simplevm.cidata",
-        ceph.cfg["cidata_size"],
-    )
-
-    cidata_spec = ceph.specs["cidata"]
-    cidata_spec.ensure_presence()
-    cidata_spec.start()
-    with cidata_spec.volume.mounted() as target:
-        metadata_file = target / "meta-data"
-        metadata_config = yaml.safe_load(metadata_file.read_text())
-        previous_instance_id = metadata_config["instance-id"]
-
-    ceph_inst_cloudinit_enc.enc["disk"] = 20
-    cidata_spec = ceph.specs["cidata"]
-    cidata_spec.start()
-    with cidata_spec.volume.mounted() as target:
-        metadata_file = target / "meta-data"
-        metadata_config = yaml.safe_load(metadata_file.read_text())
-        assert metadata_config["instance-id"] != previous_instance_id
-
-
 def test_cloud_init_seed_routed_pub(ceph_inst_cloudinit_enc):
     ceph = ceph_inst_cloudinit_enc
     ceph.enc["parameters"]["interfaces"]["pub"]["routed"] = True
@@ -244,7 +223,7 @@ def test_cloud_init_seed_routed_pub(ceph_inst_cloudinit_enc):
                         },
                         {
                             "address": "2001:db8:500:2::5/128",
-                            "dns_nameservers": [],
+                            "dns_nameservers": ["2001:db8:500:2::1"],
                             "gateway": "fe80::1",
                             "type": "static6",
                         },

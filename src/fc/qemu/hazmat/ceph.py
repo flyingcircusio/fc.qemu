@@ -31,7 +31,7 @@ from .volume import Volume
 # VMs match each other.
 ROUTED_VIRTUAL_GATEWAY_V4 = "169.254.83.168"
 ROUTED_VIRTUAL_GATEWAY_V6 = "fe80::1"
-ROUTED_VIRTUAL_NAMESERVER = "169.254.83.168"
+ROUTED_VIRTUAL_NAMESERVER_V4 = "169.254.83.168"
 
 
 def valid_rbd_pool_name(name):
@@ -456,17 +456,11 @@ class CloudInitSpec(VolumeSpecification):
             }
         )
 
-        enc_to_hash = enc.copy()
-        enc_to_hash.pop("last_maintenance_end", None)
-        enc_to_hash.pop("consul-generation", None)
-        enc_to_hash["parameters"].pop("kvm_host", None)
-        enc_hash = hashlib.md5(json.dumps(enc_to_hash, sort_keys=True).encode())
-        instance_id = enc_hash.hexdigest()
         with self.volume.mounted() as target:
             metadata = target / "meta-data"
             metadata.touch()
             with metadata.open("w") as f:
-                yaml.safe_dump({"instance-id": instance_id}, f)
+                yaml.safe_dump({"instance-id": enc["name"]}, f)
             userdata = target / "user-data"
             userdata.touch()
             with userdata.open("w") as f:
@@ -477,16 +471,20 @@ class CloudInitSpec(VolumeSpecification):
                         "ssh_pwauth": False,
                         "disable_root": False,
                         "package_update": True,
+                        "package_upgrade": True,
                         "packages": ["qemu-guest-agent"],
                         "hostname": enc["name"],
+                        "updates": {
+                            "network": {
+                                "when": ["boot-new-instance", "boot"],
+                            },
+                        },
                         # don't create ubuntu user, but only root
                         "users": [{"name": "root"}],
                         "write_files": managed_files,
                         "runcmd": [
                             "systemctl enable --now qemu-guest-agent",
                             "systemctl restart ssh",
-                            "sed -ie 's/- ssh/- [ssh, once]/' /etc/cloud/cloud.cfg",
-                            "sed -ie 's/- set_passwords/- [set_passwords, once]/' /etc/cloud/cloud.cfg",
                         ],
                     },
                     f,
@@ -526,10 +524,14 @@ class CloudInitSpec(VolumeSpecification):
                             ]
                         case (True, 4):
                             gateway = ROUTED_VIRTUAL_GATEWAY_V4
-                            nameservers = [ROUTED_VIRTUAL_NAMESERVER]
+                            nameservers = [ROUTED_VIRTUAL_NAMESERVER_V4]
                         case (True, 6):
                             gateway = ROUTED_VIRTUAL_GATEWAY_V6
-                            nameservers = []
+                            nameservers = (
+                                [str(ip_network[1])]
+                                if ip_network.num_addresses >= 4
+                                else []
+                            )
                         case _:
                             continue
                     for address in netconfig:
