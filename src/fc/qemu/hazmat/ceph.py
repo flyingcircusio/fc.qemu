@@ -31,7 +31,7 @@ from .volume import Volume
 # VMs match each other.
 ROUTED_VIRTUAL_GATEWAY_V4 = "169.254.83.168"
 ROUTED_VIRTUAL_GATEWAY_V6 = "fe80::1"
-ROUTED_VIRTUAL_NAMESERVER = "169.254.83.168"
+ROUTED_VIRTUAL_NAMESERVER_V4 = "169.254.83.168"
 
 
 def valid_rbd_pool_name(name):
@@ -518,10 +518,14 @@ class CloudInitSpec(VolumeSpecification):
                             ]
                         case (True, 4):
                             gateway = ROUTED_VIRTUAL_GATEWAY_V4
-                            nameservers = [ROUTED_VIRTUAL_NAMESERVER]
+                            nameservers = [ROUTED_VIRTUAL_NAMESERVER_V4]
                         case (True, 6):
                             gateway = ROUTED_VIRTUAL_GATEWAY_V6
-                            nameservers = []
+                            nameservers = (
+                                [str(ip_network[1])]
+                                if ip_network.num_addresses >= 4
+                                else []
+                            )
                         case _:
                             continue
                     for address in netconfig:

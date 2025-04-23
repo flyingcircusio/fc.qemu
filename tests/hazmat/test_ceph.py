@@ -214,7 +214,7 @@ def test_cloud_init_seed_routed_pub(ceph_inst_cloudinit_enc):
                         },
                         {
                             "address": "2001:db8:500:2::5/128",
-                            "dns_nameservers": [],
+                            "dns_nameservers": ["2001:db8:500:2::1"],
                             "gateway": "fe80::1",
                             "type": "static6",
                         },
