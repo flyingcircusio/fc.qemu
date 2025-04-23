@@ -151,8 +151,8 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO+C/OaWGUbNrf45RYxzgxzX2OZBPLH9VararPYDuorg
             "runcmd": [
                 "systemctl enable --now qemu-guest-agent",
                 "systemctl restart ssh",
-                "sed -ie 's/- ssh/- [ssh, once]/' /etc/cloud/cloud.cfg",
-                "sed -ie 's/- set_passwords/- [set_passwords, once]/' /etc/cloud/cloud.cfg",
+                "sed -iE 's/- ssh$/- [ssh, once]/' /etc/cloud/cloud.cfg",
+                "sed -iE 's/- set_passwords$/- [set_passwords, once]/' /etc/cloud/cloud.cfg",
             ],
         }
         network_config_file = target / "network-config"
