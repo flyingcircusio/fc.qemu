@@ -471,6 +471,7 @@ class CloudInitSpec(VolumeSpecification):
                         "ssh_pwauth": False,
                         "disable_root": False,
                         "package_update": True,
+                        "package_upgrade": True,
                         "packages": ["qemu-guest-agent"],
                         "hostname": enc["name"],
                         # don't create ubuntu user, but only root
