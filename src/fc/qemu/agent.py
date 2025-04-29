@@ -24,6 +24,7 @@ import requests
 import yaml
 
 from . import aramaki, directory, util
+from .aramaki import AramakiBeaconSender
 from .exc import (
     ConfigChanged,
     InvalidCommand,
@@ -1482,7 +1483,8 @@ class Agent(object):
             except VMStateInconsistent:
                 status = "inconsistent"
         status = {"vm": self.name, "status": status, "migration": migration}
-        aramaki.send_status_beacon(status)
+        beacon_sender = AramakiBeaconSender(status)
+        beacon_sender.send()
 
     # This must be locked because we're going to use the
     # QMP socket and that only supports talking to one person at a time.

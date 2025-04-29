@@ -1,3 +1,4 @@
+import datetime
 import errno
 import os
 import random
@@ -761,6 +762,15 @@ def directory_mock(directory_connect_mock):
     directory_mock = mock.Mock()
     directory_connect_mock.side_effect = lambda _: directory_mock
     yield directory_mock
+
+
+@pytest.fixture()
+# @patch("fc.qemu.util.now", autospec=True)
+def now():
+    with mock.patch("fc.qemu.util.now") as now_mock:
+        naive_now = datetime.datetime(2025, 4, 20, 10, 1, 2, 3)
+        now_mock.return_value = naive_now
+        yield now_mock
 
 
 def get_log():
