@@ -23,6 +23,7 @@ REQUIRED_BINARIES = set(
         "umount",
         "xfs_admin",
         "xfs_db",
+        "xfs_repair",
     ]
 )
 

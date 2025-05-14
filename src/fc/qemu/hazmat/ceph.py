@@ -7,6 +7,7 @@ import hashlib
 import ipaddress
 import json
 import os
+import subprocess
 import xmlrpc.client
 from pathlib import Path
 from typing import Dict, Optional
@@ -183,6 +184,8 @@ class RootSpec(VolumeSpecification):
     def start(self):
         self.log.info("start-root")
 
+        self.ensure_xfs_features()
+
         if self.exists_in_desired_pool():
             self.log.debug("root-found-in", current_pool=self.desired_pool)
             return
@@ -283,36 +286,89 @@ class RootSpec(VolumeSpecification):
         )
         return migration
 
+    def primary_partition(self, log_key="primary_partition"):
+        assert (
+            self.volume.device
+        ), f"volume must be mapped first: {self.volume.device}"
+        try:
+            self.volume.wait_for_part1dev()
+        except TimeoutError:
+            self.log.warn(
+                log_key,
+                status="skipped",
+                reason="no partition found",
+            )
+            return None
+        partition = self.volume.part1dev
+        output = self.cmd(f"blkid {partition} -o export")
+        values = parse_export_format(output)
+        fs_type = values.get("TYPE")
+        if fs_type != "xfs":
+            self.log.info(
+                log_key,
+                device=partition,
+                status="skipped",
+                fs_type=fs_type,
+                reason="filesystem type != xfs",
+            )
+            return None
+        with self.volume.mounted():
+            # Mount once to ensure a clean log.
+            pass
+        return partition
+
     def regen_xfs_uuid(self):
         """Regenerate the UUID of the XFS filesystem on partition 1."""
         with self.volume.mapped():
-            try:
-                self.volume.wait_for_part1dev()
-            except TimeoutError:
-                self.log.warn(
-                    "regenerate-xfs-uuid",
-                    status="skipped",
-                    reason="no partition found",
-                )
+            partition = self.primary_partition(log_key="ensure-xfs-features")
+            if partition is None:
                 return
-            partition = self.volume.part1dev
-            output = self.cmd(f"blkid {partition} -o export")
-            values = parse_export_format(output)
-            fs_type = values.get("TYPE")
-            if fs_type != "xfs":
-                self.log.info(
-                    "regenerate-xfs-uuid",
-                    device=partition,
-                    status="skipped",
-                    fs_type=fs_type,
-                    reason="filesystem type != xfs",
-                )
-                return
-            with self.volume.mounted():
-                # Mount once to ensure a clean log.
-                pass
             self.log.info("regenerate-xfs-uuid", device=partition)
             self.cmd(f"xfs_db -x -c 'uuid generate' {partition}")
+
+    def ensure_xfs_features(self):
+        with self.volume.mapped():
+            partition = self.primary_partition(log_key="ensure-xfs-features")
+            if partition is None:
+                return
+            try:
+                self.cmd(f"xfs_repair -n {partition}")
+            except subprocess.CalledProcessError:
+                self.log.warn(
+                    "ensure-xfs-features",
+                    status="skipped",
+                    reason="fs not clean",
+                )
+                return
+            info = self.cmd(f"xfs_db -p xfs_info -c 'info' {partition}")
+            features = getattr(self.ceph, "ENSURE_XFS_FEATURES")
+            for feature in filter(None, map(str.strip, features.split(","))):
+                if feature in info:
+                    self.log.debug(
+                        "ensure-xfs-features",
+                        status="satisfied",
+                        feature=feature,
+                    )
+                    continue
+                elif feature.split("=")[0] not in info:
+                    self.log.warn(
+                        "ensure-xfs-features",
+                        status="skipped",
+                        reason="unknown feature",
+                        feature=feature,
+                    )
+                    continue
+                self.log.info(
+                    "ensure-xfs-features", status="applying", feature=feature
+                )
+                try:
+                    self.cmd(f"xfs_repair -c {feature} {partition}")
+                except subprocess.CalledProcessError:
+                    self.log.warn(
+                        "ensure-xfs-features",
+                        status="failed",
+                        reason="xfs_repair failed",
+                    )
 
 
 class TmpSpec(VolumeSpecification):
