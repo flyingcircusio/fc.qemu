@@ -90,6 +90,9 @@ class SysConfig(object):
         self.ceph["CREATE_VM"] = self.cp.get("ceph", "create-vm")
         self.ceph["MKFS_XFS"] = self.cp.get("ceph", "mkfs-xfs")
         self.ceph["MKFS_VFAT"] = self.cp.get("ceph", "mkfs-vfat")
+        self.ceph["ENSURE_XFS_FEATURES"] = self.cp.get(
+            "ceph", "ensure-xfs-features"
+        )
 
 
 sysconfig = SysConfig()

@@ -1,3 +1,4 @@
+from subprocess import check_call
 from unittest.mock import Mock, patch
 
 import pytest
@@ -79,6 +80,88 @@ def test_multiple_images_raises_error(ceph_inst):
     assert sorted(root_spec.exists_in_pools()) == ["rbd.hdd", "rbd.ssd"]
     with pytest.raises(RuntimeError):
         root_spec.exists_in_pool()
+
+
+def test_update_xfs_features(ceph_inst, patterns):
+    ceph_inst.cfg["root_size"] = 310 * 1024 * 1024
+    root_spec = ceph_inst.specs["root"]
+    root_spec.ensure_presence()
+
+    with root_spec.volume.mapped() as device:
+        device = root_spec.volume.device
+        check_call(f'sgdisk -o "{device}"', shell=True)
+        check_call(
+            f'sgdisk -a 8192 -n 1:8192:0 -c "1:{root_spec.suffix}" '
+            f'-t 1:8300 "{device}"',
+            shell=True,
+        )
+        root_spec.volume.wait_for_part1dev()
+        check_call(
+            f'mkfs.xfs -m crc=1,finobt=1,bigtime=0 -i nrext64=0 -L "{root_spec.suffix}" {root_spec.volume.part1dev}',
+            shell=True,
+        )
+
+    get_log()
+
+    root_spec.ensure_xfs_features()
+
+    noise = patterns.noise
+    noise.optional("xfs_repair>...")
+    noise.optional("xfs_db>...")
+    noise.optional("blkid>...")
+    noise.optional("partprobe ...")
+    noise.optional("blkid ...")
+    noise.optional("mount ...")
+    noise.optional("umount ...")
+    check = patterns.check
+    check.in_order(
+        """
+xfs_repair args=-n ... machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
+xfs_repair machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
+xfs_db args=-p xfs_info -c 'info' ... machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
+xfs_db machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
+"""
+    )
+
+    first_ensure = patterns.first_ensure
+    first_ensure.merge("noise", "check")
+    assert get_log() == first_ensure
+
+    ceph_inst.ENSURE_XFS_FEATURES = (
+        "bigtime=1,inobtcount=1,nrext64=1,exchange=0,unknown=0"
+    )
+
+    root_spec.ensure_xfs_features()
+    second_ensure = patterns.second_ensure
+    second_ensure.in_order(
+        """
+ensure-xfs-features feature=bigtime=1 machine=simplevm status=applying subsystem=ceph volume=rbd.hdd/simplevm.root
+xfs_repair args=-c bigtime=1 ... machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
+xfs_repair machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
+ensure-xfs-features feature=inobtcount=1 machine=simplevm status=satisfied subsystem=ceph volume=rbd.hdd/simplevm.root
+ensure-xfs-features feature=nrext64=1 machine=simplevm status=applying subsystem=ceph volume=rbd.hdd/simplevm.root
+xfs_repair args=-c nrext64=1 ... machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
+xfs_repair machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
+ensure-xfs-features feature=exchange=0 machine=simplevm status=satisfied subsystem=ceph volume=rbd.hdd/simplevm.root
+ensure-xfs-features feature=unknown=0 machine=simplevm reason=unknown feature status=skipped subsystem=ceph volume=rbd.hdd/simplevm.root
+"""
+    )
+    second_ensure.merge("noise", "check")
+    assert get_log() == second_ensure
+
+    root_spec.ensure_xfs_features()
+    third_ensure = patterns.third_ensure
+    third_ensure.in_order(
+        """
+ensure-xfs-features feature=bigtime=1 machine=simplevm status=satisfied subsystem=ceph volume=rbd.hdd/simplevm.root
+ensure-xfs-features feature=inobtcount=1 machine=simplevm status=satisfied subsystem=ceph volume=rbd.hdd/simplevm.root
+ensure-xfs-features feature=nrext64=1 machine=simplevm status=satisfied subsystem=ceph volume=rbd.hdd/simplevm.root
+ensure-xfs-features feature=exchange=0 machine=simplevm status=satisfied subsystem=ceph volume=rbd.hdd/simplevm.root
+ensure-xfs-features feature=unknown=0 machine=simplevm reason=unknown feature status=skipped subsystem=ceph volume=rbd.hdd/simplevm.root
+"""
+    )
+    third_ensure.merge("noise", "check")
+    assert get_log() == third_ensure
 
 
 def test_cloud_init_seed_simple(ceph_inst_cloudinit_enc):

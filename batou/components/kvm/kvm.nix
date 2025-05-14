@@ -45,6 +45,7 @@ in
     # Use the default flags defined by fc-qemu regardless of
     # what the platform sets or the fc-qemu unit tests will fail.
     mkfsXfsFlags = null;
+    ensureXfsFeatures = [ ];
   };
 
   systemd.services.fc-qemu-scrub.wantedBy = lib.mkForce [ ];
