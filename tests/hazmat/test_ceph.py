@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -79,6 +80,26 @@ def test_multiple_images_raises_error(ceph_inst):
     assert sorted(root_spec.exists_in_pools()) == ["rbd.hdd", "rbd.ssd"]
     with pytest.raises(RuntimeError):
         root_spec.exists_in_pool()
+
+
+def test_fc_seed(ceph_with_volumes_ci):
+    ceph = ceph_with_volumes_ci
+    cidata_spec = ceph.specs["cidata"]
+    tmp_spec = ceph.specs["tmp"]
+    cidata_spec.start()
+    tmp_spec.start()
+
+    with cidata_spec.volume.mounted() as target:
+        fc_data = target / "fc-data"
+        assert (fc_data / "enc.json").exists()
+        assert (fc_data / "qemu-guest-properties-booted").exists()
+        assert not (fc_data / "qemu-binary-generation-booted").exists()
+
+    with tmp_spec.volume.mounted() as target:
+        fc_data = target / "fc-data"
+        assert (fc_data / "enc.json").exists()
+        assert (fc_data / "qemu-guest-properties-booted").exists()
+        assert (fc_data / "qemu-binary-generation-booted").exists()
 
 
 def test_cloud_init_seed_simple(ceph_inst_cloudinit_enc):
