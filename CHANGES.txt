@@ -32,6 +32,8 @@ Release notes
 - Add support for layer 3 routed guest interfaces using VRFs, including
   management of host-side VRF kernel routes. (PL-133324)
 
+- Seed enc data into cidata. (PL-130365)
+
 
 1.6 (2024-10-23)
 ----------------
