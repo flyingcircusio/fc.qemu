@@ -315,42 +315,14 @@ class RootSpec(VolumeSpecification):
             self.cmd(f"xfs_db -x -c 'uuid generate' {partition}")
 
 
-class TmpSpec(VolumeSpecification):
-    suffix = "tmp"
-
+class SeedFCMixin:
     ENC_SEED_PARAMETERS = ["cpu_model", "rbd_pool"]
 
-    def pre_start(self):
-        for pool in self.exists_in_pools():
-            if pool != self.desired_pool:
-                self.log.info("delete-outdated-tmp", pool=pool, image=self.name)
-                self.ceph.remove_volume(self.name, pool)
-
-    def start(self):
-        self.log.info("start-tmp")
-        with self.volume.mapped():
-            self.mkfs()
-            self.seed(self.ceph.enc, self.ceph.cfg["binary_generation"])
-
-    def mkfs(self):
-        self.log.debug("create-fs")
-        device = self.volume.device
-        assert device, f"volume must be mapped first: {device}"
-        self.cmd(f'sgdisk -o "{device}"')
-        self.cmd(
-            f'sgdisk -a 8192 -n 1:8192:0 -c "1:{self.suffix}" '
-            f'-t 1:8300 "{device}"'
-        )
-        self.volume.wait_for_part1dev()
-        options = getattr(self.ceph, "MKFS_XFS")
-        self.cmd(
-            f'mkfs.xfs {options} -L "{self.suffix}" {self.volume.part1dev}'
-        )
-
-    def seed(self, enc, generation):
-        self.log.info("seed")
+    def seed_fc(self, enc, generation, compatibility_mode=False):
+        self.log.info("seed-fc")
         with self.volume.mounted() as target:
-            target.chmod(0o1777)
+            if compatibility_mode:
+                target.chmod(0o1777)
             fc_data = target / "fc-data"
             fc_data.mkdir()
             fc_data.chmod(0o750)
@@ -373,15 +345,54 @@ class TmpSpec(VolumeSpecification):
             guest_properties = fc_data / "qemu-guest-properties-booted"
             with guest_properties.open("w") as f:
                 json.dump(properties, f)
-            # For backwards compatibility with old fc-agent versions,
-            # write the Qemu binary generation into a separate file.
-            self.log.debug("binary-generation", generation=generation)
-            generation_marker = fc_data / "qemu-binary-generation-booted"
-            with generation_marker.open("w") as f:
-                f.write(str(generation) + "\n")
+
+            if compatibility_mode:
+                # For backwards compatibility with old fc-agent versions,
+                # write the Qemu binary generation into a separate file.
+                self.log.debug("binary-generation", generation=generation)
+                generation_marker = fc_data / "qemu-binary-generation-booted"
+                with generation_marker.open("w") as f:
+                    f.write(str(generation) + "\n")
 
 
-class CloudInitSpec(VolumeSpecification):
+class TmpSpec(SeedFCMixin, VolumeSpecification):
+    suffix = "tmp"
+
+    def pre_start(self):
+        for pool in self.exists_in_pools():
+            if pool != self.desired_pool:
+                self.log.info("delete-outdated-tmp", pool=pool, image=self.name)
+                self.ceph.remove_volume(self.name, pool)
+
+    def start(self):
+        self.log.info("start-tmp")
+        with self.volume.mapped():
+            self.mkfs()
+            # XXX remove when all machines can read from cidata
+            self.seed_fc(
+                self.ceph.enc,
+                self.ceph.cfg["binary_generation"],
+                compatibility_mode=True,
+            )
+
+    def mkfs(self):
+        self.log.debug("create-fs")
+        device = self.volume.device
+        assert device, f"volume must be mapped first: {device}"
+        self.cmd(f'sgdisk -o "{device}"')
+        self.cmd(
+            f'sgdisk -a 8192 -n 1:8192:0 -c "1:{self.suffix}" '
+            f'-t 1:8300 "{device}"'
+        )
+        # XXX remove when all machines can read from cidata
+        self.volume.wait_for_part1dev()
+        options = getattr(self.ceph, "MKFS_XFS")
+        self.cmd(
+            f'mkfs.xfs {options} -L "{self.suffix}" {self.volume.part1dev}'
+        )
+
+
+class CloudInitSpec(SeedFCMixin, VolumeSpecification):
     suffix = "cidata"
 
     def pre_start(self):
@@ -396,7 +407,7 @@ class CloudInitSpec(VolumeSpecification):
         self.log.info("start-cloud-init")
         with self.volume.mapped():
             self.mkfs()
-            self.seed(self.ceph.enc)
+            self.seed(self.ceph.enc, self.ceph.cfg["binary_generation"])
 
     def mkfs(self):
         self.log.debug("create-fs")
@@ -411,10 +422,13 @@ class CloudInitSpec(VolumeSpecification):
             f'mkfs.vfat {options} -n "{self.suffix}" {self.volume.part1dev}'
         )
 
-    def seed(self, enc):
-        self.log.info("seed")
-        if enc["parameters"]["environment_class_type"] != "cloudinit":
-            return
+    def seed(self, enc, generation):
+        self.seed_fc(enc, generation)
+        if enc["parameters"]["environment_class_type"] == "cloudinit":
+            self.seed_cloud_init(enc)
+
+    def seed_cloud_init(self, enc):
+        self.log.info("seed-cloud-init")
         managed_files = [
             {
                 "path": "/etc/ssh/sshd_config.d/10-cloud-init-fc.conf",

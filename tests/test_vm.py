@@ -135,7 +135,7 @@ mkfs.xfs> mkfs.xfs: Specified data stripe width 8192 is not the same as the volu
 mkfs.xfs> log stripe unit (4194304 bytes) is too large (maximum is 256KiB)
 mkfs.xfs> log stripe unit adjusted to 32KiB
 mkfs.xfs machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
-seed machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+seed-fc machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mount args="/dev/rbd/rbd.ssd/simplevm.tmp-part1" "/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -163,7 +163,14 @@ mkfs.vfat args=-n "cidata" /dev/rbd/rbd.ssd/simplevm.cidata-part1 machine=simple
 mkfs.vfat> mkfs.fat: Warning: lowercase labels might not work properly on some systems
 mkfs.vfat> mkfs.fat ...
 mkfs.vfat machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
-seed machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+seed-fc machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+partprobe args=/dev/rbd/rbd.ssd/simplevm.cidata machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+mount args="/dev/rbd/rbd.ssd/simplevm.cidata-part1" "/mnt/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+guest-properties machine=simplevm properties={'binary_generation': 2, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.cidata
+umount args="/mnt/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 generate-config machine=simplevm
 acquire-global-lock machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 global-lock-acquire machine=simplevm result=locked subsystem=qemu target=/run/fc-qemu.lock
