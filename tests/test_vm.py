@@ -4,7 +4,6 @@ import os
 import os.path
 import re
 import shutil
-import socket
 import subprocess
 import textwrap
 import time
@@ -14,7 +13,6 @@ import yaml
 
 from fc.qemu import util
 from fc.qemu.agent import Agent, InvalidCommand, swap_size, tmp_size
-from fc.qemu.hazmat import guestagent, qemu
 from fc.qemu.util import GiB, MiB
 from tests.conftest import get_log
 from tests.ellipsis import Ellipsis
@@ -254,7 +252,7 @@ xfs_db machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
     # Things that happen depending on timing:
     start.optional(
         """
-waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm...
 qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
 """
     )
