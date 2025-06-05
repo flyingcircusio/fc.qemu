@@ -62,6 +62,149 @@ simplevm              acquire-remote-migration-lock  result='success
     )
 
 
+TEST_FIRST_START_VARIATION = """\
+acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
+acquire-lock count=1 machine=simplevm result=locked target=/run/qemu.simplevm.lock
+pre-start machine=simplevm subsystem=ceph volume_spec=root
+ensure-presence machine=simplevm subsystem=ceph volume_spec=root
+create-vm machine=simplevm subsystem=ceph volume=simplevm.root
+/nix/store/zggynl2zs6m9swyqklqf0gr1dnga3dqx-python3.12-fc-agent-1.0/bin/fc-create-vm args=-I simplevm machine=simplevm subsystem=ceph volume=simplevm.root
+fc-create-vm>
+fc-create-vm> Establishing system identity
+fc-create-vm> ----------------------------
+fc-create-vm> $ rbd --format json --id host1 snap ls rbd.hdd/fc-21.05-dev
+fc-create-vm> Snapshots:
+fc-create-vm> snapid name size
+fc-create-vm> 4 v1 524288000
+fc-create-vm> $ rbd --id host1 clone rbd.hdd/fc-21.05-dev@v1 rbd.ssd/simplevm.root
+fc-create-vm>
+fc-create-vm> Finished
+fc-create-vm> --------
+/nix/store/zggynl2zs6m9swyqklqf0gr1dnga3dqx-python3.12-fc-agent-1.0/bin/fc-create-vm machine=simplevm returncode=0 subsystem=ceph volume=simplevm.root
+partprobe args=/dev/rbd/rbd.ssd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.root
+blkid args=/dev/rbd/rbd.ssd/simplevm.root-part1 -o export machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+blkid> DEVNAME=/dev/rbd/rbd.ssd/simplevm.root-part1
+blkid> UUID=3337fc07-3c0e-47d2-9c99-9c5d5345f7ba
+blkid> BLOCK_SIZE=512
+blkid> TYPE=xfs
+blkid> PARTLABEL=ROOT
+blkid> PARTUUID=d54bed04-c010-44de-a2ce-53390999f51a
+blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+partprobe args=/dev/rbd/rbd.ssd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+mount args="/dev/rbd/rbd.ssd/simplevm.root-part1" "/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+umount args="/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+regenerate-xfs-uuid device=/dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+xfs_db args=-x -c 'uuid generate' /dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+xfs_db> Clearing log and setting UUID
+xfs_db> writing all SBs
+xfs_db> new UUID = 117c71ff-ab7e-4573-8f98-d9e1b3bc6abb
+xfs_db machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+ensure-size machine=simplevm subsystem=ceph volume_spec=root
+start machine=simplevm subsystem=ceph volume_spec=root
+start-root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+root-found-in current_pool=rbd.ssd machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+pre-start machine=simplevm subsystem=ceph volume_spec=swap
+ensure-presence machine=simplevm subsystem=ceph volume_spec=swap
+lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+ensure-size machine=simplevm subsystem=ceph volume_spec=swap
+start machine=simplevm subsystem=ceph volume_spec=swap
+start-swap machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+mkswap args=-f -L "swap" /dev/rbd/rbd.ssd/simplevm.swap machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+mkswap> Setting up swapspace version 1, size = 1024 MiB (1073737728 bytes)
+mkswap> LABEL=swap, UUID=2ed4bc8c-77af-4eed-b044-fb8678b34210
+mkswap machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
+pre-start machine=simplevm subsystem=ceph volume_spec=tmp
+ensure-presence machine=simplevm subsystem=ceph volume_spec=tmp
+lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+ensure-size machine=simplevm subsystem=ceph volume_spec=tmp
+start machine=simplevm subsystem=ceph volume_spec=tmp
+start-tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+create-fs machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+sgdisk args=-o "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+sgdisk> Creating new GPT entries in memory.
+sgdisk> The operation has completed successfully.
+sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+sgdisk args=-a 8192 -n 1:8192:0 -c "1:tmp" -t 1:8300 "/dev/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+sgdisk> The operation has completed successfully.
+sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+mkfs.xfs args=-q -f -K -m crc=1,finobt=1 -d su=4m,sw=1 -L "tmp" /dev/rbd/rbd.ssd/simplevm.tmp-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+mkfs.xfs> mkfs.xfs: Specified data stripe unit 8192 is not the same as the volume stripe unit 128
+mkfs.xfs> mkfs.xfs: Specified data stripe width 8192 is not the same as the volume stripe width 128
+mkfs.xfs> log stripe unit (4194304 bytes) is too large (maximum is 256KiB)
+mkfs.xfs> log stripe unit adjusted to 32KiB
+mkfs.xfs machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+seed machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+mount args="/dev/rbd/rbd.ssd/simplevm.tmp-part1" "/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+guest-properties machine=simplevm properties={'binary_generation': 2, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.tmp
+binary-generation generation=2 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+umount args="/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+pre-start machine=simplevm subsystem=ceph volume_spec=cidata
+ensure-presence machine=simplevm subsystem=ceph volume_spec=cidata
+lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+ensure-size machine=simplevm subsystem=ceph volume_spec=cidata
+start machine=simplevm subsystem=ceph volume_spec=cidata
+start-cloud-init machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+create-fs machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+sgdisk args=-o "/dev/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+sgdisk> Creating new GPT entries in memory.
+sgdisk> The operation has completed successfully.
+sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+sgdisk args=-n 1:: -c "1:cidata" -t 1:8300 "/dev/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+sgdisk> The operation has completed successfully.
+sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+partprobe args=/dev/rbd/rbd.ssd/simplevm.cidata machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+mkfs.vfat args=-n "cidata" /dev/rbd/rbd.ssd/simplevm.cidata-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+mkfs.vfat> mkfs.fat: Warning: lowercase labels might not work properly on some systems
+mkfs.vfat> mkfs.fat 4.2 (2021-01-31)
+mkfs.vfat machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+seed machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+generate-config machine=simplevm
+acquire-global-lock machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
+global-lock-acquire machine=simplevm result=locked subsystem=qemu target=/run/fc-qemu.lock
+global-lock-status count=1 machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
+sufficient-host-memory available_real=10769.54296875 bookable=2000 machine=simplevm required=384 subsystem=qemu
+start-qemu machine=simplevm subsystem=qemu
+qemu-system-x86_64 additional_args=() local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-chroot /srv/vm/simplevm', '-runas nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg'] machine=simplevm subsystem=qemu
+exec cmd=supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -chroot /srv/vm/simplevm -runas nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log machine=simplevm subsystem=qemu
+supervised-qemu-stdout machine=simplevm subsystem=qemu
+supervised-qemu-stderr machine=simplevm subsystem=qemu
+global-lock-status count=0 machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
+global-lock-release machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
+global-lock-release machine=simplevm result=unlocked subsystem=qemu
+qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
+query-status arguments={} id=None machine=simplevm subsystem=qemu/qmp
+consul-register machine=simplevm
+query-block arguments={} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle current_iops=0 device=virtio0 machine=simplevm target_iops=10000
+block_set_io_throttle arguments={'device': 'virtio0', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle current_iops=0 device=virtio1 machine=simplevm target_iops=10000
+block_set_io_throttle arguments={'device': 'virtio1', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle current_iops=0 device=virtio2 machine=simplevm target_iops=10000
+block_set_io_throttle arguments={'device': 'virtio2', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle current_iops=0 device=virtio3 machine=simplevm target_iops=10000
+block_set_io_throttle arguments={'device': 'virtio3', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
+ensure-watchdog action=none machine=simplevm
+human-monitor-command arguments={'command-line': 'watchdog_action action=none'} id=None machine=simplevm subsystem=qemu/qmp
+release-lock count=0 machine=simplevm target=/run/qemu.simplevm.lock
+release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
+"""
+
+
 @pytest.mark.live
 def test_simple_vm_lifecycle_start_stop(vm, patterns):
     status = patterns.status
@@ -204,7 +347,9 @@ sgdisk> partNum is 0
 """
     )
 
-    BOOTSTRAP = """
+    bootstrap = patterns.bootstrap
+    bootstrap.continuous(
+        """
 create-vm machine=simplevm subsystem=ceph volume=simplevm.root
 /nix/store/.../bin/fc-create-vm args=-I simplevm machine=simplevm subsystem=ceph volume=simplevm.root
 fc-create-vm>
@@ -221,6 +366,11 @@ fc-create-vm> --------
 /nix/store/.../bin/fc-create-vm machine=simplevm returncode=0 subsystem=ceph volume=simplevm.root
 partprobe args=/dev/rbd/rbd.ssd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+"""
+    )
+    # need to split the continuous blocks as there can be the optional "waiting" line in between
+    bootstrap.continuous(
+        """
 blkid args=/dev/rbd/rbd.ssd/simplevm.root-part1 -o export machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 blkid> DEVNAME=/dev/rbd/rbd.ssd/simplevm.root-part1
 blkid> UUID=...-...-...-...-...
@@ -242,11 +392,6 @@ xfs_db> writing all SBs
 xfs_db> new UUID = ...-...-...-...-...
 xfs_db machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 """
-
-    bootstrap = patterns.bootstrap
-    bootstrap.continuous(BOOTSTRAP)
-    bootstrap.optional(
-        "waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.root"
     )
 
     # Things that happen depending on timing:
@@ -260,6 +405,8 @@ qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
     first_start = patterns.first_start
     first_start.merge("start", "bootstrap")
 
+    # Validate the pattern
+    assert TEST_FIRST_START_VARIATION == first_start
     assert out == first_start
 
     util.test_log_options["show_events"] = [
