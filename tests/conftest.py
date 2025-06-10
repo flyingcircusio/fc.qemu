@@ -1,4 +1,5 @@
 import errno
+import json
 import os
 import random
 import shutil
@@ -400,7 +401,7 @@ def ceph_inst_cloudinit_enc(ceph_inst):
 
 
 def print2(*args, **kw):
-    print(*args, **kw)
+    print(*args, file=sys.stderr, **kw)
     with open("/tmp/test.log", "a") as f:
         print(*args, file=f, **kw)
 
@@ -452,7 +453,35 @@ def clean_rbd_pools(request, kill_vms, ceph_mock):
                     shell=True,
                 )
             time.sleep(5)
+
         for image in images:
+            # Clean up any remaining locks before deleting the image.
+            print2(f"rbd --format json lock ls {image}")
+            lock_ls_proc = subprocess.run(
+                ["rbd", "--format", "json", "lock", "ls", image],
+                capture_output=True,
+                text=True,
+                shell=False,
+            )
+            if lock_ls_proc.stdout.strip():
+                try:
+                    locks = json.loads(lock_ls_proc.stdout)
+                    for lock_details in locks:
+                        locker = lock_details["locker"]
+                        lock_id = lock_details["id"]
+                        print2(f"rbd lock rm {image} {lock_id} {locker}")
+                        subprocess.run(
+                            ["rbd", "lock", "rm", image, lock_id, locker],
+                            shell=False,
+                            check=True,
+                        )
+                except json.JSONDecodeError:
+                    print2(
+                        f"Warning: could not parse JSON for rbd lock ls {image}: {lock_ls_proc.stdout}"
+                    )
+                except subprocess.CalledProcessError as e:
+                    print2(f"Warning: rbd lock rm failed for {image}: {e}")
+
             print2(f"rbd snap purge {image}")
             subprocess.run(
                 f"rbd snap purge {image}",
