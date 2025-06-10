@@ -30,3 +30,4 @@ batou/.batou*
 batou/**/hostmap.json
 batou/ssh_config*
 batou/insecure-private.key
+.aider*
