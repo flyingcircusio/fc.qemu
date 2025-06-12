@@ -737,10 +737,20 @@ consul machine=simplevm service=<not registered>
     assert status == get_log()
 
 
+@pytest.fixture
+def cooldown():
+    yield
+    time.sleep(35)
+
+
 @pytest.mark.live
+@pytest.mark.first
 def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(
-    vm, clean_rbd_pools
+    vm,
+    cooldown,
 ):
+    # This VM leaves things around
+
     # XXX I've seen this test to be flaky and in the way that the ensure() call
     # branches out into an incoming migration, this fails with the auth_cookie
     # not being possible to compute. This happens relatively rarely and might be

@@ -454,6 +454,14 @@ def clean_rbd_pools(request, kill_vms, ceph_mock):
                 )
             time.sleep(5)
 
+        psauxf = subprocess.run(
+            ["ps", "auxf"],
+            capture_output=True,
+            text=True,
+            shell=False,
+        )
+        print2(psauxf.stdout)
+
         for image in images:
             # Clean up any remaining locks before deleting the image.
             print2(f"rbd --format json lock ls {image}")
@@ -529,37 +537,32 @@ def named_vm(name, request, clean_environment, monkeypatch, tmpdir):
     vm.qemu.qmp_timeout = 0.1
     vm.qemu.vm_expected_overhead = 128
 
-    if vm.qemu.is_running():
-        vm.kill()
+    def cleanup():
+        if p := vm.qemu.proc():
+            parent = p.parent()
+            if "supervised-qemu-wrapped" in parent.cmdline()[1]:
+                parent.terminate()
+            p.terminate()
 
-    for open_volume in vm.ceph.opened_volumes:
-        for snapshot in open_volume.snapshots:
-            snapshot.remove()
+        for open_volume in vm.ceph.opened_volumes:
+            for snapshot in open_volume.snapshots:
+                snapshot.remove()
+
+        for service in vm.consul.agent.services():
+            try:
+                vm.consul.agent.service.deregister(vm.svc_name)
+            except Exception:
+                vm.log.exception("consul-deregister-failed", exc_info=True)
+
+    cleanup()
     vm.force_unlock()
-    for service in vm.consul.agent.services():
-        try:
-            vm.consul.agent.service.deregister(vm.svc_name)
-        except Exception:
-            vm.log.exception("consul-deregister-failed", exc_info=True)
-
     get_log()
 
     yield vm
 
     exc_info = sys.exc_info()
 
-    for open_volume in vm.ceph.opened_volumes:
-        for snapshot in open_volume.snapshots:
-            snapshot.remove()
-
-    if vm.qemu.is_running():
-        vm.kill()
-
-    for service in vm.consul.agent.services():
-        try:
-            vm.consul.agent.service.deregister(vm.svc_name)
-        except Exception:
-            vm.log.exception("consul-deregister-failed", exc_info=True)
+    cleanup()
 
     vm.__exit__(*exc_info)
     if len(exc_info):
@@ -852,9 +855,15 @@ def pytest_collection_modifyitems(items):
     # the other tests.
     sorted_items = items.copy()
     random.shuffle(sorted_items)
-    sorted_items.sort(
-        key=lambda item: 1 if list(item.iter_markers("last")) else 0
-    )
+
+    def sort_key(item):
+        if list(item.iter_markers("last")):
+            return 1
+        if list(item.iter_markers("first")):
+            return -1
+        return 0
+
+    sorted_items.sort(key=sort_key)
     items[:] = sorted_items
 
 
