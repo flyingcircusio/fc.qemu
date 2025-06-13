@@ -395,7 +395,7 @@ ceph machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-rbd>    {"watchers":[],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"...","state_description":...}}
+rbd>    {"watchers":...,"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"...","state_description":...}}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progress=...status=... subsystem=ceph volume=rbd.hdd/simplevm.root
 
