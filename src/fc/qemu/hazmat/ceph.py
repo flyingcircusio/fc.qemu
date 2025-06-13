@@ -33,6 +33,45 @@ ROUTED_VIRTUAL_GATEWAY_V4 = "169.254.83.168"
 ROUTED_VIRTUAL_GATEWAY_V6 = "fe80::1"
 ROUTED_VIRTUAL_NAMESERVER_V4 = "169.254.83.168"
 
+ENC_SEED_PARAMETERS = ["cpu_model", "rbd_pool"]
+
+
+def seed_enc(spec, enc, generation, compatibility_mode=False):
+    spec.log.info("seed-fc")
+    with spec.volume.mounted() as target:
+        if compatibility_mode:
+            target.chmod(0o1777)
+        fc_data = target / "fc-data"
+        fc_data.mkdir()
+        fc_data.chmod(0o750)
+        enc_json = fc_data / "enc.json"
+        enc_json.touch(0o640)
+        with enc_json.open("w") as f:
+            json.dump(enc, f)
+            f.write("\n")
+        # Seed boot-time VM properties which require a reboot to
+        # change. While some of these properties are copied from
+        # the ENC data, a separate file allows properties which
+        # are not exposed to guests through ENC to be added in the
+        # future.
+        properties = {}
+        properties["binary_generation"] = generation
+        for key in ENC_SEED_PARAMETERS:
+            if key in enc["parameters"]:
+                properties[key] = enc["parameters"][key]
+        spec.log.debug("guest-properties", properties=properties)
+        guest_properties = fc_data / "qemu-guest-properties-booted"
+        with guest_properties.open("w") as f:
+            json.dump(properties, f)
+
+        if compatibility_mode:
+            # For backwards compatibility with old fc-agent versions,
+            # write the Qemu binary generation into a separate file.
+            spec.log.debug("binary-generation", generation=generation)
+            generation_marker = fc_data / "qemu-binary-generation-booted"
+            with generation_marker.open("w") as f:
+                f.write(str(generation) + "\n")
+
 
 def valid_rbd_pool_name(name):
     if name == "rbd":
@@ -318,8 +357,6 @@ class RootSpec(VolumeSpecification):
 class TmpSpec(VolumeSpecification):
     suffix = "tmp"
 
-    ENC_SEED_PARAMETERS = ["cpu_model", "rbd_pool"]
-
     def pre_start(self):
         for pool in self.exists_in_pools():
             if pool != self.desired_pool:
@@ -330,7 +367,13 @@ class TmpSpec(VolumeSpecification):
         self.log.info("start-tmp")
         with self.volume.mapped():
             self.mkfs()
-            self.seed(self.ceph.enc, self.ceph.cfg["binary_generation"])
+            # XXX remove when all machines can read from cidata
+            seed_enc(
+                self,
+                self.ceph.enc,
+                self.ceph.cfg["binary_generation"],
+                compatibility_mode=True,
+            )
 
     def mkfs(self):
         self.log.debug("create-fs")
@@ -341,44 +384,12 @@ class TmpSpec(VolumeSpecification):
             f'sgdisk -a 8192 -n 1:8192:0 -c "1:{self.suffix}" '
             f'-t 1:8300 "{device}"'
         )
+        # XXX remove when all machines can read from cidata
         self.volume.wait_for_part1dev()
         options = getattr(self.ceph, "MKFS_XFS")
         self.cmd(
             f'mkfs.xfs {options} -L "{self.suffix}" {self.volume.part1dev}'
         )
-
-    def seed(self, enc, generation):
-        self.log.info("seed")
-        with self.volume.mounted() as target:
-            target.chmod(0o1777)
-            fc_data = target / "fc-data"
-            fc_data.mkdir()
-            fc_data.chmod(0o750)
-            enc_json = fc_data / "enc.json"
-            enc_json.touch(0o640)
-            with enc_json.open("w") as f:
-                json.dump(enc, f)
-                f.write("\n")
-            # Seed boot-time VM properties which require a reboot to
-            # change. While some of these properties are copied from
-            # the ENC data, a separate file allows properties which
-            # are not exposed to guests through ENC to be added in the
-            # future.
-            properties = {}
-            properties["binary_generation"] = generation
-            for key in self.ENC_SEED_PARAMETERS:
-                if key in enc["parameters"]:
-                    properties[key] = enc["parameters"][key]
-            self.log.debug("guest-properties", properties=properties)
-            guest_properties = fc_data / "qemu-guest-properties-booted"
-            with guest_properties.open("w") as f:
-                json.dump(properties, f)
-            # For backwards compatibility with old fc-agent versions,
-            # write the Qemu binary generation into a separate file.
-            self.log.debug("binary-generation", generation=generation)
-            generation_marker = fc_data / "qemu-binary-generation-booted"
-            with generation_marker.open("w") as f:
-                f.write(str(generation) + "\n")
 
 
 class CloudInitSpec(VolumeSpecification):
@@ -396,7 +407,7 @@ class CloudInitSpec(VolumeSpecification):
         self.log.info("start-cloud-init")
         with self.volume.mapped():
             self.mkfs()
-            self.seed(self.ceph.enc)
+            self.seed(self.ceph.enc, self.ceph.cfg["binary_generation"])
 
     def mkfs(self):
         self.log.debug("create-fs")
@@ -411,10 +422,13 @@ class CloudInitSpec(VolumeSpecification):
             f'mkfs.vfat {options} -n "{self.suffix}" {self.volume.part1dev}'
         )
 
-    def seed(self, enc):
-        self.log.info("seed")
-        if enc["parameters"]["environment_class_type"] != "cloudinit":
-            return
+    def seed(self, enc, generation):
+        seed_enc(self, enc, generation)
+        if enc["parameters"]["environment_class_type"] == "cloudinit":
+            self.seed_cloud_init(enc)
+
+    def seed_cloud_init(self, enc):
+        self.log.info("seed-cloud-init")
         managed_files = [
             {
                 "path": "/etc/ssh/sshd_config.d/10-cloud-init-fc.conf",
