@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -79,6 +80,26 @@ def test_multiple_images_raises_error(ceph_inst):
     assert sorted(root_spec.exists_in_pools()) == ["rbd.hdd", "rbd.ssd"]
     with pytest.raises(RuntimeError):
         root_spec.exists_in_pool()
+
+
+def test_fc_seed(ceph_with_volumes_ci):
+    ceph = ceph_with_volumes_ci
+    cidata_spec = ceph.specs["cidata"]
+    tmp_spec = ceph.specs["tmp"]
+    cidata_spec.start()
+    tmp_spec.start()
+
+    with cidata_spec.volume.mounted() as target:
+        fc_data = target / "fc-data"
+        assert (fc_data / "enc.json").exists()
+        assert (fc_data / "qemu-guest-properties-booted").exists()
+        assert not (fc_data / "qemu-binary-generation-booted").exists()
+
+    with tmp_spec.volume.mounted() as target:
+        fc_data = target / "fc-data"
+        assert (fc_data / "enc.json").exists()
+        assert (fc_data / "qemu-guest-properties-booted").exists()
+        assert (fc_data / "qemu-binary-generation-booted").exists()
 
 
 def test_cloud_init_seed_simple(ceph_inst_cloudinit_enc):
@@ -328,7 +349,7 @@ partprobe args=/dev/rbd/rbd.hdd/simplevm.tmp machine=simplevm subsystem=ceph vol
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 mkfs.xfs args=-q -f -K -L "tmp" /dev/rbd/rbd.hdd/simplevm.tmp-part1 machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 mkfs.xfs machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
-seed machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+seed-fc machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 partprobe args=/dev/rbd/rbd.hdd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 mount args="/dev/rbd/rbd.hdd/simplevm.tmp-part1" "/mnt/rbd/rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
@@ -358,7 +379,14 @@ mkfs.vfat args=-n "cidata" /dev/rbd/rbd.hdd/simplevm.cidata-part1 machine=simple
 mkfs.vfat>      mkfs.fat: Warning: lowercase labels might not work properly on some systems
 mkfs.vfat>      mkfs.fat 4.2 (2021-01-31)
 mkfs.vfat machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
-seed machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+seed-fc machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+partprobe args=/dev/rbd/rbd.hdd/simplevm.cidata machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
+mount args="/dev/rbd/rbd.hdd/simplevm.cidata-part1" "/mnt/rbd/rbd.hdd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
+guest-properties machine=simplevm properties={'binary_generation': 2} subsystem=ceph volume=rbd.hdd/simplevm.cidata
+umount args="/mnt/rbd/rbd.hdd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd>    {"watchers":[],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"prepared","state_description":""}}
