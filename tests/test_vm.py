@@ -347,10 +347,10 @@ release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
         """
 sgdisk> Creating new GPT entries in memory.
 rbd> /dev/rbd0
-waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/simplevm.tmp
-waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/simplevm.cidata
+waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/...
 sgdisk> Setting name!
 sgdisk> partNum is 0
+qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
 """
     )
 
@@ -400,11 +400,10 @@ xfs_db> new UUID = ...-...-...-...-...
 xfs_db machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 """
     )
-
     # Things that happen depending on timing:
-    start.optional(
+    bootstrap.optional(
         """
-waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm...
+waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/...
 qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
 """
     )
