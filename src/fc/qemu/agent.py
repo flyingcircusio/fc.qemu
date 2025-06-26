@@ -1,3 +1,4 @@
+import codecs
 import contextlib
 import copy
 import datetime
@@ -11,7 +12,6 @@ import subprocess
 import sys
 import time
 import typing
-from codecs import decode
 from ipaddress import ip_interface
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
@@ -56,15 +56,15 @@ LOCKTOOL_TIMEOUT_SECS = 30
 UNLOCK_MAX_RETRIES = 5
 
 
-def unwrap_consul_armour(value: str) -> object:
+def unwrap_consul_armour(value: str) -> dict:
     # See test_consul.py:prepare_consul_event.
     # The directory is providing a somewhat weird (likely historical)
     # structure with an ASCII armour. Due to Python only encoding/decoding
     # base64 on binary strings we need to do this little dance here.
-    value = value.encode("ascii")
-    value = decode(value, "base64")
-    value = value.decode("ascii")
-    return json.loads(value)
+    v: str | bytes = value.encode("ascii")
+    v = codecs.decode(v, "base64")
+    v = v.decode("ascii")
+    return json.loads(v)
 
 
 class ConsulEventHandler(object):
@@ -402,7 +402,7 @@ class Agent(object):
                 log.exception("load-agent", machine=name, exc_info=True)
 
     @classmethod
-    def report_supported_cpu_models(self):
+    def report_supported_cpu_models(cls):
         variations = []
         for variation in scan_cpus():
             log.info(
@@ -431,7 +431,9 @@ class Agent(object):
                 running = vm.qemu.process_exists()
 
                 if running:
-                    vm_mem = vm.qemu.proc().memory_full_info()
+                    proc = vm.qemu.proc()
+                    assert proc is not None
+                    vm_mem = proc.memory_full_info()
 
                     log.info(
                         "online",
@@ -445,7 +447,7 @@ class Agent(object):
                     log.info("offline", machine=vm.name)
 
     @classmethod
-    def _ensure_maintenance_volume(self):
+    def _ensure_maintenance_volume(cls):
         try:
             log.debug("ensure-maintenance-volume")
             subprocess.run(
@@ -458,7 +460,7 @@ class Agent(object):
             subprocess.run(["rbd", "create", "--size", "1", MAINTENANCE_VOLUME])
 
     @classmethod
-    def _get_maintenance_lock_info(self):
+    def _get_maintenance_lock_info(cls):
         try:
             return subprocess.check_output(
                 ["rbd-locktool", "-i", MAINTENANCE_VOLUME]
@@ -661,7 +663,9 @@ class Agent(object):
             vm.ceph_attach_on_enter = False
             with vm:
                 try:
-                    vm_mem = vm.qemu.proc().memory_full_info()
+                    proc = vm.qemu.proc()
+                    assert proc is not None
+                    vm_mem = proc.memory_full_info()
                 except Exception:
                     # It's likely that the process went away while we analyzed
                     # it. Ignore.

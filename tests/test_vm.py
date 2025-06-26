@@ -138,11 +138,10 @@ partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.t
 waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mkfs.xfs args=-q -f -K -m crc=1,finobt=1 -d su=4m,sw=1 -L "tmp" /dev/rbd/rbd.ssd/simplevm.tmp-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mkfs.xfs> mkfs.xfs: Specified data stripe unit 8192 is not the same as the volume stripe unit 128
-mkfs.xfs> mkfs.xfs: Specified data stripe width 8192 is not the same as the volume stripe width 128
 mkfs.xfs> log stripe unit (4194304 bytes) is too large (maximum is 256KiB)
 mkfs.xfs> log stripe unit adjusted to 32KiB
 mkfs.xfs machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
-seed machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+seed-fc machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mount args="/dev/rbd/rbd.ssd/simplevm.tmp-part1" "/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -172,7 +171,14 @@ mkfs.vfat args=-n "cidata" /dev/rbd/rbd.ssd/simplevm.cidata-part1 machine=simple
 mkfs.vfat> mkfs.fat: Warning: lowercase labels might not work properly on some systems
 mkfs.vfat> mkfs.fat 4.2 (2021-01-31)
 mkfs.vfat machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
-seed machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+seed-fc machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+partprobe args=/dev/rbd/rbd.ssd/simplevm.cidata machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+mount args="/dev/rbd/rbd.ssd/simplevm.cidata-part1" "/mnt/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+guest-properties machine=simplevm properties={'binary_generation': 2, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.cidata
+umount args="/mnt/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 generate-config machine=simplevm
 acquire-global-lock machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 global-lock-acquire machine=simplevm result=locked subsystem=qemu target=/run/fc-qemu.lock
@@ -271,10 +277,6 @@ sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mkfs.xfs args=-q -f -K -m crc=1,finobt=1 -d su=4m,sw=1 -L "tmp" /dev/rbd/rbd.ssd/simplevm.tmp-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-mkfs.xfs> mkfs.xfs: Specified data stripe unit 8192 is not the same as the volume stripe unit 128
-mkfs.xfs> mkfs.xfs: Specified data stripe width 8192 is not the same as the volume stripe width 128
-mkfs.xfs> log stripe unit (4194304 bytes) is too large (maximum is 256KiB)
-mkfs.xfs> log stripe unit adjusted to 32KiB
 mkfs.xfs machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 seed-fc machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -347,10 +349,15 @@ release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
         """
 sgdisk> Creating new GPT entries in memory.
 rbd> /dev/rbd0
-waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/simplevm.tmp
-waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/simplevm.cidata
+waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/...
 sgdisk> Setting name!
 sgdisk> partNum is 0
+qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
+mkfs.xfs> mkfs.xfs: Specified data stripe unit ... is not the same as the volume stripe unit ...
+mkfs.xfs> mkfs.xfs: Specified data stripe width ... is not the same as the volume stripe width ...
+mkfs.xfs> log stripe unit (... bytes) is too large (maximum is ...)
+mkfs.xfs> log stripe unit adjusted to ...
+mkfs.xfs> mkfs.xfs: small data volume, ignoring data volume stripe unit ... and stripe width ...
 """
     )
 
@@ -400,11 +407,10 @@ xfs_db> new UUID = ...-...-...-...-...
 xfs_db machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 """
     )
-
     # Things that happen depending on timing:
-    start.optional(
+    bootstrap.optional(
         """
-waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm...
+waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/...
 qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
 """
     )

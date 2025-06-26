@@ -9,6 +9,8 @@ let
 in
 {
 
+  programs.nix-ld.enable = true; # support uv usage
+
   flyingcircus.encServices = [
     {
       address = "host1";
