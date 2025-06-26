@@ -64,7 +64,7 @@ def unwrap_consul_armour(value: str) -> dict:
     v: str | bytes = value.encode("ascii")
     v = codecs.decode(v, "base64")
     v = v.decode("ascii")
-    return json.loads(value)
+    return json.loads(v)
 
 
 class ConsulEventHandler(object):
