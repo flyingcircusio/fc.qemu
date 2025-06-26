@@ -297,7 +297,7 @@ waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.hdd/
 waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.hdd/simplevm.cidata
 sgdisk> Setting name!
 sgdisk> partNum is 0
-mkfs.xfs>       mkfs.xfs: small data volume, ignoring data volume stripe unit 128 and stripe width 128
+mkfs.xfs>       mkfs.xfs: small data volume, ignoring data volume stripe unit ... and stripe width ...
 """
     )
     first_start.in_order(
