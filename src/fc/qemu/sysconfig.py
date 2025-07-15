@@ -1,5 +1,33 @@
 import configparser
 import os.path
+import re
+
+
+def match_many(pattern: str, input: list[str]):
+    """Apply a regexp match to a list of strings.
+
+    Returns an iterator of simple objects for strings that match the
+    pattern. The objects allow attribute access to the named groups
+    of the regular expression. Non-matching strings are filtered out.
+
+    """
+    p = re.compile(pattern)
+    return filter(None, map(p.match, input))
+
+
+def section_matches_as_dicts(
+    cp: configparser.ConfigParser, pattern: str
+) -> dict:
+    """Transform a set of sections that match a pattern into a dict of dicts.
+
+    The match must provide a "section" group that identifies the key for the
+    section. The match must cover the whole key.
+
+    """
+    result = {}
+    for m in match_many(pattern, cp.sections()):
+        result[m.groupdict()["section"]] = dict(cp.items(m.string))
+    return result
 
 
 class SysConfig(object):
@@ -12,11 +40,12 @@ class SysConfig(object):
     config file and to allow tests overriding those values gracefully.
     """
 
+    cp: configparser.ConfigParser
+
     def __init__(self):
         self.qemu = {}
         self.ceph = {}
         self.agent = {}
-        self.cp = None
 
     def read_config_files(self):
         """Tries to open fc-qemu.conf at various location."""
@@ -25,7 +54,7 @@ class SysConfig(object):
         self.cp.read("/etc/qemu/fc-qemu.conf")
         if "qemu" not in self.cp.sections():
             raise RuntimeError(
-                "error while reading config file: " "section [qemu] not found"
+                "error while reading config file: section [qemu] not found"
             )
 
     def load_system_config(self):
@@ -47,9 +76,13 @@ class SysConfig(object):
             "qemu", "vm-expected-overhead"
         )
 
-        self.qemu["throttle_by_pool"] = tbp = {}
-        for pool, iops in self.cp.items("qemu-throttle-by-pool"):
-            tbp[pool] = int(iops)
+        self.qemu["block_throttle"] = bt = {}
+        for section, items in section_matches_as_dicts(
+            self.cp, r"block-throttle-(?P<section>[a-zA-Z\.0-9]+)"
+        ).items():
+            bt[section] = {}
+            for k, v in items.items():
+                bt[section][k] = int(v)
 
         # Consul
         self.agent["consul_token"] = self.cp.get("consul", "access-token")

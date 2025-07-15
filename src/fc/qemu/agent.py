@@ -67,6 +67,59 @@ def unwrap_consul_armour(value: str) -> dict:
     return json.loads(v)
 
 
+def identifiers_only(d: dict):
+    """Return a dict that contains only keys that are usable as identifies.
+
+    Ensures a dict can be passed via **kw.
+    """
+    result = {}
+    for k, v in d.items():
+        if not k.isidentifier():
+            continue
+        result[k] = v
+    return result
+
+
+def iops_settings(**kw):
+    """A helper to create a dict that makes it easy to handle IOPS settings.
+
+    Useful for comparison and updating.
+
+    Creates a dict that contains all possible entries with 0 as the default and
+    overrides known values from **kw and ignores unknown values from **kw.
+    """
+    settings = dict(
+        iops=0,
+        iops_rd=0,
+        iops_wr=0,
+        iops_rd_max=0,
+        iops_rd_max_length=0,
+        iops_wr_max=0,
+        iops_wr_max_length=0,
+        bps=0,
+        bps_wr=0,
+        bps_rd=0,
+    )
+    for k, v in kw.items():
+        if k in settings:
+            settings[k] = v
+    return settings
+
+
+def nonzero(d: dict):
+    """Return a dict with only values that are non-zero.
+
+    Helpful to allow logging a dict in a compact fashion
+    if many items are zeroes.
+    """
+    result = {}
+    for k, v in d.items():
+        if not v:
+            continue
+        result[k] = v
+    return result
+
+
 class ConsulEventHandler(object):
     """This is a wrapper that processes various consul events and multiplexes
     them into individual method handlers.
@@ -1214,28 +1267,61 @@ class Agent(object):
 
     def ensure_online_disk_throttle(self):
         """Ensure throttling settings."""
-        target = self.cfg.get(
-            "iops", self.qemu.throttle_by_pool.get(self.cfg["rbd_pool"], 250)
+        settings = {
+            "iops": 250,
+            "bps": 250 * MiB,
+            "burst_length": 60,
+            "burst_factor": 10,
+        }
+        settings.update(self.qemu.block_throttle[self.cfg["rbd_pool"]])
+
+        target_iops = self.cfg.get("iops", settings["iops"])
+        target_bps = self.cfg.get("bps", settings["bps"])
+        target_burst_length = self.cfg.get("burst", settings["burst-length"])
+        target_burst_factor = self.cfg.get(
+            "burst-factor", settings["burst-factor"]
+        )
+
+        target = iops_settings(
+            iops_rd=target_iops,
+            iops_rd_max=min([target_iops * target_burst_factor, 25_000]),
+            iops_rd_max_length=target_burst_length,
+            iops_wr=target_iops,
+            iops_wr_max=min([target_iops * target_burst_factor, 25_000]),
+            iops_wr_max_length=target_burst_length,
+            bps_wr=target_bps,
+            bps_rd=target_bps,
         )
         devices = self.qemu.block_info()
         for device in list(devices.values()):
-            current = device["inserted"]["iops"]
+            current = iops_settings(**identifiers_only(device["inserted"]))
             if current != target:
                 self.log.info(
                     "ensure-throttle",
                     device=device["device"],
-                    target_iops=target,
-                    current_iops=current,
                     action="throttle",
                 )
-                self.qemu.block_io_throttle(device["device"], target)
+                self.log.info(
+                    "ensure-throttle-params",
+                    **dict(
+                        (f"target_{k}", v) for k, v in nonzero(target).items()
+                    ),
+                    **dict(
+                        (f"current_{k}", v) for k, v in nonzero(current).items()
+                    ),
+                )
+                self.qemu.block_io_throttle(device["device"], **target)
             else:
                 self.log.info(
                     "ensure-throttle",
                     device=device["device"],
-                    target_iops=target,
-                    current_iops=current,
                     action="none",
+                )
+                self.log.info(
+                    "ensure-throttle-params",
+                    **dict(
+                        (f"current_{k}", v) for k, v in nonzero(current).items()
+                    ),
                 )
 
     def ensure_online_host_routes(self):
@@ -1489,7 +1575,7 @@ class Agent(object):
                     self.log.info(
                         "disk-throttle",
                         device=device["device"],
-                        iops=device["inserted"]["iops"],
+                        **iops_settings(**identifiers_only(device["inserted"])),
                     )
             else:
                 exit_code = 1

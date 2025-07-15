@@ -196,14 +196,18 @@ qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
 query-status arguments={} id=None machine=simplevm subsystem=qemu/qmp
 consul-register machine=simplevm
 query-block arguments={} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=throttle current_iops=0 device=virtio0 machine=simplevm target_iops=10000
-block_set_io_throttle arguments={'device': 'virtio0', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=throttle current_iops=0 device=virtio1 machine=simplevm target_iops=10000
-block_set_io_throttle arguments={'device': 'virtio1', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=throttle current_iops=0 device=virtio2 machine=simplevm target_iops=10000
-block_set_io_throttle arguments={'device': 'virtio2', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=throttle current_iops=0 device=virtio3 machine=simplevm target_iops=10000
-block_set_io_throttle arguments={'device': 'virtio3', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio0 machine=simplevm
+ensure-throttle-params machine=simplevm target_bps_rd=209715200 target_bps_wr=209715200 target_iops_rd=3000 target_iops_rd_max=6000 target_iops_rd_max_length=60 target_iops_wr=3000 target_iops_wr_max=6000 target_iops_wr_max_length=60
+block_set_io_throttle arguments={'device': 'virtio0', 'iops': 0, 'iops_rd': 3000, 'iops_wr': 3000, 'iops_rd_max': 6000, 'iops_rd_max_length': 60, 'iops_wr_max': 6000, 'iops_wr_max_length': 60, 'bps': 0, 'bps_wr': 209715200, 'bps_rd': 209715200} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio1 machine=simplevm
+ensure-throttle-params machine=simplevm target_bps_rd=209715200 target_bps_wr=209715200 target_iops_rd=3000 target_iops_rd_max=6000 target_iops_rd_max_length=60 target_iops_wr=3000 target_iops_wr_max=6000 target_iops_wr_max_length=60
+block_set_io_throttle arguments={'device': 'virtio1', 'iops': 0, 'iops_rd': 3000, 'iops_wr': 3000, 'iops_rd_max': 6000, 'iops_rd_max_length': 60, 'iops_wr_max': 6000, 'iops_wr_max_length': 60, 'bps': 0, 'bps_wr': 209715200, 'bps_rd': 209715200} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio2 machine=simplevm
+ensure-throttle-params machine=simplevm target_bps_rd=209715200 target_bps_wr=209715200 target_iops_rd=3000 target_iops_rd_max=6000 target_iops_rd_max_length=60 target_iops_wr=3000 target_iops_wr_max=6000 target_iops_wr_max_length=60
+block_set_io_throttle arguments={'device': 'virtio2', 'iops': 0, 'iops_rd': 3000, 'iops_wr': 3000, 'iops_rd_max': 6000, 'iops_rd_max_length': 60, 'iops_wr_max': 6000, 'iops_wr_max_length': 60, 'bps': 0, 'bps_wr': 209715200, 'bps_rd': 209715200} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio3 machine=simplevm
+ensure-throttle-params machine=simplevm target_bps_rd=209715200 target_bps_wr=209715200 target_iops_rd=3000 target_iops_rd_max=6000 target_iops_rd_max_length=60 target_iops_wr=3000 target_iops_wr_max=6000 target_iops_wr_max_length=60
+block_set_io_throttle arguments={'device': 'virtio3', 'iops': 0, 'iops_rd': 3000, 'iops_wr': 3000, 'iops_rd_max': 6000, 'iops_rd_max_length': 60, 'iops_wr_max': 6000, 'iops_wr_max_length': 60, 'bps': 0, 'bps_wr': 209715200, 'bps_rd': 209715200} id=None machine=simplevm subsystem=qemu/qmp
 ensure-watchdog action=none machine=simplevm
 human-monitor-command arguments={'command-line': 'watchdog_action action=none'} id=None machine=simplevm subsystem=qemu/qmp
 release-lock count=0 machine=simplevm target=/run/qemu.simplevm.lock
@@ -331,14 +335,18 @@ qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
 query-status arguments={} id=None machine=simplevm subsystem=qemu/qmp
 consul-register machine=simplevm
 query-block arguments={} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=throttle current_iops=0 device=virtio0 machine=simplevm target_iops=10000
-block_set_io_throttle arguments={'device': 'virtio0', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=throttle current_iops=0 device=virtio1 machine=simplevm target_iops=10000
-block_set_io_throttle arguments={'device': 'virtio1', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=throttle current_iops=0 device=virtio2 machine=simplevm target_iops=10000
-block_set_io_throttle arguments={'device': 'virtio2', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=throttle current_iops=0 device=virtio3 machine=simplevm target_iops=10000
-block_set_io_throttle arguments={'device': 'virtio3', 'iops': 10000, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio0 machine=simplevm
+ensure-throttle-params machine=simplevm target_bps_rd=209715200 target_bps_wr=209715200 target_iops_rd=3000 target_iops_rd_max=6000 target_iops_rd_max_length=60 target_iops_wr=3000 target_iops_wr_max=6000 target_iops_wr_max_length=60
+block_set_io_throttle arguments={'device': 'virtio0', 'iops': 0, 'iops_rd': 3000, 'iops_wr': 3000, 'iops_rd_max': 6000, 'iops_rd_max_length': 60, 'iops_wr_max': 6000, 'iops_wr_max_length': 60, 'bps': 0, 'bps_wr': 209715200, 'bps_rd': 209715200} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio1 machine=simplevm
+ensure-throttle-params machine=simplevm target_bps_rd=209715200 target_bps_wr=209715200 target_iops_rd=3000 target_iops_rd_max=6000 target_iops_rd_max_length=60 target_iops_wr=3000 target_iops_wr_max=6000 target_iops_wr_max_length=60
+block_set_io_throttle arguments={'device': 'virtio1', 'iops': 0, 'iops_rd': 3000, 'iops_wr': 3000, 'iops_rd_max': 6000, 'iops_rd_max_length': 60, 'iops_wr_max': 6000, 'iops_wr_max_length': 60, 'bps': 0, 'bps_wr': 209715200, 'bps_rd': 209715200} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio2 machine=simplevm
+ensure-throttle-params machine=simplevm target_bps_rd=209715200 target_bps_wr=209715200 target_iops_rd=3000 target_iops_rd_max=6000 target_iops_rd_max_length=60 target_iops_wr=3000 target_iops_wr_max=6000 target_iops_wr_max_length=60
+block_set_io_throttle arguments={'device': 'virtio2', 'iops': 0, 'iops_rd': 3000, 'iops_wr': 3000, 'iops_rd_max': 6000, 'iops_rd_max_length': 60, 'iops_wr_max': 6000, 'iops_wr_max_length': 60, 'bps': 0, 'bps_wr': 209715200, 'bps_rd': 209715200} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio3 machine=simplevm
+ensure-throttle-params machine=simplevm target_bps_rd=209715200 target_bps_wr=209715200 target_iops_rd=3000 target_iops_rd_max=6000 target_iops_rd_max_length=60 target_iops_wr=3000 target_iops_wr_max=6000 target_iops_wr_max_length=60
+block_set_io_throttle arguments={'device': 'virtio3', 'iops': 0, 'iops_rd': 3000, 'iops_wr': 3000, 'iops_rd_max': 6000, 'iops_rd_max_length': 60, 'iops_wr_max': 6000, 'iops_wr_max_length': 60, 'bps': 0, 'bps_wr': 209715200, 'bps_rd': 209715200} id=None machine=simplevm subsystem=qemu/qmp
 ensure-watchdog action=none machine=simplevm
 human-monitor-command arguments={'command-line': 'watchdog_action action=none'} id=None machine=simplevm subsystem=qemu/qmp
 release-lock count=0 machine=simplevm target=/run/qemu.simplevm.lock
@@ -432,10 +440,10 @@ qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
     assert get_log() == Ellipsis(
         """\
 vm-status machine=simplevm result=online
-disk-throttle device=virtio0 iops=10000 machine=simplevm
-disk-throttle device=virtio1 iops=10000 machine=simplevm
-disk-throttle device=virtio2 iops=10000 machine=simplevm
-disk-throttle device=virtio3 iops=10000 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio0 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio1 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio2 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio3 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -528,10 +536,10 @@ rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simpl
     assert get_log() == Ellipsis(
         """\
 vm-status machine=simplevm result=online
-disk-throttle device=virtio0 iops=10000 machine=simplevm
-disk-throttle device=virtio1 iops=10000 machine=simplevm
-disk-throttle device=virtio2 iops=10000 machine=simplevm
-disk-throttle device=virtio3 iops=10000 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio0 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio1 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio2 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio3 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -649,10 +657,10 @@ running-ensure generation=0 machine=simplevm
 ensure-state action=start found=offline machine=simplevm wanted=online
 ...
 vm-status machine=simplevm result=online
-disk-throttle device=virtio0 iops=10000 machine=simplevm
-disk-throttle device=virtio1 iops=10000 machine=simplevm
-disk-throttle device=virtio2 iops=10000 machine=simplevm
-disk-throttle device=virtio3 iops=10000 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio0 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio1 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio2 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio3 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -687,10 +695,10 @@ running-ensure generation=0 machine=simplevm
 ensure-state action=start found=offline machine=simplevm wanted=online
 ...
 vm-status machine=simplevm result=online
-disk-throttle device=virtio0 iops=10000 machine=simplevm
-disk-throttle device=virtio1 iops=10000 machine=simplevm
-disk-throttle device=virtio2 iops=10000 machine=simplevm
-disk-throttle device=virtio3 iops=10000 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio0 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio1 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio2 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio3 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -849,10 +857,15 @@ def test_vm_throttle_iops(vm):
         get_log()
         == """\
 query-block arguments={} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=none current_iops=10000 device=virtio0 machine=simplevm target_iops=10000
-ensure-throttle action=none current_iops=10000 device=virtio1 machine=simplevm target_iops=10000
-ensure-throttle action=none current_iops=10000 device=virtio2 machine=simplevm target_iops=10000
-ensure-throttle action=none current_iops=10000 device=virtio3 machine=simplevm target_iops=10000"""
+ensure-throttle action=none device=virtio0 machine=simplevm
+ensure-throttle-params current_bps_rd=209715200 current_bps_wr=209715200 current_iops_rd=3000 current_iops_rd_max=6000 current_iops_rd_max_length=60 current_iops_wr=3000 current_iops_wr_max=6000 current_iops_wr_max_length=60 machine=simplevm
+ensure-throttle action=none device=virtio1 machine=simplevm
+ensure-throttle-params current_bps_rd=209715200 current_bps_wr=209715200 current_iops_rd=3000 current_iops_rd_max=6000 current_iops_rd_max_length=60 current_iops_wr=3000 current_iops_wr_max=6000 current_iops_wr_max_length=60 machine=simplevm
+ensure-throttle action=none device=virtio2 machine=simplevm
+ensure-throttle-params current_bps_rd=209715200 current_bps_wr=209715200 current_iops_rd=3000 current_iops_rd_max=6000 current_iops_rd_max_length=60 current_iops_wr=3000 current_iops_wr_max=6000 current_iops_wr_max_length=60 machine=simplevm
+ensure-throttle action=none device=virtio3 machine=simplevm
+ensure-throttle-params current_bps_rd=209715200 current_bps_wr=209715200 current_iops_rd=3000 current_iops_rd_max=6000 current_iops_rd_max_length=60 current_iops_wr=3000 current_iops_wr_max=6000 current_iops_wr_max_length=60 machine=simplevm\
+"""
     )
 
     vm.cfg["iops"] = 10
@@ -862,14 +875,19 @@ ensure-throttle action=none current_iops=10000 device=virtio3 machine=simplevm t
         get_log()
         == """\
 query-block arguments={} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=throttle current_iops=10000 device=virtio0 machine=simplevm target_iops=10
-block_set_io_throttle arguments={'device': 'virtio0', 'iops': 10, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=throttle current_iops=10000 device=virtio1 machine=simplevm target_iops=10
-block_set_io_throttle arguments={'device': 'virtio1', 'iops': 10, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=throttle current_iops=10000 device=virtio2 machine=simplevm target_iops=10
-block_set_io_throttle arguments={'device': 'virtio2', 'iops': 10, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=throttle current_iops=10000 device=virtio3 machine=simplevm target_iops=10
-block_set_io_throttle arguments={'device': 'virtio3', 'iops': 10, 'iops_rd': 0, 'iops_wr': 0, 'bps': 0, 'bps_wr': 0, 'bps_rd': 0} id=None machine=simplevm subsystem=qemu/qmp"""
+ensure-throttle action=throttle device=virtio0 machine=simplevm
+ensure-throttle-params current_bps_rd=209715200 current_bps_wr=209715200 current_iops_rd=3000 current_iops_rd_max=6000 current_iops_rd_max_length=60 current_iops_wr=3000 current_iops_wr_max=6000 current_iops_wr_max_length=60 machine=simplevm target_bps_rd=209715200 target_bps_wr=209715200 target_iops_rd=10 target_iops_rd_max=20 target_iops_rd_max_length=60 target_iops_wr=10 target_iops_wr_max=20 target_iops_wr_max_length=60
+block_set_io_throttle arguments={'device': 'virtio0', 'iops': 0, 'iops_rd': 10, 'iops_wr': 10, 'iops_rd_max': 20, 'iops_rd_max_length': 60, 'iops_wr_max': 20, 'iops_wr_max_length': 60, 'bps': 0, 'bps_wr': 209715200, 'bps_rd': 209715200} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio1 machine=simplevm
+ensure-throttle-params current_bps_rd=209715200 current_bps_wr=209715200 current_iops_rd=3000 current_iops_rd_max=6000 current_iops_rd_max_length=60 current_iops_wr=3000 current_iops_wr_max=6000 current_iops_wr_max_length=60 machine=simplevm target_bps_rd=209715200 target_bps_wr=209715200 target_iops_rd=10 target_iops_rd_max=20 target_iops_rd_max_length=60 target_iops_wr=10 target_iops_wr_max=20 target_iops_wr_max_length=60
+block_set_io_throttle arguments={'device': 'virtio1', 'iops': 0, 'iops_rd': 10, 'iops_wr': 10, 'iops_rd_max': 20, 'iops_rd_max_length': 60, 'iops_wr_max': 20, 'iops_wr_max_length': 60, 'bps': 0, 'bps_wr': 209715200, 'bps_rd': 209715200} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio2 machine=simplevm
+ensure-throttle-params current_bps_rd=209715200 current_bps_wr=209715200 current_iops_rd=3000 current_iops_rd_max=6000 current_iops_rd_max_length=60 current_iops_wr=3000 current_iops_wr_max=6000 current_iops_wr_max_length=60 machine=simplevm target_bps_rd=209715200 target_bps_wr=209715200 target_iops_rd=10 target_iops_rd_max=20 target_iops_rd_max_length=60 target_iops_wr=10 target_iops_wr_max=20 target_iops_wr_max_length=60
+block_set_io_throttle arguments={'device': 'virtio2', 'iops': 0, 'iops_rd': 10, 'iops_wr': 10, 'iops_rd_max': 20, 'iops_rd_max_length': 60, 'iops_wr_max': 20, 'iops_wr_max_length': 60, 'bps': 0, 'bps_wr': 209715200, 'bps_rd': 209715200} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio3 machine=simplevm
+ensure-throttle-params current_bps_rd=209715200 current_bps_wr=209715200 current_iops_rd=3000 current_iops_rd_max=6000 current_iops_rd_max_length=60 current_iops_wr=3000 current_iops_wr_max=6000 current_iops_wr_max_length=60 machine=simplevm target_bps_rd=209715200 target_bps_wr=209715200 target_iops_rd=10 target_iops_rd_max=20 target_iops_rd_max_length=60 target_iops_wr=10 target_iops_wr_max=20 target_iops_wr_max_length=60
+block_set_io_throttle arguments={'device': 'virtio3', 'iops': 0, 'iops_rd': 10, 'iops_wr': 10, 'iops_rd_max': 20, 'iops_rd_max_length': 60, 'iops_wr_max': 20, 'iops_wr_max_length': 60, 'bps': 0, 'bps_wr': 209715200, 'bps_rd': 209715200} id=None machine=simplevm subsystem=qemu/qmp\
+"""
     )
 
     vm.ensure_online_disk_throttle()
@@ -877,10 +895,15 @@ block_set_io_throttle arguments={'device': 'virtio3', 'iops': 10, 'iops_rd': 0, 
         get_log()
         == """\
 query-block arguments={} id=None machine=simplevm subsystem=qemu/qmp
-ensure-throttle action=none current_iops=10 device=virtio0 machine=simplevm target_iops=10
-ensure-throttle action=none current_iops=10 device=virtio1 machine=simplevm target_iops=10
-ensure-throttle action=none current_iops=10 device=virtio2 machine=simplevm target_iops=10
-ensure-throttle action=none current_iops=10 device=virtio3 machine=simplevm target_iops=10"""
+ensure-throttle action=none device=virtio0 machine=simplevm
+ensure-throttle-params current_bps_rd=209715200 current_bps_wr=209715200 current_iops_rd=10 current_iops_rd_max=20 current_iops_rd_max_length=60 current_iops_wr=10 current_iops_wr_max=20 current_iops_wr_max_length=60 machine=simplevm
+ensure-throttle action=none device=virtio1 machine=simplevm
+ensure-throttle-params current_bps_rd=209715200 current_bps_wr=209715200 current_iops_rd=10 current_iops_rd_max=20 current_iops_rd_max_length=60 current_iops_wr=10 current_iops_wr_max=20 current_iops_wr_max_length=60 machine=simplevm
+ensure-throttle action=none device=virtio2 machine=simplevm
+ensure-throttle-params current_bps_rd=209715200 current_bps_wr=209715200 current_iops_rd=10 current_iops_rd_max=20 current_iops_rd_max_length=60 current_iops_wr=10 current_iops_wr_max=20 current_iops_wr_max_length=60 machine=simplevm
+ensure-throttle action=none device=virtio3 machine=simplevm
+ensure-throttle-params current_bps_rd=209715200 current_bps_wr=209715200 current_iops_rd=10 current_iops_rd_max=20 current_iops_rd_max_length=60 current_iops_wr=10 current_iops_wr_max=20 current_iops_wr_max_length=60 machine=simplevm\
+"""
     )
 
 
