@@ -7,7 +7,7 @@ import socket
 import subprocess
 from codecs import encode
 from pathlib import Path
-from typing import List
+from typing import Any, List
 
 import psutil
 import yaml
@@ -103,6 +103,8 @@ class Qemu(object):
     max_downtime = 1.0  # seconds
     # 0.8 * 10 Gbit/s in bytes/s
     migration_bandwidth = int(0.8 * 10 * 10**9 / 8)
+
+    block_throttle: dict[str, Any]  # map of pool names -> throttle settings
 
     guestagent_timeout = 3.0
     # QMP runs in the main thread and can block. Our original 15s timeout
@@ -670,17 +672,8 @@ class Qemu(object):
             devices[device["device"]] = device
         return devices
 
-    def block_io_throttle(self, device, iops):
-        self.qmp.command(
-            "block_set_io_throttle",
-            device=device,
-            iops=iops,
-            iops_rd=0,
-            iops_wr=0,
-            bps=0,
-            bps_wr=0,
-            bps_rd=0,
-        )
+    def block_io_throttle(self, device, **settings):
+        self.qmp.command("block_set_io_throttle", device=device, **settings)
 
     def watchdog_action(self, action):
         self.qmp.command(
