@@ -440,10 +440,10 @@ qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
     assert get_log() == Ellipsis(
         """\
 vm-status machine=simplevm result=online
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio0 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio1 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio2 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio3 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio1 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio2 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio3 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -536,10 +536,10 @@ rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simpl
     assert get_log() == Ellipsis(
         """\
 vm-status machine=simplevm result=online
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio0 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio1 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio2 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio3 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio1 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio2 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio3 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -657,10 +657,10 @@ running-ensure generation=0 machine=simplevm
 ensure-state action=start found=offline machine=simplevm wanted=online
 ...
 vm-status machine=simplevm result=online
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio0 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio1 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio2 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio3 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio1 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio2 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio3 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -695,10 +695,10 @@ running-ensure generation=0 machine=simplevm
 ensure-state action=start found=offline machine=simplevm wanted=online
 ...
 vm-status machine=simplevm result=online
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio0 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio1 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio2 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
-disk-throttle bps=0 bps_rd=209715200 bps_wr=209715200 device=virtio3 iops=0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio0 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio1 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio2 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
+disk-throttle bps_rd=209715200 bps_wr=209715200 device=virtio3 iops_rd=3000 iops_rd_max=6000 iops_rd_max_length=60 iops_wr=3000 iops_wr_max=6000 iops_wr_max_length=60 machine=simplevm
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp

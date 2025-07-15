@@ -1575,7 +1575,11 @@ class Agent(object):
                     self.log.info(
                         "disk-throttle",
                         device=device["device"],
-                        **iops_settings(**identifiers_only(device["inserted"])),
+                        **nonzero(
+                            iops_settings(
+                                **identifiers_only(device["inserted"])
+                            )
+                        ),
                     )
             else:
                 exit_code = 1
