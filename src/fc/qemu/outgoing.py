@@ -4,6 +4,8 @@ import threading
 import time
 import xmlrpc.client
 
+from fc.qemu.hazmat.ceph import NameResolutionError
+
 from .exc import ConfigChanged
 from .timeout import TimeOut
 
@@ -82,6 +84,11 @@ class Outgoing(object):
         self.name = agent.name
         self.consul = agent.consul
         self.heartbeat = Heartbeat(self.log)
+        # we are currently running the VM, so of course we have the exclusive
+        # ceph image locks at the start of an outmigrate.
+        # Keeping this information here as fallback when cluster communication is
+        # semi-broken.
+        self.have_ceph_locks = True
 
     def __call__(self):
         self.cookie = self.agent.ceph.auth_cookie()
@@ -89,6 +96,10 @@ class Outgoing(object):
         with self:
             self.connect()
             self.acquire_migration_locks()
+            # FIXME: is it also possible to transfer the ceph locks only *after*
+            # the migration to the target has finished, so we can still continue
+            # to run the local VM when connectivity breaks *during* the migration?
+            # Which VM is starting/ stopping to write to the disk at which stage?
             self.transfer_ceph_locks()
             self.migrate()
 
@@ -250,6 +261,10 @@ class Outgoing(object):
             break
 
     def transfer_ceph_locks(self):
+        # Unlocking the volumes below is non-atomic, as we have multiple volumes
+        # and only one of the later ones might fail to unlock.
+        # Hence, we cannot safely assume to own *all* the locks anymore.
+        self.have_ceph_locks = False
         self.agent.ceph.unlock()
         self.target.acquire_ceph_locks(self.cookie)
 
@@ -315,9 +330,28 @@ class Outgoing(object):
                     self.log.exception("destroy-remote-failed", exc_info=True)
         try:
             self.log.info("continue-locally")
-            self.agent.ceph.lock()
+            try:
+                self.agent.ceph.lock()
+            except NameResolutionError as e:
+                self.log.exception("rescue-local-unlock-failed", exc_info=True)
+                if self.have_ceph_locks:
+                    # We know we were running the VM before and have not yet transferred
+                    # over the exclusive locks. The main reason why we might not
+                    # own the lock anymore is a (manual) forced unlock, but that
+                    # is a disruptive action we do not support in the automation.
+                    # Ensuring the lock is still a good idea, but if it's just the
+                    # name resolution to the cluster failing, this is not worth
+                    # to make us destroy an otherwise perfectly running VM.
+                    # We trade a negligiable risk in data consistency over a larger
+                    # risk in availability here.
+                    self.log.warning(
+                        "assume-still-locked", action="continue running locally"
+                    )
+                else:
+                    raise e
             assert self.agent.qemu.is_running()
-        except Exception:
+        except Exception as e:
+            print("Exception", e)
             self.log.exception(
                 "continue-locally",
                 exc_info=True,

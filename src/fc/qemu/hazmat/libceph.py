@@ -28,6 +28,11 @@ class ImageExists(Exception):
     pass
 
 
+class NameResolutionError(ConnectionError):
+    def __init__(self, errno, strerror):
+        super().__init__(errno, strerror)
+
+
 class Rados:
     POOLS_CACHE = []  # mutable on purpose as a global cache.
 
@@ -45,11 +50,14 @@ class Rados:
     def _ceph(self, *args, use_json=True):
         shargs = shlex.join(args)
         format_arg = "--format json" if use_json else ""
-        result = util.cmd(
-            f"ceph -c {self.conffile} --name {self.name} {format_arg} {shargs}",
-            log=self.log,
-            log_error_verbose=False,
-        )
+        try:
+            result = util.cmd(
+                f"ceph -c {self.conffile} --name {self.name} {format_arg} {shargs}",
+                log=self.log,
+                log_error_verbose=False,
+            )
+        except subprocess.CalledProcessError as e:
+            self._check_cmd_error(e)
         if use_json:
             result = json.loads(result)
         return result
@@ -57,14 +65,33 @@ class Rados:
     def _rbd(self, *args, use_json=True):
         shargs = shlex.join(args)
         format_arg = "--format json" if use_json else ""
-        result = util.cmd(
-            f"rbd -c {self.conffile} --name {self.name} {format_arg} {shargs}",
-            log=self.log,
-            log_error_verbose=False,
-        )
+        try:
+            result = util.cmd(
+                f"rbd -c {self.conffile} --name {self.name} {format_arg} {shargs}",
+                log=self.log,
+                log_error_verbose=False,
+            )
+        except subprocess.CalledProcessError as e:
+            self._check_cmd_error(e)
         if use_json:
             result = json.loads(result)
         return result
+
+    @staticmethod
+    def _check_cmd_error(cmd_err: subprocess.CalledProcessError):
+        """This CLI-based reimplementation of libceph is more susceptible to#
+        name resolution errors, as each command invocation tries to re-resolve
+        the cluster (mostly mon) addresses. This fails when the resolver is
+        (temporarily) unavailable.
+        This kind of failure mode can be relevant for certain libceph consumers.
+        """
+        if "Temporary failure in name resolution" in cmd_err.output:
+            raise NameResolutionError(
+                errno=errno.ECONNABORTED, strerror=cmd_err.output
+            )
+        else:
+            # re-raise all other generic errors
+            raise cmd_err
 
     def list_pools(self):
         # This is a hot-spot, cache it globally so this helps both for
