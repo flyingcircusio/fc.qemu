@@ -15,6 +15,9 @@ import yaml
 
 import fc.qemu.directory
 import fc.qemu.hazmat.libceph as libceph
+from fc.qemu.hazmat.libceph import (
+    NameResolutionError as NameResolutionError,  # re-export
+)
 from fc.qemu.util import (
     conditional_update,
     generate_cloudinit_ssh_keyfile,
@@ -381,8 +384,7 @@ class TmpSpec(VolumeSpecification):
         assert device, f"volume must be mapped first: {device}"
         self.cmd(f'sgdisk -o "{device}"')
         self.cmd(
-            f'sgdisk -a 8192 -n 1:8192:0 -c "1:{self.suffix}" '
-            f'-t 1:8300 "{device}"'
+            f'sgdisk -a 8192 -n 1:8192:0 -c "1:{self.suffix}" -t 1:8300 "{device}"'
         )
         # XXX remove when all machines can read from cidata
         self.volume.wait_for_part1dev()

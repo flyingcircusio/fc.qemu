@@ -4,7 +4,13 @@ from subprocess import CalledProcessError
 import pytest
 
 from fc.qemu import util
-from fc.qemu.hazmat.libceph import Image, ImageBusy, ImageNotFound
+from fc.qemu.hazmat.libceph import (
+    Image,
+    ImageBusy,
+    ImageNotFound,
+    NameResolutionError,
+    Rados,
+)
 
 
 @pytest.mark.live
@@ -103,3 +109,24 @@ def test_rbd_unexpected_exception_does_not_cause_image_not_found(
     monkeypatch.setattr(util, "cmd", failing_cmd)
     with pytest.raises(KeyError):
         Image(pool, "test")
+
+
+ceph_lock_name_resolution_error = """\
+server name not found: cartman07.sto.whq.ipv4.gocept.net (Temporary failure in name resolution)
+unable to parse addrs in 'cartman07.sto.whq.ipv4.gocept.net,cartman08.sto.whq.ipv4.gocept.net,cartman10.sto.whq.ipv4.gocept.net,cartman11.sto.whq.ipv4.gocept.net'
+rbd: couldn't connect to the cluster!
+2025-06-06 01:16:55.074 7f71a9aff080 -1 monclient: get_monmap_and_config cannot identify monitors to contact"""
+
+
+def test_name_resolution_errors_converted():
+    call_error_name_resolution = CalledProcessError(
+        22, "rbd lock rbd.ssd/test.root", output=ceph_lock_name_resolution_error
+    )
+    with pytest.raises(NameResolutionError):
+        Rados._check_cmd_error(call_error_name_resolution)
+
+    call_error_other = CalledProcessError(
+        100, "rbd lock rbd.ssd/test.root", output="Some other error occured"
+    )
+    with pytest.raises(CalledProcessError):
+        Rados._check_cmd_error(call_error_other)
