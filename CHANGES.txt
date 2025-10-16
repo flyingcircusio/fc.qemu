@@ -4,6 +4,12 @@ Release notes
 1.7 (unreleased)
 ----------------
 
+- agent: fix cleanup after a VM shuts down internally. We optimized
+  local cleanup to avoid extreme performance hits but now aren't cleaning
+  up locks in the case that a VM wants to be outmigrated but shuts down
+  at the same time. Only trigger cleanup in specific cases where we
+  have an indicator that locks might still be present. (FC-48755)
+
 - libceph: fix performance for detecting presence of volumes (PL-133632)
 
 - rbd: fix command line calls that only ran interactively due to missing

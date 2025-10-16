@@ -681,19 +681,24 @@ class Qemu(object):
             **{"command-line": "watchdog_action action={}".format(action)},
         )
 
-    def clean_run_files(self):
+    def existing_run_files(self):
         runfiles = list(
             (self.prefix / "run").glob(f"qemu.{self.cfg['name']}.*")
         )
+        # Never, ever, touch lock files. Those should be on
+        # partitions that get cleaned out during reboot, but
+        # never otherwise.
+        runfiles = [
+            runfile for runfile in runfiles if runfile.suffix != ".lock"
+        ]
+        return runfiles
+
+    def clean_run_files(self):
+        runfiles = self.existing_run_files()
         if not runfiles:
             return
         self.log.debug("clean-run-files")
         for runfile in runfiles:
-            if runfile.suffix == ".lock":
-                # Never, ever, remove lock files. Those should be on
-                # partitions that get cleaned out during reboot, but
-                # never otherwise.
-                continue
             runfile.unlink(missing_ok=True)
 
     def prepare_config(self):
