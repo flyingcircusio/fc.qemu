@@ -765,33 +765,6 @@ def cooldown():
 
 
 @pytest.mark.live
-@pytest.mark.first
-def test_do_not_clean_up_crashed_vm_that_doesnt_get_restarted(
-    vm,
-    cooldown,
-):
-    # This VM leaves things around
-
-    # XXX I've seen this test to be flaky and in the way that the ensure() call
-    # branches out into an incoming migration, this fails with the auth_cookie
-    # not being possible to compute. This happens relatively rarely and might be
-    # an isolation issue.
-    vm.ensure()
-    assert vm.qemu.is_running() is True
-    proc = vm.qemu.proc()
-    proc.kill()
-    proc.wait(2)
-    assert vm.ceph.locked_by_me() is True
-    vm.enc["parameters"]["online"] = False
-    vm.enc["consul-generation"] += 1
-    vm.stage_new_config()
-    vm.enc["consul-generation"] -= 1
-    vm.ensure()
-    # We don't really know what's going on here, so, yeah, don't touch it.
-    assert vm.ceph.locked_by_me() is True
-
-
-@pytest.mark.live
 def test_vm_snapshot_only_if_running(vm):
     vm.ceph.specs["root"].ensure_presence()
     assert list(x.fullname for x in vm.ceph.volumes["root"].snapshots) == []
@@ -2172,3 +2145,70 @@ def test_agent_check(vm, capsys):
         """
         )
     )
+
+
+@pytest.mark.live
+@pytest.mark.first
+def test_clean_up_exited_vm_that_lives_remotely(
+    vm,
+    cooldown,
+):
+    vm.ensure()
+    assert vm.qemu.is_running() is True
+
+    assert vm.ceph.locked_by_me()
+    assert len(vm.qemu.existing_run_files()) > 1
+
+    config = vm.config_file.read_text()
+    config = config.replace("kvm_host: host1", "kvm_host: host2")
+    vm.config_file.write_text(config)
+    proc = vm.qemu.proc()
+    proc.kill()
+    proc.wait(10)
+
+    # The supervising process should now clean up.
+    #
+    # Removing the locks happens first but takes a while. Just wait for the last expected
+    # affect to become visible and then check all expected affects at once.
+    while len(vm.qemu.existing_run_files()) != 0:
+        time.sleep(1)
+
+    assert vm.ceph.locked_by_me() is False
+
+
+@pytest.mark.live
+@pytest.mark.first
+def test_clean_up_exited_local_vm_if_intended_offline(
+    vm,
+    cooldown,
+):
+    # This VM leaves things around
+
+    # XXX I've seen this test to be flaky and in the way that the ensure() call
+    # branches out into an incoming migration, this fails with the auth_cookie
+    # not being possible to compute. This happens relatively rarely and might be
+    # an isolation issue.
+    vm.ensure()
+    assert vm.qemu.is_running() is True
+    proc = vm.qemu.proc()
+    supervisor = proc.parent()
+    proc.kill()
+    supervisor.wait()
+
+    # This will have restarted the VM
+    assert vm.qemu.is_running() is True
+    assert vm.ceph.locked_by_me() is True
+
+    vm.enc["parameters"]["online"] = False
+    vm.enc["consul-generation"] += 1
+    vm.stage_new_config()
+    vm.enc["consul-generation"] -= 1
+
+    proc = vm.qemu.proc()
+    supervisor = proc.parent()
+    proc.kill()
+    supervisor.wait()
+
+    # This will clean up the VM now
+    assert vm.qemu.is_running() is False
+    assert vm.ceph.locked_by_me() is False

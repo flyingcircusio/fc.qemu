@@ -1094,6 +1094,14 @@ class Agent(object):
                 )
                 self.qemu.destroy(kill_supervisor=True)
 
+    def cleanup_offline(self):
+        if self.qemu.existing_run_files():
+            self.ceph.attach_volumes()
+            if self.ceph.locked_by_me():
+                self.ceph.unlock()
+            self.consul_deregister()
+            self.cleanup()
+
     def ensure_offline(self):
         if self.qemu.is_running():
             self.log.info(
@@ -1108,12 +1116,17 @@ class Agent(object):
                 found="offline",
                 action="none",
             )
+            self.cleanup_offline()
 
     def ensure_online_remote(self):
         if not self.qemu.is_running():
-            # We used to do cleanups for earlier remote migrations here,
-            # but this is extremely expensive during scrubbing because this
-            # is the default case for many many VMs: they run on a remote host.
+            # Only do cleanups if we have reason to assume that this VM was located here previously.
+            # Doing this all the time was a performance issue because the asymptotal behaviour will
+            # be to constantly perform cleanups for VMs that are already happily leaving elsewhere.
+            # However, there is a situation where a VM might be shutting down internally and races
+            # with a failing (or not yet performed) live migration and then the supervisor `ensure`
+            # call will forget to clean up the locks.
+            self.cleanup_offline()
             return
 
         self.ceph.attach_volumes()
