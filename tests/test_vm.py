@@ -2149,6 +2149,7 @@ def test_agent_check(vm, capsys):
 
 @pytest.mark.live
 @pytest.mark.first
+@pytest.mark.timeout(180)
 def test_clean_up_exited_vm_that_lives_remotely(
     vm,
     cooldown,
@@ -2178,6 +2179,7 @@ def test_clean_up_exited_vm_that_lives_remotely(
 
 @pytest.mark.live
 @pytest.mark.first
+@pytest.mark.timeout(180)
 def test_clean_up_exited_local_vm_if_intended_offline(
     vm,
     cooldown,
