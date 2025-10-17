@@ -1,4 +1,3 @@
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -298,6 +297,7 @@ waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.hdd/
 sgdisk> Setting name!
 sgdisk> partNum is 0
 mkfs.xfs>       mkfs.xfs: small data volume, ignoring data volume stripe unit ... and stripe width ...
+found-partition ...
 """
     )
     first_start.in_order(

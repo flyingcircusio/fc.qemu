@@ -94,6 +94,7 @@ blkid> PARTUUID=d54bed04-c010-44de-a2ce-53390999f51a
 blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 partprobe args=/dev/rbd/rbd.ssd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+found-partition machine=simplevm path=/dev/rbd/rbd.ssd/simplevm.root-part1 subsystem=ceph target=/dev/rbd0p1 volume=rbd.ssd/simplevm.root
 mount args="/dev/rbd/rbd.ssd/simplevm.root-part1" "/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 umount args="/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
@@ -366,6 +367,7 @@ mkfs.xfs> mkfs.xfs: Specified data stripe width ... is not the same as the volum
 mkfs.xfs> log stripe unit (... bytes) is too large (maximum is ...)
 mkfs.xfs> log stripe unit adjusted to ...
 mkfs.xfs> mkfs.xfs: small data volume, ignoring data volume stripe unit ... and stripe width ...
+found-partition ...
 """
     )
 
@@ -403,6 +405,7 @@ blkid> PARTUUID=...-...-...-...-...
 blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 partprobe args=/dev/rbd/rbd.ssd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+found-partition machine=simplevm path=/dev/rbd/rbd.ssd/simplevm.root-part1 subsystem=ceph target=/dev/rbd0p1 volume=rbd.ssd/simplevm.root
 mount args="/dev/rbd/rbd.ssd/simplevm.root-part1" "/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 umount args="/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root

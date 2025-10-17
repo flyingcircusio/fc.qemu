@@ -4,6 +4,8 @@ Release notes
 1.7 (unreleased)
 ----------------
 
+- add more diagnostics for race condition with missing mapped partition devices (PL-134011)
+
 - agent: fix cleanup after a VM shuts down internally. We optimized
   local cleanup to avoid extreme performance hits but now aren't cleaning
   up locks in the case that a VM wants to be outmigrated but shuts down

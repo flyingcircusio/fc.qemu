@@ -53,6 +53,11 @@ class Image(object):
         while timeout.tick():
             for candidate in candidates:
                 if candidate.exists():
+                    self.log.debug(
+                        "found-partition",
+                        path=str(candidate),
+                        target=str(candidate.resolve()),
+                    )
                     self.part1dev = candidate
                     return
 
