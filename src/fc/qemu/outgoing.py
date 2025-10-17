@@ -20,19 +20,32 @@ class Heartbeat(object):
 
     cookie = None
     failed = False
+    url: str | None = None
 
-    def __init__(self, log):
+    # the remote side expects a ping at least every 60 seconds
+    PING_TIMEOUT = 60
+    # frequency after successful pings
+    PING_FREQUENCY = PING_TIMEOUT / 6
+    # frequency after unsuccessful pings
+    PING_RETRY_FREQUENCY = PING_FREQUENCY / 2
+    PING_RETRY_ATTEMPTS = int(PING_TIMEOUT / PING_RETRY_FREQUENCY)
+
+    def __init__(
+        self,
+        log,
+        connect=lambda url: xmlrpc.client.ServerProxy(url, allow_none=True),
+    ):
         self.thread = threading.Thread(target=self.run)
         self.running = False
-        self.url = None
         self.log = log
+        self.connect = connect
         self.log.debug("heartbeat-initialized")
 
     def start(self):
         assert self.url is not None
         if self.running:
             return
-        self.connection = xmlrpc.client.ServerProxy(self.url, allow_none=True)
+        self.connection = self.connect(self.url)
         self.running = True
         self.thread.daemon = True
         self.thread.start()
@@ -44,13 +57,23 @@ class Heartbeat(object):
         self.log.debug("started-heartbeat-ping")
         try:
             while self.running:
-                try:
-                    self.log.debug("heartbeat-ping")
-                    self.connection.ping(self.cookie)
-                except Exception:
-                    self.log.exception("ping-failed", exc_info=True)
+                for attempt in range(1, self.PING_RETRY_ATTEMPTS + 1):
+                    try:
+                        self.log.debug("heartbeat-ping")
+                        self.connection.ping(self.cookie)
+                    except Exception:
+                        self.log.exception(
+                            "ping-failed", exc_info=True, attempt=attempt
+                        )
+                        time.sleep(self.PING_RETRY_FREQUENCY)
+                        continue
+                    break
+                else:
+                    self.log.exception("ping-giving-up", exc_info=True)
                     self.failed = True
-                time.sleep(10)
+                    # We failed - we can stop now.
+                    return
+                time.sleep(self.PING_FREQUENCY)
         finally:
             self.log.debug("stopped-heartbeat-ping")
 
