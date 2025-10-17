@@ -52,7 +52,7 @@ class Image(object):
         timeout = TimeOut(5, interval=0.1, raise_on_timeout=True, log=self.log)
         while timeout.tick():
             for candidate in candidates:
-                if candidate.exists():
+                if candidate.is_block_device():
                     self.log.debug(
                         "found-partition",
                         path=str(candidate),
