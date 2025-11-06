@@ -42,6 +42,19 @@ Release notes
 
 - Seed enc data into cidata. (PL-130365)
 
+- agent: improve resilience of concurrent ensures (PL-133939)
+
+    The supervisor uses an `fc-qemu ensure` to restart shutdown VMs. In the
+    case of concurrent jobs holding a lock on the VM, the return code of
+    that process is a load-bearing signalling path to identify EX_TEMPFAIL
+    cases. That return code was lost and passing has been restored.
+
+    Additionally, killing the whole supervisor process in case of a local
+    state consistency is a bit too much and prevents auto-restart of the VM.
+
+    This hopefully fixes cases of a VM shutting down for a cold reboot
+    during an ensure phase, and then not coming up again.
+
 
 1.6 (2024-10-23)
 ----------------

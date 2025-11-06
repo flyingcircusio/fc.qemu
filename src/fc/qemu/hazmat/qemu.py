@@ -616,6 +616,11 @@ class Qemu(object):
         # by contacting the monitor instead.
         p = self.proc()
         if not p:
+            if kill_supervisor:
+                self.log.warning(
+                    "vm-destroy-no-supervisor-process",
+                    reason="Cannot determine supervisor process, not killing it.",
+                )
             return
 
         # Check whether the parent is the supervising process.

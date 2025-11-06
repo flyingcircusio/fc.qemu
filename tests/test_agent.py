@@ -1,3 +1,4 @@
+import os
 import shutil
 from pathlib import Path
 
@@ -136,6 +137,58 @@ def test_maintenance():
     with pytest.raises(SystemExit, match="0"):
         Agent.maintenance_enter()
     Agent.maintenance_leave()
+
+
+def test_ensure_lock_contention_returns_ex_tempfail(
+    simplevm_cfg, ceph_inst, monkeypatch
+):
+    """Test that fc-qemu ensure returns EX_TEMPFAIL (75) when lock is held.
+
+    This is an end-to-end test from main.py:main() to verify that when
+    another process holds the VM lock, the ensure command exits with
+    EX_TEMPFAIL, allowing supervisor or other retry mechanisms to function.
+    """
+    import fcntl
+    import sys
+
+    import fc.qemu.logging
+    import fc.qemu.main
+
+    # Mock system-level functions that aren't available in test environment
+    monkeypatch.setattr("fc.qemu.main.ensure_separate_cgroup", lambda: None)
+    monkeypatch.setattr("fc.qemu.logging.init_logging", lambda verbose: None)
+
+    # Create agent and determine lock file path
+    agent = Agent(simplevm_cfg)
+    lock_file = agent.lock_file
+
+    # Ensure lock file exists
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+    if not lock_file.exists():
+        lock_file.touch()
+
+    # Acquire the lock in non-blocking mode to simulate another process holding it
+    lock_fd = os.open(lock_file, os.O_RDONLY)
+    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    try:
+        # Mock sys.argv to simulate: fc-qemu ensure simplevm
+        monkeypatch.setattr(sys, "argv", ["fc-qemu", "ensure", simplevm_cfg])
+
+        # Call main() and expect it to exit with EX_TEMPFAIL
+        with pytest.raises(SystemExit) as exc_info:
+            fc.qemu.main.main()
+
+        # Verify the exit code is EX_TEMPFAIL (75)
+        assert exc_info.value.code == os.EX_TEMPFAIL, (
+            f"Expected exit code {os.EX_TEMPFAIL} (EX_TEMPFAIL), "
+            f"but got {exc_info.value.code}"
+        )
+
+    finally:
+        # Release the lock
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
 
 
 def test_iproute2_json_loopback():

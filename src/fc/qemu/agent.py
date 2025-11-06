@@ -1051,7 +1051,9 @@ class Agent(object):
                         # We didn't get the lock, so someone else is
                         # already around who will pick up the (additional)
                         # changed config later.
-                        break
+                        # This locking code is an explicit signal to potential
+                        # callers, so it must be exposed to the outside!
+                        return locking_code
                 except ConfigChanged:
                     # Well then. Let's try this again.
                     continue
@@ -1092,7 +1094,7 @@ class Agent(object):
                 self.log.error(
                     "inconsistent-state", action="destroy", exc_info=True
                 )
-                self.qemu.destroy(kill_supervisor=True)
+                self.qemu.destroy(kill_supervisor=False)
 
     def cleanup_offline(self):
         if self.qemu.existing_run_files():
