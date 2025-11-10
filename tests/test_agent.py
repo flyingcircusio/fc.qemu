@@ -153,10 +153,20 @@ def test_ensure_lock_contention_returns_ex_tempfail(
 
     import fc.qemu.logging
     import fc.qemu.main
+    from tests.conftest import get_log
 
     # Mock system-level functions that aren't available in test environment
     monkeypatch.setattr("fc.qemu.main.ensure_separate_cgroup", lambda: None)
-    monkeypatch.setattr("fc.qemu.logging.init_logging", lambda verbose: None)
+
+    # Mock init_logging to use test's log file instead of /var/log/fc-qemu.log
+    def mock_init_logging(verbose):
+        # Keep test's structlog configuration - don't reconfigure
+        pass
+
+    monkeypatch.setattr("fc.qemu.logging.init_logging", mock_init_logging)
+
+    # Configure logging to show the main-exit event
+    util.test_log_options["show_events"] = ["main-exit"]
 
     # Create agent and determine lock file path
     agent = Agent(simplevm_cfg)
@@ -184,6 +194,15 @@ def test_ensure_lock_contention_returns_ex_tempfail(
             f"Expected exit code {os.EX_TEMPFAIL} (EX_TEMPFAIL), "
             f"but got {exc_info.value.code}"
         )
+
+        # Verify that main-exit log message was emitted with correct exit code
+        log_output = get_log()
+        assert (
+            "main-exit" in log_output
+        ), f"Expected 'main-exit' log message to be emitted, but got: {log_output}"
+        assert (
+            "exitcode=75" in log_output
+        ), f"Expected 'exitcode=75' in log message, but got: {log_output}"
 
     finally:
         # Release the lock

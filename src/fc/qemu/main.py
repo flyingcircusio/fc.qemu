@@ -221,10 +221,11 @@ def main():
 
         sysconfig.load_system_config()
 
+        exitcode = 0
         if vm is None:
             # Expecting a class/static method
             agent = Agent
-            sys.exit(getattr(agent, func)(**kwargs) or 0)
+            exitcode = getattr(agent, func)(**kwargs) or 0
         else:
             if "." in vm:
                 # Our fc.agent calls us with path names. This is kinda stupid
@@ -234,16 +235,19 @@ def main():
             agent = Agent(vm)
             agent.ceph_attach_on_enter = args.ceph_attach_on_enter
             with agent:
-                sys.exit(getattr(agent, func)(**kwargs) or 0)
+                exitcode = getattr(agent, func)(**kwargs) or 0
     except ControlledRuntimeException:
         # Those exceptions are properly logged and indicate an error with a
         # proper shutdown.
         log.exception("controlled-exception", exc_info=True)
-        sys.exit(1)
+        exitcode = 1
     except (VMConfigNotFound, InvalidCommand):
         # Those exceptions are properly logged and don't have to be shown
         # with their traceback.
-        sys.exit(69)  # EX_UNAVAILABLE
+        exitcode = 69  # EX_UNAVAILABLE
     except Exception:
         log.exception("unexpected-exception", exc_info=True)
-        sys.exit(69)  # EX_UNAVAILABLE
+        exitcode = 69  # EX_UNAVAILABLE
+    finally:
+        log.info("main-exit", exitcode=exitcode)
+        sys.exit(exitcode)
