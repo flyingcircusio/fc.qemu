@@ -10,12 +10,12 @@ authors = [
 requires-python = "==3.11.*"
 # NOTE: Please keep this sorted!
 dependencies = [
-    "colorama",  # ==0.3.3',
-    "consulate", # >= 1.1.0
-    "psutil",  # ==5.4.2',
     "PyYaml>=5.3.1",
-    "requests",  # ==2.11.1',
-    "setuptools",
+    "colorama>=0.3.3",
+    "consulate",
+    "psutil>=5.4.2",
+    "requests>=2.11.1",
+    "setuptools>=75.1",
     "structlog>=16.1.0",
     "websockets>=13.1"
 ]
@@ -35,13 +35,13 @@ include = ["fc.qemu", "fc.qemu.hazmat"]
 [dependency-groups]
 # NOTE: Please keep this sorted!
 dev = [
-    "pytest-patterns",
-    "pytest-profiling",
-    "pytest",
-    "mock",
-    "pytest-cov",
-    "pytest-timeout",
-    "pytest-flakefinder"
+    "mock>=5.2",
+    "pytest-cov>=6.2.1",
+    "pytest-flakefinder>=1.1.0",
+    "pytest-patterns>=0.3.0",
+    "pytest-profiling>=1.8.1",
+    "pytest-timeout>=2.4.0",
+    "pytest>=9.0",
 ]
 # NOTE: Please keep this sorted!
 

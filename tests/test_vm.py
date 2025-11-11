@@ -882,6 +882,28 @@ ensure-throttle-params current_bps_rd=524288000 current_bps_wr=524288000 current
 """
     )
 
+    # PL-134153
+    vm.cfg["iops"] = 0
+    vm.ensure_online_disk_throttle()
+    assert (
+        get_log()
+        == """\
+query-block arguments={} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio0 machine=simplevm
+ensure-throttle-params current_bps_rd=524288000 current_bps_wr=524288000 current_iops_rd=10 current_iops_rd_max=20 current_iops_rd_max_length=60 current_iops_wr=10 current_iops_wr_max=20 current_iops_wr_max_length=60 machine=simplevm target_bps_rd=524288000 target_bps_wr=524288000
+block_set_io_throttle arguments={'device': 'virtio0', 'iops': 0, 'iops_rd': 0, 'iops_wr': 0, 'iops_rd_max': 0, 'iops_wr_max': 0, 'bps': 0, 'bps_wr': 524288000, 'bps_rd': 524288000} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio1 machine=simplevm
+ensure-throttle-params current_bps_rd=524288000 current_bps_wr=524288000 current_iops_rd=10 current_iops_rd_max=20 current_iops_rd_max_length=60 current_iops_wr=10 current_iops_wr_max=20 current_iops_wr_max_length=60 machine=simplevm target_bps_rd=524288000 target_bps_wr=524288000
+block_set_io_throttle arguments={'device': 'virtio1', 'iops': 0, 'iops_rd': 0, 'iops_wr': 0, 'iops_rd_max': 0, 'iops_wr_max': 0, 'bps': 0, 'bps_wr': 524288000, 'bps_rd': 524288000} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio2 machine=simplevm
+ensure-throttle-params current_bps_rd=524288000 current_bps_wr=524288000 current_iops_rd=10 current_iops_rd_max=20 current_iops_rd_max_length=60 current_iops_wr=10 current_iops_wr_max=20 current_iops_wr_max_length=60 machine=simplevm target_bps_rd=524288000 target_bps_wr=524288000
+block_set_io_throttle arguments={'device': 'virtio2', 'iops': 0, 'iops_rd': 0, 'iops_wr': 0, 'iops_rd_max': 0, 'iops_wr_max': 0, 'bps': 0, 'bps_wr': 524288000, 'bps_rd': 524288000} id=None machine=simplevm subsystem=qemu/qmp
+ensure-throttle action=throttle device=virtio3 machine=simplevm
+ensure-throttle-params current_bps_rd=524288000 current_bps_wr=524288000 current_iops_rd=10 current_iops_rd_max=20 current_iops_rd_max_length=60 current_iops_wr=10 current_iops_wr_max=20 current_iops_wr_max_length=60 machine=simplevm target_bps_rd=524288000 target_bps_wr=524288000
+block_set_io_throttle arguments={'device': 'virtio3', 'iops': 0, 'iops_rd': 0, 'iops_wr': 0, 'iops_rd_max': 0, 'iops_wr_max': 0, 'bps': 0, 'bps_wr': 524288000, 'bps_rd': 524288000} id=None machine=simplevm subsystem=qemu/qmp\
+"""
+    )
+
 
 @pytest.fixture
 def kernel_vrf_device():

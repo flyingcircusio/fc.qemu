@@ -103,6 +103,12 @@ def iops_settings(**kw):
     for k, v in kw.items():
         if k in settings:
             settings[k] = v
+
+    if settings["iops_rd_max"] == 0:
+        del settings["iops_rd_max_length"]
+    if settings["iops_wr_max"] == 0:
+        del settings["iops_wr_max_length"]
+
     return settings
 
 
@@ -1290,17 +1296,19 @@ class Agent(object):
 
         target_iops = self.cfg.get("iops", settings["iops"])
         target_bps = self.cfg.get("bps", settings["bps"])
-        target_burst_length = self.cfg.get("burst", settings["burst-length"])
         target_burst_factor = self.cfg.get(
             "burst-factor", settings["burst-factor"]
         )
 
+        target_burst = min([target_iops * target_burst_factor, 25_000])
+        target_burst_length = self.cfg.get("burst", settings["burst-length"])
+
         target = iops_settings(
             iops_rd=target_iops,
-            iops_rd_max=min([target_iops * target_burst_factor, 25_000]),
+            iops_rd_max=target_burst,
             iops_rd_max_length=target_burst_length,
             iops_wr=target_iops,
-            iops_wr_max=min([target_iops * target_burst_factor, 25_000]),
+            iops_wr_max=target_burst,
             iops_wr_max_length=target_burst_length,
             bps_wr=target_bps,
             bps_rd=target_bps,
