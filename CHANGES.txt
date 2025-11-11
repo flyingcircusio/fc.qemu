@@ -4,6 +4,8 @@ Release notes
 1.7 (unreleased)
 ----------------
 
+- fix burst length setting if iops are unlimited (PL-134153)
+
 - add more diagnostics for race condition with missing mapped partition devices (PL-134011)
 
 - agent: fix cleanup after a VM shuts down internally. We optimized
