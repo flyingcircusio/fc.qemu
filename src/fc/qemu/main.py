@@ -212,6 +212,7 @@ def main():
     from .logging import init_logging
     from .util import log
 
+    exitcode = 0
     try:
         init_logging(args.verbose)
         log.debug(" ".join(sys.argv))
@@ -221,7 +222,6 @@ def main():
 
         sysconfig.load_system_config()
 
-        exitcode = 0
         if vm is None:
             # Expecting a class/static method
             agent = Agent
@@ -249,5 +249,6 @@ def main():
         log.exception("unexpected-exception", exc_info=True)
         exitcode = 69  # EX_UNAVAILABLE
     finally:
-        log.info("main-exit", exitcode=exitcode)
+        if exitcode != 0:
+            log.debug("exit", status=exitcode)
         sys.exit(exitcode)

@@ -166,7 +166,7 @@ def test_ensure_lock_contention_returns_ex_tempfail(
     monkeypatch.setattr("fc.qemu.logging.init_logging", mock_init_logging)
 
     # Configure logging to show the main-exit event
-    util.test_log_options["show_events"] = ["main-exit"]
+    util.test_log_options["show_events"] = ["exit"]
 
     # Create agent and determine lock file path
     agent = Agent(simplevm_cfg)
@@ -198,10 +198,10 @@ def test_ensure_lock_contention_returns_ex_tempfail(
         # Verify that main-exit log message was emitted with correct exit code
         log_output = get_log()
         assert (
-            "main-exit" in log_output
-        ), f"Expected 'main-exit' log message to be emitted, but got: {log_output}"
+            "exit" in log_output
+        ), f"Expected 'exit' log message to be emitted, but got: {log_output}"
         assert (
-            "exitcode=75" in log_output
+            "status=75" in log_output
         ), f"Expected 'exitcode=75' in log message, but got: {log_output}"
 
     finally:
