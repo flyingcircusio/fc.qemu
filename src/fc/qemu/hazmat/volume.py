@@ -6,6 +6,7 @@ base class for both volumes and snapshots.
 """
 
 import contextlib
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -58,8 +59,25 @@ class Image(object):
                         path=str(candidate),
                         target=str(candidate.resolve()),
                     )
-                    self.part1dev = candidate
-                    return
+                    break
+            else:
+                continue
+            break  # let the break from inner loop bubble up
+        # Some protections against weird race conditions we have seen. Those are
+        # somewhat of a hail mary, though.
+        timeout = TimeOut(5, interval=0.1, raise_on_timeout=True, log=self.log)
+        self.cmd("udevadm settle")
+        while timeout.tick():
+            try:
+                self.cmd(f"blkid {candidate}")
+            except subprocess.CalledProcessError as e:
+                if e.returncode == 2:
+                    continue  # the device wasn't ready yet
+                # this is unexpected
+                raise
+            break
+        # We're fine if we made it here.
+        self.part1dev = candidate
 
     def map(self):
         self.device = self.rbdimage.map()

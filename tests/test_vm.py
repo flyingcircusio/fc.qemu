@@ -95,6 +95,11 @@ blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 partprobe args=/dev/rbd/rbd.ssd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 found-partition machine=simplevm path=/dev/rbd/rbd.ssd/simplevm.root-part1 subsystem=ceph target=/dev/rbd0p1 volume=rbd.ssd/simplevm.root
+udevadm args=settle machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+udevadm machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+blkid args=/dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+blkid> /dev/rbd/rbd.ssd/simplevm.root-part1: UUID="b65d0590-6d3d-4112-a9d6-c7d718a47707" BLOCK_SIZE="512" TYPE="xfs" PARTLABEL="ROOT" PARTUUID="5bf1aed1-70b4-45b6-a0af-5333ff9a0437"
+blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 mount args="/dev/rbd/rbd.ssd/simplevm.root-part1" "/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 umount args="/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
@@ -368,6 +373,11 @@ mkfs.xfs> log stripe unit (... bytes) is too large (maximum is ...)
 mkfs.xfs> log stripe unit adjusted to ...
 mkfs.xfs> mkfs.xfs: small data volume, ignoring data volume stripe unit ... and stripe width ...
 found-partition ...
+udevadm args=settle machine=simplevm subsystem=ceph volume=rbd.ssd/...
+udevadm machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/...
+blkid args=/dev/rbd/rbd.ssd/simplevm...-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/...
+blkid> /dev/rbd/rbd.ssd/simplevm...-part1: ...
+blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm...
 """
     )
 
@@ -406,6 +416,11 @@ blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 partprobe args=/dev/rbd/rbd.ssd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 found-partition machine=simplevm path=/dev/rbd/rbd.ssd/simplevm.root-part1 subsystem=ceph target=/dev/rbd0p1 volume=rbd.ssd/simplevm.root
+udevadm args=settle machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+udevadm machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+blkid args=/dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+blkid> /dev/rbd/rbd.ssd/simplevm.root-part1: ...
+blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 mount args="/dev/rbd/rbd.ssd/simplevm.root-part1" "/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 umount args="/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
