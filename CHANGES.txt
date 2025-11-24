@@ -4,6 +4,10 @@ Release notes
 1.7 (unreleased)
 ----------------
 
+- Fix falling back from a failed inmigration (due to the outgoing side
+  having been shut down while negotiating the inmigration) and immediately
+  trying to start fresh. (PL-134195)
+
 - fix burst length setting if iops are unlimited (PL-134153)
 
 - add more diagnostics for race condition with missing mapped partition devices (PL-134011)
