@@ -27,7 +27,6 @@ class VMConfigNotFound(RuntimeError):
 
 
 class VMStateInconsistent(RuntimeError):
-
     qemu = None
     proc = None
     ceph_lock = None
@@ -43,4 +42,11 @@ class ConfigChanged(Exception):
 
     Useful to break up long waiting periods while data is changing.
 
+    """
+
+
+class EnvironmentChanged(Exception):
+    """Indicator that something in the environment has changed.
+
+    This likely indicates that something should be retried.
     """

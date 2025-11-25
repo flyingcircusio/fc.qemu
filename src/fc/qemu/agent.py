@@ -26,6 +26,7 @@ import yaml
 from . import directory, util
 from .exc import (
     ConfigChanged,
+    EnvironmentChanged,
     InvalidCommand,
     VMConfigNotFound,
     VMStateInconsistent,
@@ -1045,12 +1046,12 @@ class Agent(object):
         # time too many.
         self.__exit__(None, None, None)
         try:
-            first = True
-            while self.has_new_config() or first:
+            force_next_try = True
+            while self.has_new_config() or force_next_try:
                 self.log.info(
                     "running-ensure", generation=self.consul_generation
                 )
-                first = False
+                force_next_try = False
                 try:
                     locking_code = self.ensure_()
                     if locking_code == os.EX_TEMPFAIL:
@@ -1062,6 +1063,9 @@ class Agent(object):
                         return locking_code
                 except ConfigChanged:
                     # Well then. Let's try this again.
+                    continue
+                except EnvironmentChanged:
+                    force_next_try = True
                     continue
         finally:
             self.__enter__()

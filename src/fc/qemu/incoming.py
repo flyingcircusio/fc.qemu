@@ -6,7 +6,7 @@ import xmlrpc.server
 
 import consulate.models.agent
 
-from .exc import ConfigChanged, MigrationError, QemuNotRunning
+from .exc import EnvironmentChanged, MigrationError, QemuNotRunning
 from .timeout import TimeOut
 from .util import log, parse_address
 
@@ -127,7 +127,7 @@ class IncomingServer(object):
                     # outermost ensure() so that we re-evaluate what needs
                     # to be done.
                     s.server_close()
-                    raise ConfigChanged()
+                    raise EnvironmentChanged()
                 if self.finished:
                     break
         try:

@@ -8,7 +8,7 @@ import pytest
 
 import fc.qemu.util as util
 from fc.qemu.agent import Agent, iproute2_json
-from fc.qemu.exc import VMStateInconsistent
+from fc.qemu.exc import EnvironmentChanged, VMStateInconsistent
 from fc.qemu.hazmat.qemu import Qemu, detect_current_machine_type
 
 
@@ -130,6 +130,26 @@ def test_ensure_inconsistent_state_detected(simplevm_cfg, ceph_inst):
         a.ceph.locked_by_me = mock.Mock(return_value=False)
         with pytest.raises(VMStateInconsistent):
             a.raise_if_inconsistent()
+
+
+def test_ensure_environment_changed(simplevm_cfg, ceph_inst):
+    a = Agent(simplevm_cfg)
+    a.ensure_ = mock.Mock(side_effect=[EnvironmentChanged(), None])
+    with a:
+        a.ensure()
+
+    from tests.conftest import get_log
+
+    assert (
+        get_log()
+        == """\
+check-staging-config machine=simplevm result=none
+running-ensure generation=0 machine=simplevm
+check-staging-config machine=simplevm result=none
+running-ensure generation=0 machine=simplevm
+check-staging-config machine=simplevm result=none
+changes-settled machine=simplevm"""
+    )
 
 
 @pytest.mark.live
