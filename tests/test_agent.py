@@ -229,6 +229,23 @@ def test_ensure_lock_contention_returns_ex_tempfail(
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         os.close(lock_fd)
 
+    # second test, piggybacking here due to the huge mock setup that I don't want to refactor right now.
+
+    def maintenance_enter_weird_sysexit():
+        sys.exit(42)
+
+    monkeypatch.setattr(
+        Agent, "maintenance_enter", maintenance_enter_weird_sysexit
+    )
+
+    # Call main() and expect it to exit with EX_TEMPFAIL
+    monkeypatch.setattr(sys, "argv", ["fc-qemu", "maintenance", "enter"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        fc.qemu.main.main()
+
+    assert exc_info.value.code == 42
+
 
 def test_iproute2_json_loopback():
     """Basic functional test of iproute2 JSON output handling."""

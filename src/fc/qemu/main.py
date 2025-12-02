@@ -212,7 +212,7 @@ def main():
     from .logging import init_logging
     from .util import log
 
-    exitcode = 0
+    exitcode = 69
     try:
         init_logging(args.verbose)
         log.debug(" ".join(sys.argv))
@@ -248,7 +248,13 @@ def main():
     except Exception:
         log.exception("unexpected-exception", exc_info=True)
         exitcode = 69  # EX_UNAVAILABLE
-    finally:
-        if exitcode != 0:
-            log.debug("exit", status=exitcode)
-        sys.exit(exitcode)
+
+    # We used to have this part in the `finally` clause. However, in PL-134247
+    # we fell into a trap: if someone further down raises a SystemExit exception,
+    # then the finally clause executes and we trigger another sys.exit() which
+    # in turn overrides the exit code from the other caller. Combined with a
+    # bad default of exitcode = 0 this ended up signalling a succesful maintenance
+    # enter path whereas VMs where still evacuating.
+    if exitcode != 0:
+        log.debug("exit", status=exitcode)
+    sys.exit(exitcode)
