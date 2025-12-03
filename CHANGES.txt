@@ -4,6 +4,10 @@ Release notes
 1.7 (unreleased)
 ----------------
 
+- Fix incorrect handling of nested sys.exit() calls that accidentally
+  got converted into sys.exit(0) always. This broke maintenance
+  EX_UNAVAILABLE signalling. (PL-134247)
+
 - Fix falling back from a failed inmigration (due to the outgoing side
   having been shut down while negotiating the inmigration) and immediately
   trying to start fresh. (PL-134195)

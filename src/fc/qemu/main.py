@@ -1,3 +1,4 @@
+import os
 import os.path
 import sys
 
@@ -212,7 +213,7 @@ def main():
     from .logging import init_logging
     from .util import log
 
-    exitcode = 0
+    exitcode = os.EX_UNAVAILABLE
     try:
         init_logging(args.verbose)
         log.debug(" ".join(sys.argv))
@@ -244,11 +245,20 @@ def main():
     except (VMConfigNotFound, InvalidCommand):
         # Those exceptions are properly logged and don't have to be shown
         # with their traceback.
-        exitcode = 69  # EX_UNAVAILABLE
+        exitcode = os.EX_UNAVAILABLE
     except Exception:
         log.exception("unexpected-exception", exc_info=True)
-        exitcode = 69  # EX_UNAVAILABLE
-    finally:
-        if exitcode != 0:
-            log.debug("exit", status=exitcode)
-        sys.exit(exitcode)
+        exitcode = os.EX_UNAVAILABLE
+    except SystemExit as e:
+        # We do cause system exits in nested functions that can't directly return
+        # to this layer. We do want their status code to be properly logged, too.
+        exitcode = e.code or os.EX_OK
+
+    # We used to wrap this up in a finally clause. However, this has bitten us
+    # before, so in case there are other exceptions (KeyboardInterrupt comes to mind)
+    # then we break out here and won't override the default behaviour with our
+    # logging and exit-code-setting behaviour.
+
+    if exitcode != os.EX_OK:
+        log.debug("exit", status=exitcode)
+    sys.exit(exitcode)
