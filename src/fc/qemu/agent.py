@@ -28,6 +28,7 @@ from .exc import (
     ConfigChanged,
     EnvironmentChanged,
     InvalidCommand,
+    QemuNotRunning,
     VMConfigNotFound,
     VMStateInconsistent,
 )
@@ -1104,7 +1105,7 @@ class Agent(object):
                 self.log.error(
                     "inconsistent-state", action="destroy", exc_info=True
                 )
-                self.qemu.destroy(kill_supervisor=False)
+                self._destroy()
 
     def cleanup_offline(self):
         if self.qemu.existing_run_files():
@@ -1209,6 +1210,32 @@ class Agent(object):
             self.mark_qemu_binary_generation()
             self.mark_qemu_guest_properties()
             self.update_root_ssh_keys_cloudinit()
+
+    def _destroy(self, kill_supervisor=False):
+        timeout = TimeOut(15, interval=1, raise_on_timeout=False)
+        self.log.info("destroy-vm", action="kill vm")
+        try:
+            self.qemu.destroy(kill_supervisor)
+        except QemuNotRunning:
+            pass
+        while timeout.tick():
+            if not self.qemu.is_running():
+                self.log.info("destroy-vm", action="unlock ceph")
+                try:
+                    self.ceph.stop()
+                except Exception:
+                    pass
+                self.log.info("destroy-vm", action="deregister consul")
+                self.consul_deregister()
+                self.log.info("destroy-vm", action="cleanup")
+                self.cleanup()
+                break
+        else:
+            self.log.warning(
+                "destroy",
+                result="timeout",
+                note="VM still running. Check lock consistency.",
+            )
 
     def cleanup(self):
         """Removes various run and tmp files."""
@@ -1661,18 +1688,7 @@ class Agent(object):
     @locked()
     @running(True)
     def kill(self):
-        self.log.info("kill-vm")
-        timeout = TimeOut(15, interval=1, raise_on_timeout=True)
-        self.qemu.destroy(kill_supervisor=True)
-        while timeout.tick():
-            if not self.qemu.is_running():
-                self.log.info("killed-vm")
-                self.ceph.stop()
-                self.consul_deregister()
-                self.cleanup()
-                break
-        else:
-            self.log.warning("kill-vm-failed", note="Check lock consistency.")
+        self._destroy(kill_supervisor=True)
 
     def _requires_inmigrate_from(self) -> Optional[str]:
         """Check whether an inmigration makes sense.
