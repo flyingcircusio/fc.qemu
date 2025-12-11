@@ -19,7 +19,7 @@ def outgoing():
 def test_prefer_remote_rescue(outgoing):
     outgoing.rescue()
     assert outgoing.target.rescue.called is True
-    assert outgoing.agent.qemu.destroy.called is True
+    assert outgoing.agent._destroy.called is True
 
 
 def test_request_remote_destroy_if_remote_rescue_fails(outgoing):

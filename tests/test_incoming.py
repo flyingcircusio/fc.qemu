@@ -28,8 +28,7 @@ def test_rescue(mock_agent):
     mock_agent.ceph.lock.side_effect = Exception("boom!")
     with pytest.raises(Exception):
         s.rescue()
-    assert mock_agent.qemu.destroy.called is True
-    assert mock_agent.ceph.unlock.called is True
+    assert mock_agent._destroy.called is True
 
 
 @mock.patch("fc.qemu.incoming.IncomingServer")

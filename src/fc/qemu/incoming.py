@@ -231,18 +231,10 @@ class IncomingServer(object):
         """Reliably get rid of the VM."""
         log.info("destroying", machine=self.name)
         self.finished = "destroyed"
-        try:
-            # Do not kill the supervisor. We will be giving up here, but the
-            # supervisor will restart the process, potentially with updated
-            # config data so we get a "free" retry.
-            self.qemu.destroy()
-        except QemuNotRunning:
-            pass
-        self.qemu.clean_run_files()
-        try:
-            self.ceph.unlock()
-        except Exception:
-            pass
+        # Do not kill the supervisor. We will be giving up here, but the
+        # supervisor will restart the process, potentially with updated
+        # config data so we get a "free" retry.
+        self.agent._destroy()
 
 
 class IncomingAPI(object):

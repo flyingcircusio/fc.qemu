@@ -741,9 +741,7 @@ rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rb
         """
 graceful-shutdown machine=simplevm
 graceful-shutdown-failed machine=simplevm reason=timeout
-kill-vm machine=simplevm
 vm-destroy-vm-via-qmp machine=simplevm subsystem=qemu
-killed-vm machine=simplevm
 unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -1328,11 +1326,17 @@ simplevm              migration-status               mbps=... remaining='...' st
 simplevm     qemu/qmp query-status                   arguments={} id=None
 simplevm              finish-migration
 
+simplevm              destroy-vm                     action='kill vm'
 simplevm         qemu vm-destroy-vm-via-qmp
 simplevm     qemu/qmp quit                           arguments={} id=None
+simplevm     qemu/qmp query-status                   arguments={} id=None
+simplevm              destroy-vm                     action='unlock ceph'
+simplevm              destroy-vm                     action='deregister consul'
+simplevm              consul-deregister
+simplevm              destroy-vm                     action='cleanup'
+
 simplevm         qemu clean-run-files
 simplevm              finish-remote
-simplevm              consul-deregister
 simplevm              outmigrate-finished            exitcode=0
 simplevm              release-lock                   count=0 target='/run/qemu.simplevm.lock'
 simplevm              release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
@@ -1383,9 +1387,8 @@ simplevm              stopped-heartbeat-ping
 def test_vm_migration_pattern(outmigrate_pattern):
     # This is a variety of outputs we have seen that are valid and where we want to be
     # sure that the Ellipsis matches them properly.
-    assert (
-        outmigrate_pattern
-        == """\
+    assert outmigrate_pattern == (
+        """\
 .../bin/fc-qemu -v outmigrate simplevm
 load-system-config
 simplevm              acquire-lock                   target='/run/qemu.simplevm.lock'
@@ -1640,14 +1643,19 @@ simplevm>  'status': 'completed',
 simplevm>  'total-time': 68420}
 simplevm     qemu/qmp query-status                   arguments={} id=None
 simplevm              finish-migration
+simplevm              destroy-vm                     action='kill vm'
 simplevm         qemu vm-destroy-kill-supervisor     attempt=1
 simplevm         qemu vm-destroy-kill-supervisor     attempt=2
 simplevm         qemu vm-destroy-vm-via-qmp
 simplevm     qemu/qmp quit                           arguments={} id=None
+simplevm     qemu/qmp query-status                   arguments={} id=None
+simplevm              destroy-vm                     action='unlock ceph'
+simplevm              destroy-vm                     action='deregister consul'
+simplevm              consul-deregister
+simplevm              destroy-vm                     action='cleanup'
 simplevm         qemu clean-run-files
 simplevm              finish-remote
 simplevm              stopped-heartbeat-ping
-simplevm              consul-deregister
 simplevm              outmigrate-finished            exitcode=0
 simplevm              release-lock                   count=0 target='/run/qemu.simplevm.lock'
 simplevm              release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
@@ -1915,12 +1923,17 @@ simplevm>  'status': 'completed',
 simplevm>  'total-time': 68526}
 simplevm     qemu/qmp query-status                   arguments={} id=None
 simplevm              finish-migration
+simplevm              destroy-vm                     action='kill vm'
 simplevm         qemu vm-destroy-kill-supervisor     attempt=1
 simplevm         qemu vm-destroy-vm-via-qmp
 simplevm     qemu/qmp quit                           arguments={} id=None
+simplevm     qemu/qmp query-status                   arguments={} id=None
+simplevm              destroy-vm                     action='unlock ceph'
+simplevm              destroy-vm                     action='deregister consul'
+simplevm              consul-deregister
+simplevm              destroy-vm                     action='cleanup'
 simplevm         qemu clean-run-files
 simplevm              finish-remote
-simplevm              consul-deregister
 simplevm              outmigrate-finished            exitcode=0
 simplevm              release-lock                   count=0 target='/run/qemu.simplevm.lock'
 simplevm              release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
