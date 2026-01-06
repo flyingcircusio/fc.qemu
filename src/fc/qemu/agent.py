@@ -592,7 +592,8 @@ class Agent(object):
         )
         while timeout.tick():
             process = subprocess.Popen(
-                ["pgrep", "-f", "qemu-system-x86_64"], stdout=subprocess.PIPE
+                ["pgrep", "-f", "^[^ ]*/qemu-system-x86_64"],
+                stdout=subprocess.PIPE,
             )
             process.wait()
             assert process.stdout is not None
