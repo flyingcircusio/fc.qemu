@@ -576,13 +576,20 @@ class Agent(object):
             log.info("evacuation-started", vms=evacuated)
             time.sleep(5)
 
-        log.info("evacuation-pending")
+        log.info(
+            "evacuation-pending",
+            maintenance_evacuation_timeout=sysconfig.agent[
+                "maintenance_evacuation_timeout"
+            ],
+        )
         # Trigger a gratuitous event handling cycle to help speed up the
         # migration.
         subprocess.call(["systemctl", "reload", "consul"])
 
         # Monitor whether there are still VMs running.
-        timeout = TimeOut(300, interval=3)
+        timeout = TimeOut(
+            sysconfig.agent["maintenance_evacuation_timeout"], interval=3
+        )
         while timeout.tick():
             process = subprocess.Popen(
                 ["pgrep", "-f", "qemu-system-x86_64"], stdout=subprocess.PIPE

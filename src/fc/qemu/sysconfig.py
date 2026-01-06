@@ -103,6 +103,9 @@ class SysConfig(object):
             "qemu", "timeout-graceful"
         )
         self.agent["vhost"] = self.cp.getboolean("qemu", "vhost")
+        self.agent["maintenance_evacuation_timeout"] = self.cp.getint(
+            "qemu", "maintenance-evacuation-timeout"
+        )
 
         self.agent["network_hooks"] = nh = {}
         for key, path in self.cp.items("network"):
