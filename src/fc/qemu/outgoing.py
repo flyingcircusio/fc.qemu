@@ -305,7 +305,7 @@ class Outgoing(object):
         assert not status["running"], status
         assert status["status"] == "postmigrate", status
         self.log.info("finish-migration")
-        self.destroy(kill_supervisor=True)
+        self.agent._destroy(kill_supervisor=True)
         try:
             self.log.info("finish-remote")
             self.target.finish_incoming(self.cookie)
@@ -321,7 +321,7 @@ class Outgoing(object):
                 self.target.rescue(self.cookie)
                 self.target.finish_incoming(self.cookie)
                 self.log.info("rescue-remote-success", action="destroy local")
-                self.destroy(kill_supervisor=True)
+                self.agent._destroy(kill_supervisor=True)
                 # We managed to rescue on the remote side - hooray!
                 self.migration_exitcode = 0
                 return
@@ -347,10 +347,6 @@ class Outgoing(object):
                 result="failed",
                 action="destroy local",
             )
-            self.destroy()
+            self.agent._destroy()
         else:
             self.log.info("continue-locally", result="success")
-
-    def destroy(self, kill_supervisor=False):
-        self.agent.qemu.destroy(kill_supervisor)
-        self.agent.qemu.clean_run_files()

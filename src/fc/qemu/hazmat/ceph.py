@@ -231,7 +231,7 @@ class RootSpec(VolumeSpecification):
 
         # Image needs migration.
         if self.ensure_migration(allow_execute=False):
-            # Variaton 1: The image that exists is itself being migrated
+            # Variation 1: The image that exists is itself being migrated
             # currently, so postpone the migration and keep running with
             # the existing disk.
             # If there was a migration in progress, give it a chance to
