@@ -366,6 +366,9 @@ rbd> /dev/rbd0
 waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/...
 sgdisk> Setting name!
 sgdisk> partNum is 0
+sgdisk> Warning: The kernel is still using the old partition table.
+sgdisk> The new table will be used at the next reboot or after you
+sgdisk> run partprobe(8) or kpartx(8)
 qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
 mkfs.xfs> mkfs.xfs: Specified data stripe unit ... is not the same as the volume stripe unit ...
 mkfs.xfs> mkfs.xfs: Specified data stripe width ... is not the same as the volume stripe width ...
