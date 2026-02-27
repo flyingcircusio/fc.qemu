@@ -65,7 +65,7 @@ in
     serviceConfig = {
       Type = "simple";
       Restart = "always";
-      ExecStart = "${pkgs.python3Full}/bin/python ${./fakedirectory.py}";
+      ExecStart = "${pkgs.python3}/bin/python ${./fakedirectory.py}";
     };
   };
 
