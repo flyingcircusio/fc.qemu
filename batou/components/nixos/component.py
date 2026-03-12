@@ -104,6 +104,7 @@ class NixOS(Component):
         # Our dependencies are reversed: we first need to configure the
         # NixOS environment and then the individual parts can do their work
         #
+        # XXX this appears to have no effect
         def filter_roles(enc: dict[Any, Any]):
             enc["roles"] = list(sorted(set(enc["roles"])))
 
