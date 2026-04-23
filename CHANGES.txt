@@ -79,6 +79,12 @@ Release notes
     VMs had accidentally been counted twice by matching both the qemu process
     and its supervisor parent process.
 
+- adjust tests and batou dev deployment to work on a Ceph Pacific cluster (PL-131408)
+
+  fc.qemu remains compatible with Ceph Nautilus clusters. So far only the old
+  qemu-6.x using Ceph Nautilus client bindings is functional. A qemu update and
+  transition to Ceph Pacific bindings will be done as a follow-up PR.
+
 
 1.6 (2024-10-23)
 ----------------
