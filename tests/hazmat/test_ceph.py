@@ -359,8 +359,8 @@ partprobe args=/dev/rbd/rbd.hdd/simplevm.tmp machine=simplevm subsystem=ceph vol
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 mount args="/dev/rbd/rbd.hdd/simplevm.tmp-part1" "/mnt/rbd/rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
-guest-properties machine=simplevm properties={'binary_generation': 2} subsystem=ceph volume=rbd.hdd/simplevm.tmp
-binary-generation generation=2 machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+guest-properties machine=simplevm properties={'binary_generation': 3} subsystem=ceph volume=rbd.hdd/simplevm.tmp
+binary-generation generation=3 machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 umount args="/mnt/rbd/rbd.hdd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.tmp
 pre-start machine=simplevm subsystem=ceph volume_spec=cidata
@@ -389,7 +389,7 @@ partprobe args=/dev/rbd/rbd.hdd/simplevm.cidata machine=simplevm subsystem=ceph 
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
 mount args="/dev/rbd/rbd.hdd/simplevm.cidata-part1" "/mnt/rbd/rbd.hdd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
-guest-properties machine=simplevm properties={'binary_generation': 2} subsystem=ceph volume=rbd.hdd/simplevm.cidata
+guest-properties machine=simplevm properties={'binary_generation': 3} subsystem=ceph volume=rbd.hdd/simplevm.cidata
 umount args="/mnt/rbd/rbd.hdd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
 rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root

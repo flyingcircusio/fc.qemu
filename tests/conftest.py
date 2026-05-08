@@ -346,7 +346,7 @@ def ceph_inst(request, ceph_mock):
         "swap_size": 1024 * 1024,
         "root_size": 1024 * 1024,
         "cidata_size": 1024 * 1024,
-        "binary_generation": 2,
+        "binary_generation": 3,
     }
     enc = {"parameters": {"environment_class_type": "nixos"}}
     ceph = Ceph(cfg, enc)

@@ -152,8 +152,8 @@ partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph vol
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mount args="/dev/rbd/rbd.ssd/simplevm.tmp-part1" "/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
-guest-properties machine=simplevm properties={'binary_generation': 2, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.tmp
-binary-generation generation=2 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+guest-properties machine=simplevm properties={'binary_generation': 3, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.tmp
+binary-generation generation=3 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount args="/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 pre-start machine=simplevm subsystem=ceph volume_spec=cidata
@@ -182,7 +182,7 @@ partprobe args=/dev/rbd/rbd.ssd/simplevm.cidata machine=simplevm subsystem=ceph 
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 mount args="/dev/rbd/rbd.ssd/simplevm.cidata-part1" "/mnt/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
-guest-properties machine=simplevm properties={'binary_generation': 2, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.cidata
+guest-properties machine=simplevm properties={'binary_generation': 3, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.cidata
 umount args="/mnt/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 generate-config machine=simplevm
@@ -293,8 +293,8 @@ partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph vol
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mount args="/dev/rbd/rbd.ssd/simplevm.tmp-part1" "/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
-guest-properties machine=simplevm properties={'binary_generation': 2, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.tmp
-binary-generation generation=2 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+guest-properties machine=simplevm properties={'binary_generation': 3, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.tmp
+binary-generation generation=3 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount args="/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 pre-start machine=simplevm subsystem=ceph volume_spec=cidata
@@ -321,7 +321,7 @@ partprobe args=/dev/rbd/rbd.ssd/simplevm.cidata machine=simplevm subsystem=ceph 
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 mount args="/dev/rbd/rbd.ssd/simplevm.cidata-part1" "/mnt/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
-guest-properties machine=simplevm properties={'binary_generation': 2, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.cidata
+guest-properties machine=simplevm properties={'binary_generation': 3, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.cidata
 umount args="/mnt/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 generate-config machine=simplevm
