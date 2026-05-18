@@ -45,6 +45,10 @@ in
     # Use the default flags defined by fc-qemu regardless of
     # what the platform sets or the fc-qemu unit tests will fail.
     mkfsXfsFlags = null;
+    # Override some fc-qemu.conf values to match the values expected by tests
+    settings = {
+      qemu.binary-generation = lib.mkForce 2;
+    };
   };
 
   systemd.services.fc-qemu-scrub.wantedBy = lib.mkForce [ ];
