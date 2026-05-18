@@ -290,16 +290,18 @@ def ceph_live_setup():
     call(f"fc-ceph osd create-bluestore --no-encrypt {osd_loopback}")
     call("ceph osd crush move host1 root=default")
     call("ceph osd pool create rbd 32")
-    call("ceph osd pool set rbd size 2")
+    # not really necessary anymore, as this is handled by the ceph.conf osdPoolDefaultSize, but let's keep it for clarity
+    # ceph is only set up on host 1, not host 2
+    call("ceph osd pool set rbd size 1 --yes-i-really-mean-it")
     call("ceph osd pool set rbd min_size 1")
     call("ceph osd pool create rbd.ssd 32")
-    # not really necessary anymore, as this is handled by the ceph.conf osdPoolDefaultSize, but let's keep it for clarity
     call("ceph osd pool set rbd.ssd size 1 --yes-i-really-mean-it")
     call("ceph osd pool set rbd.ssd min_size 1")
     call("ceph osd pool create rbd.hdd 32")
     call("ceph osd pool set rbd.hdd size 1 --yes-i-really-mean-it")
     call("ceph osd pool set rbd.hdd min_size 1")
     call("ceph osd lspools")
+    call("rbd pool init rbd")
     call("rbd pool init rbd.ssd")
     call("rbd pool init rbd.hdd")
     call("rbd create --size 500 rbd.hdd/fc-21.05-dev")
