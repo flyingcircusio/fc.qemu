@@ -490,9 +490,9 @@ class Qemu(object):
         self.qmp.command(
             "migrate-set-parameters",
             **{
-                "compress-level": 0,
                 "downtime-limit": int(self.max_downtime * 1000),  # ms
                 "max-bandwidth": self.migration_bandwidth,
+                "multifd-compression": "none",
             },
         )
         self.qmp.command("migrate", uri=address)
