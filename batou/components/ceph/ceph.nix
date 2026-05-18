@@ -18,6 +18,7 @@ in
   flyingcircus.roles.ceph_mon = {
     enable = true;
     cephRelease = "pacific";
+    mgr.sendTelemetry = false;
   };
   flyingcircus.static.ceph.fsids.test.test = "d118a9a4-8be5-4703-84c1-87eada2e6b60";
   flyingcircus.services.ceph.extraSettings = {

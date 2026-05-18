@@ -9,7 +9,8 @@
 # `kvm_host_ceph-nautilus.nix` in the platform.
 let
   fclib = config.fclib;
-  testPackage = pkgs.fc.qemu-nautilus.overrideAttrs (old: {
+  cephPkgs = fclib.ceph.mkPkgs config.flyingcircus.roles.kvm_host.cephRelease;
+  testPackage = cephPkgs.fc-qemu.overrideAttrs (old: {
     version = "dev";
     # builtins.toPath (testPath + "/.")
     # for tests:
@@ -34,6 +35,7 @@ in
 
   flyingcircus.roles.kvm_host = {
     package = testPackage;
+    cephRelease = "pacific";
     network = fclib.network.srv;
 
     enableS3Proxy = false;

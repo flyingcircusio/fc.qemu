@@ -1838,8 +1838,8 @@ class Agent(object):
             "-cpu {cpu_model},enforce",
             # Watch out: kvm.name is used for sanity checking critical actions.
             "-name {name},process=kvm.{name}",
-            "-chroot {{chroot}}",
-            "-runas nobody",
+            "-run-with chroot={{chroot}}",
+            "-run-with user=nobody",
             "-serial file:{serial_file}",
             "-display vnc={{vnc}}",
             "-pidfile {{pidfile}}",
