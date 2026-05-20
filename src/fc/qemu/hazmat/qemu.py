@@ -3,6 +3,7 @@
 import datetime
 import fcntl
 import os
+import re
 import socket
 import subprocess
 from codecs import encode
@@ -35,21 +36,41 @@ class InvalidMigrationStatus(Exception):
     pass
 
 
+def _machine_type_sort_key(name: str):
+    """Extract a sort key from a machine type name.
+
+    Parses a trailing version like ``10.1`` from ``pc-i440fx-10.1``
+    and returns a tuple like ``("pc-i440fx-", 10, 1)`` so that
+    numeric version ordering is used instead of lexicographic.
+    """
+    m = re.fullmatch(r"(?P<prefix>.*?)-(?P<version>\d+(?:\.\d+)*)", name)
+    if not m:
+        return (name,)
+    prefix = m.group("prefix")
+    version = tuple(int(x) for x in m.group("version").split("."))
+    return (prefix,) + version
+
+
 def detect_current_machine_type(
     prefix: str, encoding="ascii", errors="replace"
 ):
     """Given a machine type prefix, e.g. 'pc-i440fx-' return the newest
     current machine on the available Qemu system.
 
-    Newest in this case means the first item in the list as given by Qemu.
+    Finds all matching machine types and returns the one with the highest
+    version number.
     """
     result = subprocess.check_output(
         [Qemu.executable, "-machine", "help"], encoding=encoding, errors=errors
     )
+    candidates = []
     for line in result.splitlines():
         if line.startswith(prefix):
-            return line.split()[0]
-    raise KeyError("No machine type found for prefix `{}`".format(prefix))
+            candidates.append(line.split()[0])
+    if not candidates:
+        raise KeyError("No machine type found for prefix `{}`".format(prefix))
+    candidates.sort(key=_machine_type_sort_key, reverse=True)
+    return candidates[0]
 
 
 def locked_global(f):
@@ -469,9 +490,9 @@ class Qemu(object):
         self.qmp.command(
             "migrate-set-parameters",
             **{
-                "compress-level": 0,
                 "downtime-limit": int(self.max_downtime * 1000),  # ms
                 "max-bandwidth": self.migration_bandwidth,
+                "multifd-compression": "none",
             },
         )
         self.qmp.command("migrate", uri=address)

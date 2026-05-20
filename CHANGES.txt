@@ -1,6 +1,16 @@
 Release notes
 =============
 
+1.8 (unreleased)
+----------------
+
+- Update qemu to 10.1; drop 6.0 (PL-131408)
+
+  Includes code and test match adjustments to work with qemu-10.1.
+  This also drops qemu-6.0 compatibility due breaking changes between these versions.
+  Test assertions and devhost deployment are updated under the assumption of running
+  on a Ceph Pacific cluster.
+
 1.7 (unreleased)
 ----------------
 

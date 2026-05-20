@@ -40,3 +40,85 @@ def test_write_file_no_error(guest_agent):
         b'{"execute": "guest-file-write", "arguments": {"handle": "file-handle-1", "buf-b64": "ImFzZGYi\\n"}}',
         b'{"execute": "guest-file-close", "arguments": {"handle": "file-handle-1"}}',
     ]
+
+
+# taken from qemu-10.1
+QEMU_MACHINE_HELP = """\
+Supported machines are:
+microvm              microvm (i386)
+nitro-enclave        AWS Nitro Enclave
+pc-i440fx-9.2        Standard PC (i440FX + PIIX, 1996)
+pc-i440fx-9.1        Standard PC (i440FX + PIIX, 1996)
+pc-i440fx-9.0        Standard PC (i440FX + PIIX, 1996)
+pc-i440fx-8.2        Standard PC (i440FX + PIIX, 1996)
+pc-i440fx-8.1        Standard PC (i440FX + PIIX, 1996)
+pc-i440fx-8.0        Standard PC (i440FX + PIIX, 1996)
+pc-i440fx-7.2        Standard PC (i440FX + PIIX, 1996)
+pc-i440fx-7.1        Standard PC (i440FX + PIIX, 1996) (deprecated)
+pc-i440fx-7.0        Standard PC (i440FX + PIIX, 1996) (deprecated)
+pc-i440fx-6.2        Standard PC (i440FX + PIIX, 1996) (deprecated)
+pc-i440fx-6.1        Standard PC (i440FX + PIIX, 1996) (deprecated)
+pc-i440fx-6.0        Standard PC (i440FX + PIIX, 1996) (deprecated)
+pc-i440fx-5.2        Standard PC (i440FX + PIIX, 1996) (deprecated)
+pc-i440fx-5.1        Standard PC (i440FX + PIIX, 1996) (deprecated)
+pc-i440fx-5.0        Standard PC (i440FX + PIIX, 1996) (deprecated)
+pc-i440fx-4.2        Standard PC (i440FX + PIIX, 1996) (deprecated)
+pc                   Standard PC (i440FX + PIIX, 1996) (alias of pc-i440fx-10.1)
+pc-i440fx-10.1       Standard PC (i440FX + PIIX, 1996) (default)
+pc-i440fx-10.0       Standard PC (i440FX + PIIX, 1996)
+pc-q35-9.2           Standard PC (Q35 + ICH9, 2009)
+pc-q35-9.1           Standard PC (Q35 + ICH9, 2009)
+pc-q35-9.0           Standard PC (Q35 + ICH9, 2009)
+pc-q35-8.2           Standard PC (Q35 + ICH9, 2009)
+pc-q35-8.1           Standard PC (Q35 + ICH9, 2009)
+pc-q35-8.0           Standard PC (Q35 + ICH9, 2009)
+pc-q35-7.2           Standard PC (Q35 + ICH9, 2009)
+pc-q35-7.1           Standard PC (Q35 + ICH9, 2009) (deprecated)
+pc-q35-7.0           Standard PC (Q35 + ICH9, 2009) (deprecated)
+pc-q35-6.2           Standard PC (Q35 + ICH9, 2009) (deprecated)
+pc-q35-6.1           Standard PC (Q35 + ICH9, 2009) (deprecated)
+pc-q35-6.0           Standard PC (Q35 + ICH9, 2009) (deprecated)
+pc-q35-5.2           Standard PC (Q35 + ICH9, 2009) (deprecated)
+pc-q35-5.1           Standard PC (Q35 + ICH9, 2009) (deprecated)
+pc-q35-5.0           Standard PC (Q35 + ICH9, 2009) (deprecated)
+pc-q35-4.2           Standard PC (Q35 + ICH9, 2009) (deprecated)
+q35                  Standard PC (Q35 + ICH9, 2009) (alias of pc-q35-10.1)
+pc-q35-10.1          Standard PC (Q35 + ICH9, 2009)
+pc-q35-10.0          Standard PC (Q35 + ICH9, 2009)
+isapc                ISA-only PC
+none                 empty machine
+x-remote             Experimental remote machine
+"""
+
+
+@pytest.fixture
+def mock_machine_help(monkeypatch):
+    monkeypatch.setattr(
+        "fc.qemu.hazmat.qemu.subprocess.check_output",
+        lambda *a, **kw: QEMU_MACHINE_HELP,
+    )
+
+
+def test_detect_current_machine_type_version_prefix(mock_machine_help):
+    from fc.qemu.hazmat.qemu import detect_current_machine_type
+
+    assert detect_current_machine_type("pc-i440fx") == "pc-i440fx-10.1"
+
+
+def test_detect_current_machine_type_exact_version(mock_machine_help):
+    from fc.qemu.hazmat.qemu import detect_current_machine_type
+
+    assert detect_current_machine_type("pc-i440fx-6.1") == "pc-i440fx-6.1"
+
+
+def test_detect_current_machine_type_q35(mock_machine_help):
+    from fc.qemu.hazmat.qemu import detect_current_machine_type
+
+    assert detect_current_machine_type("pc-q35") == "pc-q35-10.1"
+
+
+def test_detect_current_machine_type_not_found(mock_machine_help):
+    from fc.qemu.hazmat.qemu import detect_current_machine_type
+
+    with pytest.raises(KeyError):
+        detect_current_machine_type("nonexistent")

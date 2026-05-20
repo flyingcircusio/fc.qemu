@@ -191,8 +191,8 @@ global-lock-acquire machine=simplevm result=locked subsystem=qemu target=/run/fc
 global-lock-status count=1 machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 sufficient-host-memory available_real=10769.54296875 bookable=2000 machine=simplevm required=384 subsystem=qemu
 start-qemu machine=simplevm subsystem=qemu
-qemu-system-x86_64 additional_args=() local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-chroot /srv/vm/simplevm', '-runas nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg'] machine=simplevm subsystem=qemu
-exec cmd=supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -chroot /srv/vm/simplevm -runas nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log machine=simplevm subsystem=qemu
+qemu-system-x86_64 additional_args=() local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-run-with chroot=/srv/vm/simplevm', '-run-with user=nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg'] machine=simplevm subsystem=qemu
+exec cmd=supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -run-with chroot=/srv/vm/simplevm -run-with user=nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log machine=simplevm subsystem=qemu
 supervised-qemu-stdout machine=simplevm subsystem=qemu
 supervised-qemu-stderr machine=simplevm subsystem=qemu
 global-lock-status count=0 machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
@@ -330,8 +330,8 @@ global-lock-acquire machine=simplevm result=locked subsystem=qemu target=/run/fc
 global-lock-status count=1 machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 sufficient-host-memory available_real=... bookable=2000 machine=simplevm required=384 subsystem=qemu
 start-qemu machine=simplevm subsystem=qemu
-qemu-system-x86_64 additional_args=() local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-chroot /srv/vm/simplevm', '-runas nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg'] machine=simplevm subsystem=qemu
-exec cmd=supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -chroot /srv/vm/simplevm -runas nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log machine=simplevm subsystem=qemu
+qemu-system-x86_64 additional_args=() local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-run-with chroot=/srv/vm/simplevm', '-run-with user=nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg'] machine=simplevm subsystem=qemu
+exec cmd=supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -run-with chroot=/srv/vm/simplevm -run-with user=nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log machine=simplevm subsystem=qemu
 supervised-qemu-stdout machine=simplevm subsystem=qemu
 supervised-qemu-stderr machine=simplevm subsystem=qemu
 global-lock-status count=0 machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
@@ -1315,11 +1315,11 @@ simplevm              prepare-remote-environment
 simplevm              start-migration                target='tcp:...:...'
 simplevm         qemu migrate
 simplevm     qemu/qmp migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None
-simplevm     qemu/qmp migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None
+simplevm     qemu/qmp migrate-set-parameters         arguments={'downtime-limit': 4000, 'max-bandwidth': 22500, 'multifd-compression': 'none'} id=None
 simplevm     qemu/qmp migrate                        arguments={'uri': 'tcp:...:...'} id=None
 
 simplevm     qemu/qmp query-migrate-parameters       arguments={} id=None
-simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
+simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 avail-switchover-bandwidth=0 cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False direct-io=False downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 mode='normal' multifd-channels=2 multifd-compression='none' multifd-qatzip-level=1 multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' vcpu-dirty-limit=1 x-checkpoint-delay=20000 x-vcpu-dirty-limit-period=1000 xbzrle-cache-size=67108864 zero-page-detection='legacy'
 
 simplevm     qemu/qmp query-migrate                  arguments={} id=None
 simplevm              migration-status               mbps=... remaining='...' status='active'
@@ -1421,10 +1421,10 @@ simplevm              prepare-remote-environment
 simplevm              start-migration                target='tcp:...:2345'
 simplevm         qemu migrate
 simplevm     qemu/qmp migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None
-simplevm     qemu/qmp migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None
+simplevm     qemu/qmp migrate-set-parameters         arguments={'downtime-limit': 4000, 'max-bandwidth': 22500, 'multifd-compression': 'none'} id=None
 simplevm     qemu/qmp migrate                        arguments={'uri': 'tcp:...:2345'} id=None
 simplevm     qemu/qmp query-migrate-parameters       arguments={} id=None
-simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
+simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 avail-switchover-bandwidth=0 cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False direct-io=False downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 mode='normal' multifd-channels=2 multifd-compression='none' multifd-qatzip-level=1 multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' vcpu-dirty-limit=1 x-checkpoint-delay=20000 x-vcpu-dirty-limit-period=1000 xbzrle-cache-size=67108864 zero-page-detection='legacy'
 simplevm     qemu/qmp query-migrate                  arguments={} id=None
 simplevm              migration-status               mbps='-' remaining='0' status='setup'
 simplevm>  {'blocked': False, 'status': 'setup'}
@@ -1700,10 +1700,10 @@ simplevm              prepare-remote-environment
 simplevm              start-migration                target='tcp:...:2345'
 simplevm         qemu migrate
 simplevm     qemu/qmp migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None
-simplevm     qemu/qmp migrate-set-parameters         arguments={'compress-level': 0, 'downtime-limit': 4000, 'max-bandwidth': 22500} id=None
+simplevm     qemu/qmp migrate-set-parameters         arguments={'downtime-limit': 4000, 'max-bandwidth': 22500, 'multifd-compression': 'none'} id=None
 simplevm     qemu/qmp migrate                        arguments={'uri': 'tcp:...:2345'} id=None
 simplevm     qemu/qmp query-migrate-parameters       arguments={} id=None
-simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 block-incremental=False compress-level=0 compress-threads=8 compress-wait-thread=True cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False decompress-threads=2 downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 multifd-channels=2 multifd-compression='none' multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' x-checkpoint-delay=20000 xbzrle-cache-size=67108864
+simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 avail-switchover-bandwidth=0 cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False direct-io=False downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 mode='normal' multifd-channels=2 multifd-compression='none' multifd-qatzip-level=1 multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' vcpu-dirty-limit=1 x-checkpoint-delay=20000 x-vcpu-dirty-limit-period=1000 xbzrle-cache-size=67108864 zero-page-detection='legacy'
 simplevm     qemu/qmp query-migrate                  arguments={} id=None
 simplevm              migration-status               mbps='-' remaining='0' status='setup'
 simplevm> { 'blocked': False, 'status': 'setup'}
@@ -2030,8 +2030,8 @@ simplevm         qemu global-lock-acquire            result='locked' target='/ru
 simplevm         qemu global-lock-status             count=1 target='/run/fc-qemu.lock'
 simplevm         qemu sufficient-host-memory         available_real=... bookable=... required=768
 simplevm         qemu start-qemu
-simplevm         qemu qemu-system-x86_64             additional_args=['-incoming tcp:...:...'] local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-chroot /srv/vm/simplevm', '-runas nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg']
-simplevm         qemu exec                           cmd='supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -chroot /srv/vm/simplevm -runas nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -incoming tcp:...:2345 -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log'
+simplevm         qemu qemu-system-x86_64             additional_args=['-incoming tcp:...:...'] local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-run-with chroot=/srv/vm/simplevm', '-run-with user=nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg']
+simplevm         qemu exec                           cmd='supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -run-with chroot=/srv/vm/simplevm -run-with user=nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -incoming tcp:...:2345 -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log'
 simplevm         qemu supervised-qemu-stdout
 simplevm         qemu supervised-qemu-stderr
 

@@ -9,7 +9,8 @@
 # `kvm_host_ceph-nautilus.nix` in the platform.
 let
   fclib = config.fclib;
-  testPackage = pkgs.fc.qemu-nautilus.overrideAttrs (old: {
+  cephPkgs = fclib.ceph.mkPkgs config.flyingcircus.roles.kvm_host.cephRelease;
+  testPackage = cephPkgs.fc-qemu.overrideAttrs (old: {
     version = "dev";
     # builtins.toPath (testPath + "/.")
     # for tests:
@@ -34,6 +35,7 @@ in
 
   flyingcircus.roles.kvm_host = {
     package = testPackage;
+    cephRelease = "pacific";
     network = fclib.network.srv;
 
     enableS3Proxy = false;
@@ -45,6 +47,10 @@ in
     # Use the default flags defined by fc-qemu regardless of
     # what the platform sets or the fc-qemu unit tests will fail.
     mkfsXfsFlags = null;
+    # Override some fc-qemu.conf values to match the values expected by tests
+    settings = {
+      qemu.binary-generation = lib.mkForce 2;
+    };
   };
 
   systemd.services.fc-qemu-scrub.wantedBy = lib.mkForce [ ];
