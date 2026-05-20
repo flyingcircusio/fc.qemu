@@ -438,21 +438,21 @@ def clean_rbd_pools(request, kill_vms, ceph_mock):
     passes = 0
     while images := images_to_clean():
         if passes > 1:
-            # Use temporary blacklisting to ensure all watchers are gone.
+            # Use temporary blocklisting to ensure all watchers are gone.
             ips = [socket.gethostbyname(host) for host in ["host1", "host2"]]
             for ip in ips:
-                print2(f"ceph osd blacklist add {ip}")
+                print2(f"ceph osd blocklist add {ip}")
                 subprocess.run(
-                    f"ceph osd blacklist add {ip}",
+                    f"ceph osd blocklist add {ip}",
                     shell=True,
                 )
             # We might be waiting for images stuck with watchers that need
             # to time out ...
             time.sleep(5)
             for ip in ips:
-                print2(f"blacklist rm {ip}")
+                print2(f"blocklist rm {ip}")
                 subprocess.run(
-                    f"ceph osd blacklist rm {ip}",
+                    f"ceph osd blocklist rm {ip}",
                     shell=True,
                 )
             time.sleep(5)
