@@ -1319,7 +1319,7 @@ simplevm     qemu/qmp migrate-set-parameters         arguments={'downtime-limit'
 simplevm     qemu/qmp migrate                        arguments={'uri': 'tcp:...:...'} id=None
 
 simplevm     qemu/qmp query-migrate-parameters       arguments={} id=None
-simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 avail-switchover-bandwidth=0 cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False direct-io=False downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 mode='normal' multifd-channels=2 multifd-compression='none' multifd-qatzip-level=1 multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' vcpu-dirty-limit=1 x-checkpoint-delay=20000 x-vcpu-dirty-limit-period=1000 xbzrle-cache-size=67108864 zero-page-detection='legacy'
+simplevm         qemu migrate-parameters             announce-initial=50 announce-max=550 announce-rounds=5 announce-step=100 avail-switchover-bandwidth=0 ...cpu-throttle-increment=10 cpu-throttle-initial=20 cpu-throttle-tailslow=False direct-io=False downtime-limit=4000 max-bandwidth=22500 max-cpu-throttle=99 max-postcopy-bandwidth=0 mode='normal' multifd-channels=2 multifd-compression='none' multifd-qatzip-level=1 multifd-zlib-level=1 multifd-zstd-level=1 throttle-trigger-threshold=50 tls-authz='' tls-creds='' tls-hostname='' vcpu-dirty-limit=1 x-checkpoint-delay=20000 x-vcpu-dirty-limit-period=1000 xbzrle-cache-size=67108864 zero-page-detection='legacy'
 
 simplevm     qemu/qmp query-migrate                  arguments={} id=None
 simplevm              migration-status               mbps=... remaining='...' status='active'
