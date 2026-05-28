@@ -69,46 +69,6 @@ def test_screen_config_disable_iommu(mock_agent):
     )
 
 
-def test_screen_config_update_qmp_monitor_syntax(mock_agent):
-    s = IncomingServer(mock_agent)
-    assert (
-        s.screen_config(
-            """\
-
-# QMP monitor support via Unix socket
-
-[mon "qmp_monitor"]
-  mode = "control"
-  chardev = "ch_qmp_monitor"
-  default = "on"
-
-[chardev "ch_qmp_monitor"]
-  backend = "socket"
-  path = "/run/qemu.{name}.qmp.sock"
-  server = "on"
-  wait = "off"
-
-"""
-        )
-        == """\
-
-# QMP monitor support via Unix socket
-
-[mon "qmp_monitor"]
-  mode = "control"
-  chardev = "ch_qmp_monitor"
-  pretty = "off"
-
-[chardev "ch_qmp_monitor"]
-  backend = "socket"
-  path = "/run/qemu.{name}.qmp.sock"
-  server = "on"
-  wait = "off"
-
-"""
-    )
-
-
 def test_screen_args_rewrites_chroot_and_runas(mock_agent):
     s = IncomingServer(mock_agent)
     assert s.screen_args(

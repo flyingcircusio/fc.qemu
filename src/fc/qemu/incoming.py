@@ -160,15 +160,18 @@ class IncomingServer(object):
 
     def screen_config(self, config):
         """Remove obsolete items from transferred Qemu config."""
-        # Remove old IOMMU usage
-        config = re.sub(r"^\s*iommu\s*=.*$", "", config, flags=re.M)
-        # Update old qmp monitor snippet
-        config = re.sub(
-            r'^\s*chardev\s*=\s*"ch_qmp_monitor"\n\s*default\s*=\s*"on"$',
-            r'  chardev = "ch_qmp_monitor"\n  pretty = "off"',
-            config,
-            flags=re.M,
+        # There are currently no config changes necessary for the versions in
+        # use. This is just a placeholder to demonstrate and check functionality
+        # of the mechanism in tests.
+        config, count = re.subn(
+            r"^\s*MYMAGICFEATURE\s*=.*$", "", config, flags=re.M
         )
+        if count:
+            self.log.info(
+                "screen-config-rewrite",
+                rule="strip-mymagicfeature",
+                count=count,
+            )
         return config
 
     def screen_args(self, args):
