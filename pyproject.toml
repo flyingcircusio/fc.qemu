@@ -7,7 +7,7 @@ authors = [
   {name = "Flying Circus IO GmbH <mail@flyingcircus.io>", email = "mail@flyingcircus.io" }
 ]
 
-requires-python = "==3.11.*"
+requires-python = "==3.13.*"
 # NOTE: Please keep this sorted!
 dependencies = [
     "PyYaml>=5.3.1",
