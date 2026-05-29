@@ -51,12 +51,8 @@ fc-qemu = "fc.qemu.main:main"
 supervised-qemu = "fc.qemu.hazmat.supervise:main"
 # NOTE: Please keep this sorted!
 
-[tool.black]
+[tool.ruff]
 line-length = 80
-
-[tool.isort]
-profile = "black"
-line_length = 80
 
 [tool.zest-releaser]
 version-levels = 3

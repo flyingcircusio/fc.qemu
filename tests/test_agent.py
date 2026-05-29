@@ -217,12 +217,12 @@ def test_ensure_lock_contention_returns_ex_tempfail(
 
         # Verify that main-exit log message was emitted with correct exit code
         log_output = get_log()
-        assert (
-            "exit" in log_output
-        ), f"Expected 'exit' log message to be emitted, but got: {log_output}"
-        assert (
-            "status=75" in log_output
-        ), f"Expected 'exitcode=75' in log message, but got: {log_output}"
+        assert "exit" in log_output, (
+            f"Expected 'exit' log message to be emitted, but got: {log_output}"
+        )
+        assert "status=75" in log_output, (
+            f"Expected 'exitcode=75' in log message, but got: {log_output}"
+        )
 
     finally:
         # Release the lock
