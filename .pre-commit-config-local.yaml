@@ -1,0 +1,2 @@
+# kvm.nix contains a test key
+exclude: ^batou/components/kvm/kvm.nix$

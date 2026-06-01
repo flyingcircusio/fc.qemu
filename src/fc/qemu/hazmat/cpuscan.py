@@ -11,7 +11,6 @@ FNULL = open(os.devnull, "w")
 
 
 class Model(object):
-
     architecture = None
     identifier = None
     description = None
@@ -23,7 +22,6 @@ class Model(object):
 
 
 class Variation(object):
-
     model = None
     flags = ()
 
@@ -53,13 +51,11 @@ class QemuHost(object):
 
 
 class AbstractHost(QemuHost):
-
     CPU_MODELS = ["qemu64-v1"]
     BUG_FLAGS = []
 
 
 class AMDHost(QemuHost):
-
     vendor = "AuthenticAMD"
 
     CPU_MODELS = [
@@ -80,7 +76,6 @@ class AMDHost(QemuHost):
 
 
 class IntelHost(QemuHost):
-
     vendor = "GenuineIntel"
 
     CPU_MODELS = [

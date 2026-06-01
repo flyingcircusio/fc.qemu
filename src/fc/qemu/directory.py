@@ -37,12 +37,10 @@ def connect(enc=None, ring=1):
     url_parts = urllib.parse.urlsplit(base_url)
 
     url = (
-        # fmt: off
         url_parts.scheme + "://"
         + enc["name"] + ":" + enc["parameters"]["directory_password"] + "@"
         + url_parts.netloc + url_parts.path
-        # fmt: on
-    )
+    )  # fmt: skip
     if ring == 1:
         url += "/rg-" + enc["parameters"]["resource_group"]
 
