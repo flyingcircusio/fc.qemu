@@ -160,22 +160,64 @@ class IncomingServer(object):
 
     def screen_config(self, config):
         """Remove obsolete items from transferred Qemu config."""
-        # Remove old IOMMU usage
-        config = re.sub(r"^\s*iommu\s*=.*$", "", config, flags=re.M)
-        # Update old qmp monitor snippet
-        config = re.sub(
-            r'^\s*chardev\s*=\s*"ch_qmp_monitor"\n\s*default\s*=\s*"on"$',
-            r'  chardev = "ch_qmp_monitor"\n  pretty = "off"',
-            config,
-            flags=re.M,
+        # There are currently no config changes necessary for the versions in
+        # use. This is just a placeholder to demonstrate and check functionality
+        # of the mechanism in tests.
+        config, count = re.subn(
+            r"^\s*MYMAGICFEATURE\s*=.*$", "", config, flags=re.M
         )
+        if count:
+            self.log.info(
+                "screen-config-rewrite",
+                rule="strip-mymagicfeature",
+                count=count,
+            )
         return config
 
+    def screen_args(self, args):
+        """Translate obsolete CLI args from older fc.qemu/Qemu senders.
+
+        Each rewrite pattern shall be grouped and annotated by the qemu versions
+        affected, and can be removed in later versions when the migration has
+        happened.
+        """
+        result = []
+        for arg in args:
+            match arg.split(" ", 1):
+                # Qemu 10.0 removed `-chroot DIR` and `-runas USER`
+                # (deprecated in 9.0). Replacement: `-run-with
+                # chroot=DIR` and `-run-with user=USER`. Senders
+                # running fc.qemu with Qemu <= 6.x still emit the old
+                # form.
+                case ["-chroot", value]:
+                    rewritten = f"-run-with chroot={value}"
+                    self.log.info(
+                        "screen-args-rewrite",
+                        rule="chroot-to-run-with",
+                        before=arg,
+                        after=rewritten,
+                    )
+                    result.append(rewritten)
+                case ["-runas", value]:
+                    rewritten = f"-run-with user={value}"
+                    self.log.info(
+                        "screen-args-rewrite",
+                        rule="runas-to-run-with",
+                        before=arg,
+                        after=rewritten,
+                    )
+                    result.append(rewritten)
+                # TODO: Qemu 10.x ++: `-readconfig` is deprecated and will need
+                # to be rewritten at the next major update
+                case _:
+                    result.append(arg)
+        return result
+
     def prepare_incoming(self, args, config):
-        self.qemu.args = args
+        self.qemu.args = self.screen_args(args)
         # Adapt actual VM memory size: we will start with the proper parameter
         # but the memory verification needs to find the real value.
-        for arg in args:
+        for arg in self.qemu.args:
             if arg.startswith("-m "):
                 # XXX This is a nasty code path.
                 memory = int(arg.split(" ")[1])
