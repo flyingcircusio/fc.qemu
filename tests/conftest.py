@@ -310,6 +310,7 @@ def ceph_live_setup():
     call("rbd map rbd.hdd/fc-21.05-dev")
     call("sgdisk /dev/rbd0 -o -a 2048 -n 1:8192:0 -c 1:ROOT -t 1:8300")
     call("partprobe")
+    call("udevadm settle")
     call("mkfs.xfs /dev/rbd0p1")
     call("rbd unmap /dev/rbd0")
     call("rbd snap create rbd.hdd/fc-21.05-dev@v1")
