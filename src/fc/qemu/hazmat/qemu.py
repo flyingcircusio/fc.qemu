@@ -110,6 +110,49 @@ def locked_global(f):
     return locked
 
 
+def is_qemu_proc(name: str, cmd_proc: str, exe: str) -> bool:
+    if name.startswith("kvm."):
+        return True
+    if cmd_proc == "qemu-system-x86_64":  # qemu-10.0
+        return True
+    if cmd_proc.endswith("/qemu-system-x86_64"):  # qemu-6.0
+        return True
+    if exe.endswith("/.qemu-system-x86_64-wrapped"):  # qemu-10.0
+        return True
+    if exe.endswith("/qemu-system-x86_64"):  # qemu-6.0
+        return True
+    return False
+
+
+def pinfo_is_qemu_proc(
+    psutil_proc_info: dict[str, str | list[str] | int | None],
+) -> bool:
+    """
+    Expected input: dict with (at least) keys "name", "exe", "cmdline"
+
+    Wrapper to extract normalised attributes.
+    psutil.Process.as_dict() returns `None` for attributes it could not
+    retrieve (AccessDenied, zombie, transient process). Extract and normalise
+    the plain strings used by the detection heuristics.
+    """
+    name = psutil_proc_info["name"] or ""
+    exe = psutil_proc_info["exe"] or ""
+    cmdline = psutil_proc_info["cmdline"] or []
+    cmdline_proc = cmdline[0] if cmdline else ""
+    return is_qemu_proc(name, cmdline_proc, exe)
+
+
+def get_running_qemu_processes() -> list[psutil.Process]:
+    """Functional requirement: detect still running VM processes to have a
+    safe-guard for entering maintenance only without running VMs.
+
+    Cosmetic requirement: count each VM only once. Each running VM has the
+    actual qemu process plus a python `supervised-qemu` parent.
+    """
+    procs = psutil.process_iter(attrs=["pid", "name", "exe", "cmdline"])
+    return [p for p in procs if pinfo_is_qemu_proc(p.info)]
+
+
 class Qemu(object):
     prefix = Path("/")
     executable = "qemu-system-x86_64"
@@ -253,35 +296,26 @@ class Qemu(object):
             alternate = log_dir / f"{self.name}-{alt_marker}.log"
             log_file.rename(alternate)
 
+    # XXX: It might make sense to unify the matching logic here with
+    # agent.py:KvmHostProcess
     def _current_vms_booked_memory(self):
         """Determine the amount of booked memory (MiB) from the
 
         currently running VM processes.
         """
         total = 0
-        for proc in psutil.process_iter():
+        for proc in get_running_qemu_processes():
             try:
-                pinfo = proc.as_dict(attrs=["pid", "name", "cmdline"])
-            except psutil.NoSuchProcess:
-                continue
-
-            if not pinfo["name"].startswith("kvm."):
-                continue
-            if not (
-                pinfo["cmdline"] and pinfo["cmdline"][0] == "qemu-system-x86_64"
-            ):
-                continue
-            try:
-                m_flag = pinfo["cmdline"].index("-m")
-                memory = int(pinfo["cmdline"][m_flag + 1])
+                m_flag = proc.info["cmdline"].index("-m")
+                memory = int(proc.info["cmdline"][m_flag + 1])
             except (ValueError, KeyError):
                 self.log.debug(
                     "unexpected-cmdline",
-                    cmdline=format(" ".join(pinfo["cmdline"])),
+                    cmdline=format(" ".join(proc.info["cmdline"])),
                 )
                 raise ControlledRuntimeException(
                     "Can not determine used memory for {}".format(
-                        " ".join(pinfo["cmdline"])
+                        " ".join(proc.info["cmdline"])
                     )
                 )
             total += memory + self.vm_expected_overhead

@@ -9,7 +9,11 @@ import pytest
 import fc.qemu.util as util
 from fc.qemu.agent import Agent, iproute2_json
 from fc.qemu.exc import EnvironmentChanged, VMStateInconsistent
-from fc.qemu.hazmat.qemu import Qemu, detect_current_machine_type
+from fc.qemu.hazmat.qemu import (
+    Qemu,
+    detect_current_machine_type,
+    get_running_qemu_processes,
+)
 
 
 def named_vm_cfg(name, monkeypatch):
@@ -157,6 +161,31 @@ def test_maintenance():
     with pytest.raises(SystemExit, match="0"):
         Agent.maintenance_enter()
     Agent.maintenance_leave()
+
+
+@pytest.mark.live
+def test_live_count_running_qemu_processes(vm, vm_with_pub):
+    ####
+    # WARNING!
+    # If this test ever fails with new platform or qemu versions, keep in mind
+    # the migration scenarios of old VM processes when adjusting the process
+    # match heuristics! Still need to match old process patterns!
+    ###
+
+    # Each running VM has a real qemu process plus a python
+    # `supervised-qemu` parent; the helper must count only the qemu
+    # processes regardless of whether qemu rewrites argv[0] to its
+    # absolute path (qemu 6.x) or leaves it as the bare basename
+    # (qemu 10.x). PL-130990, PL-134257.
+    assert len(get_running_qemu_processes()) == 0
+    vm.start()
+    assert len(get_running_qemu_processes()) == 1
+    vm_with_pub.start()
+    assert len(get_running_qemu_processes()) == 2
+    vm_with_pub.stop()
+    assert len(get_running_qemu_processes()) == 1
+    vm.stop()
+    assert len(get_running_qemu_processes()) == 0
 
 
 def test_ensure_lock_contention_returns_ex_tempfail(

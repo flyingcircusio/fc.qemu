@@ -4,6 +4,15 @@ Release notes
 1.8 (unreleased)
 ----------------
 
+- fc-qemu maintenance enter: fix VM counting under qemu 10.1 (PL-131408)
+
+    Refactor VM process counting from pgrep to python psutils and a wider
+    bunch of heuristic patterns.
+    qemu 10.x no longer rewrites argv[0] to the absolute path of the
+    qemu binary, so the path-anchored pgrep pattern from PL-130990
+    matched nothing and maintenance would proceed while VMs were still
+    running.
+
 - Update qemu to 10.1; drop 6.0 (PL-131408)
 
   Includes code and test match adjustments to work with qemu-10.1.

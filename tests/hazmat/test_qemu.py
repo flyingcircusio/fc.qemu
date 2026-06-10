@@ -1,6 +1,13 @@
+from unittest.mock import Mock
+
 import pytest
 
-from fc.qemu.hazmat.qemu import Qemu
+from fc.qemu.hazmat.qemu import (
+    Qemu,
+    get_running_qemu_processes,
+    is_qemu_proc,
+    pinfo_is_qemu_proc,
+)
 
 
 def test_write_file_expects_bytes(guest_agent):
@@ -122,3 +129,119 @@ def test_detect_current_machine_type_not_found(mock_machine_help):
 
     with pytest.raises(KeyError):
         detect_current_machine_type("nonexistent")
+
+
+QEMU10_PROCS = [
+    {
+        "cmdline": [
+            "/nix/store/60m4rxhg2fldqaak400c0lry96ijrzqn-python3-3.13.13/bin/python3.13",
+            "/nix/store/kxr6dfmbzbnyi8vyxm1g5m33j51c4fbc-python3.13-fc.qemu-1.8dev/bin/.supervised-qemu-wrapped",
+            "qemu-system-x86_64 -nodefaults -only-migratable -cpu "
+            "Nehalem-v2,spec-ctrl,ssbd,enforce -name "
+            "slurmtest13,process=kvm.slurmtest13 -run-with "
+            "chroot=/srv/vm/slurmtest13 -run-with user=nobody -serial "
+            "file:/var/log/vm/slurmtest13.log -display vnc=127.0.0.1:6891 "
+            "-pidfile /run/qemu.slurmtest13.pid -vga std -m 3072 -readconfig "
+            "/run/qemu.slurmtest13.cfg -incoming tcp:172.20.4.110:6891 -D "
+            "/var/log/vm/slurmtest13.qemu.internal.log",
+            "slurmtest13",
+            "/var/log/vm/slurmtest13.supervisor.log",
+        ],
+        "exe": "/nix/store/60m4rxhg2fldqaak400c0lry96ijrzqn-python3-3.13.13/bin/python3.13",
+        "name": ".supervised-qem",
+        "pid": 764110,
+    },
+    {
+        "cmdline": [
+            "qemu-system-x86_64",
+            "-nodefaults",
+            "-only-migratable",
+            "-cpu",
+            "Nehalem-v2,spec-ctrl,ssbd,enforce",
+            "-name",
+            "slurmtest13,process=kvm.slurmtest13",
+            "-run-with",
+            "chroot=/srv/vm/slurmtest13",
+            "-run-with",
+            "user=nobody",
+            "-serial",
+            "file:/var/log/vm/slurmtest13.log",
+            "-display",
+            "vnc=127.0.0.1:6891",
+            "-pidfile",
+            "/run/qemu.slurmtest13.pid",
+            "-vga",
+            "std",
+            "-m",
+            "3072",
+            "-readconfig",
+            "/run/qemu.slurmtest13.cfg",
+            "-incoming",
+            "tcp:172.20.4.110:6891",
+            "-D",
+            "/var/log/vm/slurmtest13.qemu.internal.log",
+        ],
+        "exe": "/nix/store/391smsk8nghkg17g5dd5dn2cdb6lkhlm-qemu-10.2.2/bin/.qemu-system-x86_64-wrapped",
+        "name": "kvm.slurmtest13",
+        "pid": 764111,
+    },
+    {"cmdline": [], "exe": "", "name": "kvm-pit/764111", "pid": 764220},
+    {"cmdline": [], "exe": "", "name": "kworker/4:2H-kblockd", "pid": 811535},
+    {
+        "cmdline": [
+            "/nix/store/60m4rxhg2fldqaak400c0lry96ijrzqn-python3-3.13.13/bin/python3.13",
+            "/nix/store/37cnh63ah3ly5vlb89l65xk74w2xb85i-python3.13-fc.qemu-1.8dev/bin/.fc-qemu-wrapped",
+            "maintenance",
+            "enter",
+        ],
+        "exe": "/nix/store/60m4rxhg2fldqaak400c0lry96ijrzqn-python3-3.13.13/bin/python3.13",
+        "name": ".fc-qemu-wrappe",
+        "pid": 134674,
+    },
+]
+
+
+def test_get_running_qemu_processes(monkeypatch):
+
+    processes = []
+    for p in QEMU10_PROCS:
+        mock_process = Mock()
+        mock_process.info = p
+        processes.append(mock_process)
+
+    monkeypatch.setattr("psutil.process_iter", lambda *a, **kw: processes)
+
+    assert len(get_running_qemu_processes()) == 1
+
+
+def test_is_qemu_proc():
+    assert is_qemu_proc(
+        "kvm.somevm",
+        "qemu-system-x86_64",
+        "/nix/store/asdf-qemu/bin/qemu-system-x86_64",
+    )
+    assert not is_qemu_proc("", "", "")
+    assert not is_qemu_proc(".fc-qemu-wrappe", "python3.13", "python3.13")
+    assert not is_qemu_proc("kvm-pit", "", "")
+    assert is_qemu_proc("kvm.somevm", "", "")
+    # qemu-6.0 specific behaviour
+    assert is_qemu_proc("", "/nix/store/asdf-qemu/bin/qemu-system-x86_64", "")
+    assert is_qemu_proc("", "", "/nix/store/asdf-qemu/bin/qemu-system-x86_64")
+    # qemu-10.0+ specific behaviour
+    assert is_qemu_proc("", "qemu-system-x86_64", "")
+    assert is_qemu_proc(
+        "", "", "/nix/store/asdf-qemu-10.2.2/bin/.qemu-system-x86_64-wrapped"
+    )
+
+
+def test_pinfo_is_qemu_proc_normalises_unexpected_data():
+    assert not pinfo_is_qemu_proc(
+        {"name": "somekernelthread", "cmdline": [], "exe": None, "pid": 1932}
+    )
+    assert not pinfo_is_qemu_proc(
+        {
+            "name": ".fc-qemu-wrappe",
+            "cmdline": ["python3.13", ".fc-qemu-wrapped", "qemu-system-x86_64"],
+            "exe": None,
+        }
+    )
