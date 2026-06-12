@@ -14,7 +14,6 @@ REQUIRED_BINARIES = set(
         "mount",
         "parted",
         "partprobe",
-        "pgrep",
         "qemu-system-x86_64",
         "rbd",
         "rbd-locktool",

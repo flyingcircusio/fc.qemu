@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 import typing
+from dataclasses import dataclass
 from ipaddress import ip_interface
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
@@ -34,7 +35,11 @@ from .exc import (
 )
 from .hazmat.ceph import Ceph
 from .hazmat.cpuscan import scan_cpus
-from .hazmat.qemu import Qemu, detect_current_machine_type
+from .hazmat.qemu import (
+    Qemu,
+    detect_current_machine_type,
+    get_running_qemu_processes,
+)
 from .incoming import IncomingServer
 from .outgoing import Outgoing
 from .sysconfig import sysconfig
@@ -592,13 +597,7 @@ class Agent(object):
             sysconfig.agent["maintenance_evacuation_timeout"], interval=3
         )
         while timeout.tick():
-            process = subprocess.Popen(
-                ["pgrep", "-f", "^[^ ]*/qemu-system-x86_64"],
-                stdout=subprocess.PIPE,
-            )
-            process.wait()
-            assert process.stdout is not None
-            num_procs = len(process.stdout.read().splitlines())
+            num_procs = len(get_running_qemu_processes())
             log.info(
                 "evacuation-running",
                 vms=num_procs,
@@ -609,6 +608,7 @@ class Agent(object):
                 # maintenance.
                 log.info("evacuation-success")
                 sys.exit(0)
+
             time.sleep(10)
 
         log.info("evacuation-timeout", action="retry maintenance")

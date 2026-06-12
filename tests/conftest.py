@@ -424,9 +424,12 @@ def clean_rbd_pools(request, kill_vms, ceph_mock):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             ) as proc:
-                stdout, stderr = proc.communicate(
-                    timeout=5
-                )  # Add timeout for safety
+                try:
+                    # Add timeout for safety
+                    stdout, stderr = proc.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    raise
             for line in stdout.splitlines():
                 image = line.strip().decode("ascii")
                 if not image or "-" in image:  # empty line or base image
