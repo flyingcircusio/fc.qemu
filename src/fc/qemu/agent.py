@@ -12,7 +12,6 @@ import subprocess
 import sys
 import time
 import typing
-from dataclasses import dataclass
 from ipaddress import ip_interface
 from multiprocessing.pool import ThreadPool
 from pathlib import Path

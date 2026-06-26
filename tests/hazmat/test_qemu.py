@@ -6,7 +6,6 @@ from fc.qemu.hazmat.qemu import (
     Qemu,
     get_running_qemu_processes,
     is_qemu_proc,
-    pinfo_is_qemu_proc,
 )
 
 
@@ -131,6 +130,9 @@ def test_detect_current_machine_type_not_found(mock_machine_help):
         detect_current_machine_type("nonexistent")
 
 
+# excerpt from a real system, can be obtained via
+# import psutil; import pprint; pprint.pprint(list(map(lambda p: p.as_dict(["name", "exe", "cmdline"]), psutil.process_iter(["pid", "name", "exe", "cmdline"]))))
+
 QEMU10_PROCS = [
     {
         "cmdline": [
@@ -149,7 +151,6 @@ QEMU10_PROCS = [
         ],
         "exe": "/nix/store/60m4rxhg2fldqaak400c0lry96ijrzqn-python3-3.13.13/bin/python3.13",
         "name": ".supervised-qem",
-        "pid": 764110,
     },
     {
         "cmdline": [
@@ -183,10 +184,9 @@ QEMU10_PROCS = [
         ],
         "exe": "/nix/store/391smsk8nghkg17g5dd5dn2cdb6lkhlm-qemu-10.2.2/bin/.qemu-system-x86_64-wrapped",
         "name": "kvm.slurmtest13",
-        "pid": 764111,
     },
-    {"cmdline": [], "exe": "", "name": "kvm-pit/764111", "pid": 764220},
-    {"cmdline": [], "exe": "", "name": "kworker/4:2H-kblockd", "pid": 811535},
+    {"cmdline": [], "exe": "", "name": "kvm-pit/764111"},
+    {"cmdline": [], "exe": "", "name": "kworker/4:2H-kblockd"},
     {
         "cmdline": [
             "/nix/store/60m4rxhg2fldqaak400c0lry96ijrzqn-python3-3.13.13/bin/python3.13",
@@ -196,19 +196,13 @@ QEMU10_PROCS = [
         ],
         "exe": "/nix/store/60m4rxhg2fldqaak400c0lry96ijrzqn-python3-3.13.13/bin/python3.13",
         "name": ".fc-qemu-wrappe",
-        "pid": 134674,
     },
 ]
 
 
 def test_get_running_qemu_processes(monkeypatch):
 
-    processes = []
-    for p in QEMU10_PROCS:
-        mock_process = Mock()
-        mock_process.info = p
-        processes.append(mock_process)
-
+    processes = [Mock(as_dict=Mock(return_value=p)) for p in QEMU10_PROCS]
     monkeypatch.setattr("psutil.process_iter", lambda *a, **kw: processes)
 
     assert len(get_running_qemu_processes()) == 1
@@ -220,28 +214,19 @@ def test_is_qemu_proc():
         "qemu-system-x86_64",
         "/nix/store/asdf-qemu/bin/qemu-system-x86_64",
     )
-    assert not is_qemu_proc("", "", "")
-    assert not is_qemu_proc(".fc-qemu-wrappe", "python3.13", "python3.13")
-    assert not is_qemu_proc("kvm-pit", "", "")
-    assert is_qemu_proc("kvm.somevm", "", "")
+    assert not is_qemu_proc("", [], "")
+    assert not is_qemu_proc(".fc-qemu-wrappe", ["python3.13"], "python3.13")
+    assert not is_qemu_proc("kvm-pit", [], "")
+    assert is_qemu_proc("kvm.somevm", ["somecmdline"], "")
     # qemu-6.0 specific behaviour
-    assert is_qemu_proc("", "/nix/store/asdf-qemu/bin/qemu-system-x86_64", "")
-    assert is_qemu_proc("", "", "/nix/store/asdf-qemu/bin/qemu-system-x86_64")
-    # qemu-10.0+ specific behaviour
-    assert is_qemu_proc("", "qemu-system-x86_64", "")
+    assert is_qemu_proc("", ["/nix/store/asdf-qemu/bin/qemu-system-x86_64"], "")
     assert is_qemu_proc(
-        "", "", "/nix/store/asdf-qemu-10.2.2/bin/.qemu-system-x86_64-wrapped"
+        "", ["somecmdline"], "/nix/store/asdf-qemu/bin/qemu-system-x86_64"
     )
-
-
-def test_pinfo_is_qemu_proc_normalises_unexpected_data():
-    assert not pinfo_is_qemu_proc(
-        {"name": "somekernelthread", "cmdline": [], "exe": None, "pid": 1932}
-    )
-    assert not pinfo_is_qemu_proc(
-        {
-            "name": ".fc-qemu-wrappe",
-            "cmdline": ["python3.13", ".fc-qemu-wrapped", "qemu-system-x86_64"],
-            "exe": None,
-        }
+    # qemu-10.0+ specific behaviour
+    assert is_qemu_proc("", ["qemu-system-x86_64"], "")
+    assert is_qemu_proc(
+        "",
+        ["somecmdline"],
+        "/nix/store/asdf-qemu-10.2.2/bin/.qemu-system-x86_64-wrapped",
     )

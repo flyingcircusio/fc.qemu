@@ -110,36 +110,30 @@ def locked_global(f):
     return locked
 
 
-def is_qemu_proc(name: str, cmd_proc: str, exe: str) -> bool:
+def is_qemu_proc(
+    name: str | None, cmdline: str | None, exe: str | None
+) -> bool:
+    if not cmdline:
+        # This is a kernel process, we ignore those completely.
+        return False
+
+    name = name if name else ""
     if name.startswith("kvm."):
         return True
+
+    cmd_proc = cmdline[0] if cmdline else ""
     if cmd_proc == "qemu-system-x86_64":  # qemu-10.0
         return True
     if cmd_proc.endswith("/qemu-system-x86_64"):  # qemu-6.0
         return True
+
+    exe = exe if exe else ""
     if exe.endswith("/.qemu-system-x86_64-wrapped"):  # qemu-10.0
         return True
     if exe.endswith("/qemu-system-x86_64"):  # qemu-6.0
         return True
+
     return False
-
-
-def pinfo_is_qemu_proc(
-    psutil_proc_info: dict[str, str | list[str] | int | None],
-) -> bool:
-    """
-    Expected input: dict with (at least) keys "name", "exe", "cmdline"
-
-    Wrapper to extract normalised attributes.
-    psutil.Process.as_dict() returns `None` for attributes it could not
-    retrieve (AccessDenied, zombie, transient process). Extract and normalise
-    the plain strings used by the detection heuristics.
-    """
-    name = psutil_proc_info["name"] or ""
-    exe = psutil_proc_info["exe"] or ""
-    cmdline = psutil_proc_info["cmdline"] or []
-    cmdline_proc = cmdline[0] if cmdline else ""
-    return is_qemu_proc(name, cmdline_proc, exe)
 
 
 def get_running_qemu_processes() -> list[psutil.Process]:
@@ -150,7 +144,12 @@ def get_running_qemu_processes() -> list[psutil.Process]:
     actual qemu process plus a python `supervised-qemu` parent.
     """
     procs = psutil.process_iter(attrs=["pid", "name", "exe", "cmdline"])
-    return [p for p in procs if pinfo_is_qemu_proc(p.info)]
+
+    return [
+        p
+        for p in procs
+        if is_qemu_proc(**p.as_dict(["name", "exe", "cmdline"], ad_value=None))
+    ]
 
 
 class Qemu(object):
@@ -296,8 +295,6 @@ class Qemu(object):
             alternate = log_dir / f"{self.name}-{alt_marker}.log"
             log_file.rename(alternate)
 
-    # XXX: It might make sense to unify the matching logic here with
-    # agent.py:KvmHostProcess
     def _current_vms_booked_memory(self):
         """Determine the amount of booked memory (MiB) from the
 
