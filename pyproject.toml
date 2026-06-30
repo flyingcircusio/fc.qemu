@@ -22,6 +22,9 @@ dependencies = [
 ]
 # NOTE: Please keep this sorted!
 
+[tool.uv]
+exclude-newer = "7 days"
+
 [tool.uv.sources]
 consulate = { git = "https://github.com/flyingcircusio/consulate", rev = "90e46a4f307e281bf0e050d510fa367fd2826a2f" }
 
