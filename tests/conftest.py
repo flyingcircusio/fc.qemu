@@ -11,7 +11,7 @@ import traceback
 from pathlib import Path
 from subprocess import check_call, getoutput
 from typing import List
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import mock
 import pytest
@@ -23,7 +23,7 @@ import fc.qemu.logging
 from fc.qemu.agent import Agent
 from fc.qemu.hazmat import libceph
 from fc.qemu.hazmat.ceph import Ceph, RootSpec, VolumeSpecification
-from fc.qemu.util import GiB
+from fc.qemu.util import GiB, cmd
 
 ########################################################
 # ceph fixtures
@@ -878,3 +878,17 @@ def pytest_assertrepr_compare(op, left, right):
         return left.compare(right).diff
     elif right.__class__.__name__ == "Ellipsis":
         return right.compare(left).diff
+
+
+@pytest.fixture(autouse=True)
+def cleanup_tap_devices():
+    for tuntap in fc.qemu.hazmat.qemu.TunTapInfo.list(Mock()):
+        cmd(f"ip l delete dev {tuntap.ifname}", Mock())
+    yield
+    try:
+        for tuntap in fc.qemu.hazmat.qemu.TunTapInfo.list(Mock()):
+            cmd(f"ip l delete dev {tuntap.ifname}", Mock())
+    except Exception:
+        # Optimistic here: some tests patch out `cmd` and this may
+        # not have been cleaned up yet (e.g. test_rbd_unexpected_exception_does_not_cause_image_not_found)
+        pass

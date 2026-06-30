@@ -1,9 +1,13 @@
+from subprocess import CalledProcessError
 from unittest.mock import Mock
 
 import pytest
 
 from fc.qemu.hazmat.qemu import (
+    InterfaceInfo,
     Qemu,
+    TunTapInfo,
+    ensure_tap_interface,
     get_running_qemu_processes,
     is_qemu_proc,
 )
@@ -230,3 +234,44 @@ def test_is_qemu_proc():
         ["somecmdline"],
         "/nix/store/asdf-qemu-10.2.2/bin/.qemu-system-x86_64-wrapped",
     )
+
+
+def test_interface_info_lo():
+    info = InterfaceInfo.get("lo", Mock())
+    assert info.ifname == "lo"
+    assert info.altnames == ()
+
+
+def test_interface_info_missing():
+    with pytest.raises(CalledProcessError):
+        InterfaceInfo.get("nointerface", Mock())
+
+
+def test_interface_ensure():
+    info = ensure_tap_interface("test", "sometest", Mock())
+    assert info.altnames == ("sometest",)
+
+    info = ensure_tap_interface("test", "someothertest", Mock())
+    assert info.altnames == ("sometest", "someothertest")
+
+
+def test_prepare_network():
+    qemu = Qemu(
+        {
+            "name": "vm00",
+            "id": 2345,
+            "interfaces": {"srv": {"network_id": 3}, "fe": {"network_id": 2}},
+        }
+    )
+    qemu.prepare_network()
+    tuntap = TunTapInfo.list(Mock())
+    tuntap.sort(key=lambda x: x.ifname)
+    assert len(tuntap) == 2
+
+    assert tuntap[0].ifname == "tfe2345"
+    iface = InterfaceInfo.get("tfe2345", Mock())
+    assert iface.altnames == ("fcqemu-vm-2345-net-2",)
+
+    assert tuntap[1].ifname == "tsrv2345"
+    iface = InterfaceInfo.get("tsrv2345", Mock())
+    assert iface.altnames == ("fcqemu-vm-2345-net-3",)

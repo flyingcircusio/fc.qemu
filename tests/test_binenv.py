@@ -45,6 +45,8 @@ TEST_BINARIES = set(
         "top",
         "true",
         "losetup",
+        "notfound",
+        "echo",
     ]
 )
 

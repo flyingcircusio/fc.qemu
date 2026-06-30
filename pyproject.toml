@@ -14,10 +14,11 @@ dependencies = [
     "colorama>=0.3.3",
     "consulate",
     "psutil>=5.4.2",
+    "pydantic>=2.13.4",
     "requests>=2.11.1",
     "setuptools>=75.1",
     "structlog>=16.1.0",
-    "websockets>=13.1"
+    "websockets>=13.1",
 ]
 # NOTE: Please keep this sorted!
 

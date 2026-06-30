@@ -375,6 +375,8 @@ class Agent(object):
 
     ceph_attach_on_enter = True
 
+    network_hooks: dict[str, str]
+
     def __init__(self, name, enc=None):
         # Update configuration values from system or test config.
         self.log = log.bind(machine=name)
@@ -1870,9 +1872,13 @@ class Agent(object):
         for net, net_config in sorted(self.cfg["interfaces"].items()):
             ifname = f"t{net}{self.cfg['id']}"
 
-            iface_type = "vrf" if net_config.get("routed") else "bridge"
-            ifup_path = self.network_hooks[f"ifup-{iface_type}"]
-            ifdown_path = self.network_hooks[f"ifdown-{iface_type}"]
+            linktype = net_config.get("linktype")
+            if not linktype:
+                # Backwards compatibility
+                linktype = "vrf" if net_config.get("routed") else "bridge"
+
+            ifup_path = self.network_hooks[f"tap-ifup-{linktype}"]
+            ifdown_path = self.network_hooks[f"tap-ifdown-{linktype}"]
 
             netconfig.append(
                 """
@@ -1884,15 +1890,15 @@ class Agent(object):
 [netdev "{ifname}"]
   type = "tap"
   ifname = "{ifname}"
-  script = "{ifup}"
-  downscript = "{ifdown}"
+  script = "{script}"
+  downscript = "{downscript}"
 {vhost}
 """.format(
                     ifname=ifname,
                     mac=net_config["mac"],
                     vhost=vhost,
-                    ifup=ifup_path,
-                    ifdown=ifdown_path,
+                    script=ifup_path,
+                    downscript=ifdown_path,
                 )
             )
 

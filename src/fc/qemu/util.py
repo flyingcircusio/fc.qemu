@@ -10,8 +10,9 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import IO, Any, Callable, Dict, List
+from typing import IO, Any, Callable, Dict, List, TypeVar
 
+from pydantic import BaseModel
 from structlog import get_logger
 
 MiB = 2**20
@@ -247,3 +248,11 @@ def generate_cloudinit_ssh_keyfile(
         + "\n".join(flattened_ssh_keys)
         + "\n"
     )
+
+
+T = TypeVar("T", bound=BaseModel)
+
+
+def model_from_json_cmd(model: type[T], *args, **kw) -> T:
+    output = cmd(*args, **kw)
+    return model.model_validate_json(output)

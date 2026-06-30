@@ -35,6 +35,11 @@ def simplevm_cfg(monkeypatch):
 
 
 @pytest.fixture
+def simplevm_linktype_cfg(monkeypatch):
+    yield from named_vm_cfg("simplevmlinktype", monkeypatch)
+
+
+@pytest.fixture
 def simplepubvm_cfg(monkeypatch):
     yield from named_vm_cfg("simplepubvm", monkeypatch)
 
@@ -67,6 +72,15 @@ def test_config_template_netscripts(simplevm_cfg, ceph_inst):
         a.generate_config()
     assert 'script = "/etc/kvm/kvm-ifup"' in a.qemu.config
     assert 'downscript = "/etc/kvm/kvm-ifdown"' in a.qemu.config
+
+
+def test_config_template_netscripts_linktype(simplevm_linktype_cfg, ceph_inst):
+    a = Agent(simplevm_linktype_cfg)
+    with a:
+        a.ceph.start()
+        a.generate_config()
+    assert 'script = "/etc/kvm/kvm-ifup-vrf"' in a.qemu.config
+    assert 'downscript = "/etc/kvm/kvm-ifdown-vrf"' in a.qemu.config
 
 
 def test_config_template_vrf_netscripts(simplepubvm_cfg, ceph_inst):
@@ -208,7 +222,7 @@ def test_ensure_lock_contention_returns_ex_tempfail(
     monkeypatch.setattr("fc.qemu.main.ensure_separate_cgroup", lambda: None)
 
     # Mock init_logging to use test's log file instead of /var/log/fc-qemu.log
-    def mock_init_logging(verbose):
+    def mock_init_logging(verbose, console_target=sys.stdout):
         # Keep test's structlog configuration - don't reconfigure
         pass
 

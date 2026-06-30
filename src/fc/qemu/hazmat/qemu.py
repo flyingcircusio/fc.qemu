@@ -8,15 +8,17 @@ import socket
 import subprocess
 from codecs import encode
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Self
 
 import psutil
 import yaml
+from pydantic import BaseModel
+from pydantic.root_model import RootModel
 
 from ..exc import QemuNotRunning, VMStateInconsistent
 from ..sysconfig import sysconfig
 from ..timeout import TimeOut
-from ..util import ControlledRuntimeException, log
+from ..util import ControlledRuntimeException, cmd, log, model_from_json_cmd
 from .guestagent import ClientError, GuestAgent
 from .qmp import QEMUMonitorProtocol as Qmp
 from .qmp import QMPConnectError
@@ -150,6 +152,87 @@ def get_running_qemu_processes() -> list[psutil.Process]:
         for p in procs
         if is_qemu_proc(**p.as_dict(["name", "exe", "cmdline"], ad_value=None))
     ]
+
+
+class InterfaceInfo(BaseModel):
+    ifname: str
+    altnames: tuple[str, ...] = ()
+
+    # ip -j l show dev foobar
+    # [
+    #   {
+    #     "ifindex": 327,
+    #     "ifname": "foobar",
+    #     "flags": [
+    #       "BROADCAST",
+    #       "MULTICAST"
+    #     ],
+    #     "mtu": 1500,
+    #     "qdisc": "noop",
+    #     "operstate": "DOWN",
+    #     "linkmode": "DEFAULT",
+    #     "group": "default",
+    #     "txqlen": 1000,
+    #     "link_type": "ether",
+    #     "address": "32:d7:f0:59:83:92",
+    #     "broadcast": "ff:ff:ff:ff:ff:ff",
+    #     "altnames": [
+    #       "asdf",
+    #       "vm-1235",
+    #       "vlan-123431341",
+    #       "vm-1235-vlan-123312321"
+    #     ]
+    #   }
+    # ]
+
+    @classmethod
+    def get(cls, ifname: str, log) -> Self:
+        interfaces = model_from_json_cmd(
+            RootModel[list[cls]], f"ip -j link show dev '{ifname}'", log=log
+        ).root
+        assert len(interfaces) == 1
+        interface = interfaces[0]
+        assert interface.ifname == ifname
+        return interface
+
+
+class TunTapInfo(BaseModel):
+    ifname: str
+    flags: tuple[str, ...]
+
+    # root@host1 .../developer/fc.qemu # ip -j tuntap show | jq
+    # [
+    #   {
+    #     "ifname": "tfe2345",
+    #     "flags": [
+    #       "tap",
+    #       "one_queue",
+    #       "vnet_hdr",
+    #       "persist"
+    #     ]
+    #   },
+    #   ...
+    # ]
+
+    @classmethod
+    def list(cls, log) -> list[Self]:
+        interfaces = model_from_json_cmd(
+            RootModel[list[cls]], "ip -j tuntap show", log=log
+        ).root
+        return interfaces
+
+
+def ensure_tap_interface(name, altname, log) -> InterfaceInfo:
+    try:
+        interface = InterfaceInfo.get(name, log)
+    except subprocess.CalledProcessError:
+        cmd(f"ip tuntap add '{name}' mode tap", log=log)
+        interface = InterfaceInfo.get(name, log)
+
+    if altname not in interface.altnames:
+        cmd(f"ip link property add dev '{name}' altname '{altname}'", log=log)
+
+    return InterfaceInfo.get(name, log)
 
 
 class Qemu(object):
@@ -376,6 +459,7 @@ class Qemu(object):
         self._verify_memory()
 
         self.prepare_config()
+        self.prepare_network()
         self.prepare_log()
         try:
             args = list(self.local_args) + list(additional_args)
@@ -788,6 +872,22 @@ class Qemu(object):
 
         # Qemu tends to overwrite the pid file incompletely -> truncate
         self.pid_file.open("w").close()
+
+    def prepare_network(self):
+        """Prepare network config before Qemu start.
+
+        This establishes all links (as tap devices) from the hypervisor
+        and puts an altname on them so we can properly identify them in the
+        ifup/down scripts.
+
+        """
+        assert self.cfg
+        for net, net_config in sorted(self.cfg["interfaces"].items()):
+            id = self.cfg["id"]
+            network_id = net_config["network_id"]  # XXX needs ENC spec
+            iface = f"t{net}{id}"
+            altname = f"fcqemu-vm-{id}-net-{network_id}"
+            ensure_tap_interface(iface, altname, self.log)
 
     def get_running_config(self):
         """Return the host-independent version of the current running

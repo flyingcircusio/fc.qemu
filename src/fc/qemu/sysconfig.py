@@ -109,7 +109,7 @@ class SysConfig(object):
 
         self.agent["network_hooks"] = nh = {}
         for key, path in self.cp.items("network"):
-            nh[key.lstrip("tap-")] = path
+            nh[key] = path
 
         # Ceph
         self.agent["this_host"] = self.cp.get("ceph", "lock_host")
