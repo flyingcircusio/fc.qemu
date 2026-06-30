@@ -319,3 +319,18 @@ def test_iproute2_json_loopback():
             ],
         }
     ]
+
+
+def test_id_to_name(capsys, simplevm_cfg, simplepubvm_cfg):
+    assert Agent.id_to_name("2345") == 0
+    e = capsys.readouterr()
+    assert e.out.strip() == "simplevm"
+
+    assert Agent.id_to_name("3456") == 0
+    e = capsys.readouterr()
+    assert e.out.strip() == "simplepubvm"
+
+    assert Agent.id_to_name("9999") == 1
+    e = capsys.readouterr()
+    assert e.out.strip() == ""
+    assert e.err.strip() == "No VM with id 9999 known."

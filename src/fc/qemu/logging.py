@@ -261,7 +261,7 @@ def add_pid(logger, method_name, event_dict):
     return event_dict
 
 
-def init_logging(verbose=True):
+def init_logging(verbose=True, console_target=sys.stdout):
     log_file = open("/var/log/fc-qemu.log", "a")
     structlog.configure(
         processors=[
@@ -272,7 +272,7 @@ def init_logging(verbose=True):
             MultiConsoleRenderer(min_level="debug" if verbose else "info"),
         ],
         logger_factory=MultiOptimisticLoggerFactory(
-            console=structlog.PrintLoggerFactory(),
+            console=structlog.PrintLoggerFactory(console_target),
             file=structlog.PrintLoggerFactory(log_file),
         ),
     )

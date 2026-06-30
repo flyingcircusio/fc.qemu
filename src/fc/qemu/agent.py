@@ -512,6 +512,19 @@ class Agent(object):
                     log.info("offline", machine=vm.name)
 
     @classmethod
+    def id_to_name(cls, id: str) -> int:
+        # XXX This would be a good candidate to improve with aramaki by
+        # just querying the inventory instead of running through config files...
+        for candidate in (cls.prefix / Path("etc/qemu/vm")).glob("*.cfg"):
+            with candidate.open() as f:
+                cfg = yaml.safe_load(f)
+                if str(cfg["parameters"]["id"]) == id:
+                    print(cfg["parameters"]["name"])
+                    return 0
+        print(f"No VM with id {id} known.", file=sys.stderr)
+        return 1
+
+    @classmethod
     def _ensure_maintenance_volume(cls):
         try:
             log.debug("ensure-maintenance-volume")

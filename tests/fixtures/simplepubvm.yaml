@@ -15,12 +15,12 @@ parameters:
       mac: aa-bb-cc-22-ee-ff
       routed: True
       networks:
-        192.0.2.0/24: [ '192.0.2.23' ]
-        2001:db8:0:42::/64: [ '2001:db8:0:42::23' ]
+        192.0.2.0/24: ["192.0.2.23"]
+        2001:db8:0:42::/64: ["2001:db8:0:42::23"]
   kvm_host: host1
   memory: 256
   location: test
-  name: simplevm
+  name: simplepubvm
   online: true
   rbd_pool: rbd.ssd
   resource_group: test
