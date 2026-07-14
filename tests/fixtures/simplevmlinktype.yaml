@@ -9,11 +9,11 @@ parameters:
       mac: aa-bb-cc-00-ee-ff
       networks:
       linktype: vrf
-      network_id: 2
+      network_number: 2
     srv:
       mac: aa-bb-cc-dd-ee-ff
       networks:
-      network_id: 3
+      network_number: 3
   kvm_host: host1
   memory: 256
   location: test

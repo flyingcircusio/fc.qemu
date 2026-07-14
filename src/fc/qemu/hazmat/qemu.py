@@ -884,9 +884,9 @@ class Qemu(object):
         assert self.cfg
         for net, net_config in sorted(self.cfg["interfaces"].items()):
             id = self.cfg["id"]
-            network_id = net_config["network_id"]  # XXX needs ENC spec
+            network_number = net_config["network_number"]
             iface = f"t{net}{id}"
-            altname = f"fcqemu-vm-{id}-net-{network_id}"
+            altname = f"fcqemu-vm-{id}-net-{network_number}"
             ensure_tap_interface(iface, altname, self.log)
 
     def get_running_config(self):

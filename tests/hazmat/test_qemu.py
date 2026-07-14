@@ -260,7 +260,10 @@ def test_prepare_network():
         {
             "name": "vm00",
             "id": 2345,
-            "interfaces": {"srv": {"network_id": 3}, "fe": {"network_id": 2}},
+            "interfaces": {
+                "srv": {"network_number": 3},
+                "fe": {"network_number": 2},
+            },
         }
     )
     qemu.prepare_network()

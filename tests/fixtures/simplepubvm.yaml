@@ -8,15 +8,15 @@ parameters:
     fe:
       mac: aa-bb-cc-00-ee-ff
       networks:
-      network_id: 2
+      network_number: 2
     srv:
       mac: aa-bb-cc-dd-ee-ff
       networks:
-      network_id: 3
+      network_number: 3
     pub:
       mac: aa-bb-cc-22-ee-ff
       routed: True
-      network_id: 5
+      network_number: 5
       networks:
         192.0.2.0/24: ["192.0.2.23"]
         2001:db8:0:42::/64: ["2001:db8:0:42::23"]
