@@ -8,8 +8,8 @@ authors = [
 ]
 
 requires-python = "==3.13.*"
-# NOTE: Please keep this sorted!
 dependencies = [
+    # keep-sorted start
     "PyYaml>=5.3.1",
     "colorama>=0.3.3",
     "consulate",
@@ -19,8 +19,9 @@ dependencies = [
     "setuptools>=75.1",
     "structlog>=16.1.0",
     "websockets>=13.1",
+    # keep-sorted end
 ]
-# NOTE: Please keep this sorted!
+
 
 [tool.uv]
 exclude-newer = "7 days"
@@ -37,8 +38,8 @@ where = ["src/"]
 include = ["fc.qemu", "fc.qemu.hazmat"]
 
 [dependency-groups]
-# NOTE: Please keep this sorted!
 dev = [
+    # keep-sorted start
     "mock>=5.2",
     "pytest-cov>=6.2.1",
     "pytest-flakefinder>=1.1.0",
@@ -46,14 +47,14 @@ dev = [
     "pytest-profiling>=1.8.1",
     "pytest-timeout>=2.4.0",
     "pytest>=9.0",
+    # keep-sorted end
 ]
-# NOTE: Please keep this sorted!
 
 [project.scripts]
-# NOTE: Please keep this sorted!
+# keep-sorted start
 fc-qemu = "fc.qemu.main:main"
 supervised-qemu = "fc.qemu.hazmat.supervise:main"
-# NOTE: Please keep this sorted!
+# keep-sorted end
 
 [tool.ruff]
 line-length = 80
