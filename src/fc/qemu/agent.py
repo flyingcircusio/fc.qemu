@@ -62,7 +62,7 @@ LOCKTOOL_TIMEOUT_SECS = 30
 UNLOCK_MAX_RETRIES = 5
 
 
-def unwrap_consul_armour(value: str) -> dict:
+def unwrap_consul_armour(value: str) -> dict[str, Any]:
     # See test_consul.py:prepare_consul_event.
     # The directory is providing a somewhat weird (likely historical)
     # structure with an ASCII armour. Due to Python only encoding/decoding
@@ -73,7 +73,7 @@ def unwrap_consul_armour(value: str) -> dict:
     return json.loads(v)
 
 
-def identifiers_only(d: dict):
+def identifiers_only(d: dict[str, Any]):
     """Return a dict that contains only keys that are usable as identifies.
 
     Ensures a dict can be passed via **kw.
@@ -118,7 +118,7 @@ def iops_settings(**kw):
     return settings
 
 
-def nonzero(d: dict):
+def nonzero(d: dict[str, Any]):
     """Return a dict with only values that are non-zero.
 
     Helpful to allow logging a dict in a compact fashion

@@ -76,7 +76,7 @@ insert_marker = "- Nothing changed yet."
 categories = ""
 
 [tool.basedpyright]
-typeCheckingMode = "basic"
+# typeCheckingMode = "basic"
 venvPath = "."
 venv = ".venv"
 exclude = [
@@ -85,3 +85,8 @@ exclude = [
     "tests/**",
     # keep-sorted end
 ]
+# Many attributes are intentionally initialized outside of `__init__`: either
+# injected wholesale from `sysconfig` via `self.__dict__.update(...)` or set up
+# lazily when entering a context manager. Declaring them in the class body
+# without a value is exactly how we document that, so don't complain about it.
+reportUninitializedInstanceVariable = "none"

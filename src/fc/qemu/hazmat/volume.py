@@ -54,6 +54,7 @@ class Image(object):
             self.device.with_name(self.device.name + "-part1"),
             self.device.with_name(self.device.name + "p1"),
         ]
+        candidate = None
         timeout = TimeOut(5, interval=0.1, raise_on_timeout=True, log=self.log)
         while timeout.tick():
             for candidate in candidates:
@@ -67,6 +68,7 @@ class Image(object):
             else:
                 continue
             break  # let the break from inner loop bubble up
+        assert candidate is not None, "no partition device candidate found"
         # Some protections against weird race conditions we have seen. Those are
         # somewhat of a hail mary, though.
         timeout = TimeOut(5, interval=0.1, raise_on_timeout=True, log=self.log)

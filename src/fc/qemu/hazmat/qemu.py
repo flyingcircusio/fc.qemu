@@ -8,7 +8,7 @@ import socket
 import subprocess
 from codecs import encode
 from pathlib import Path
-from typing import Any, List, Self
+from typing import Any, List, Literal, Self
 
 import psutil
 import yaml
@@ -667,6 +667,11 @@ class Qemu(object):
         # we have a working Qemu instance here. And a "false" must mean:
         # there is no reason to think that any remainder of a Qemu process is
         # still running
+
+        expected_process_exists = False
+        qmp_available: Qmp | None | Literal[False] = None
+        monitor_says_running = False
+        status: dict[str, Any] = {}
 
         timeout = TimeOut(10, raise_on_timeout=False)
         while timeout.tick():

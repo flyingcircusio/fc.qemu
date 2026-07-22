@@ -38,3 +38,4 @@ repos:
   rev: 1.37.1 # or whatever the latest version is at the time
   hooks:
     - id: basedpyright
+      args: ["--level", "error"]

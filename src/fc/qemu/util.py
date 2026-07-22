@@ -25,7 +25,7 @@ log: structlog.stdlib.BoundLogger = get_logger()
 log_data: List[str]
 test_log_start: float
 test_log_options: Dict[str, List[str]]
-test_log_print: Callable
+test_log_print: Callable[..., None]
 
 
 # workaround for ValueError: can't have unbuffered text I/O
@@ -237,7 +237,7 @@ def inplace_update(filename, data):
 
 
 def generate_cloudinit_ssh_keyfile(
-    users: List[Dict], resource_group: str
+    users: List[Dict[str, Any]], resource_group: str
 ) -> str:
     authorized_ssh_keys = [
         u["ssh_pubkey"]

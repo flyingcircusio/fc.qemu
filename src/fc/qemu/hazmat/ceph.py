@@ -9,7 +9,7 @@ import json
 import os
 import xmlrpc.client
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import yaml
 
@@ -505,11 +505,11 @@ class CloudInitSpec(VolumeSpecification):
                 )
             networkconfig_path = target / "network-config"
             networkconfig_path.touch()
-            networkconfig = {"version": 1, "config": []}
+            networkconfig: dict[str, Any] = {"version": 1, "config": []}
             for ifacename, ifaceconfig in enc["parameters"][
                 "interfaces"
             ].items():
-                cfg = {
+                cfg: dict[str, Any] = {
                     "type": "physical",
                     "name": "eth" + ifacename,
                     "mac_address": ifaceconfig["mac"],

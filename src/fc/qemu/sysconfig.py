@@ -1,6 +1,7 @@
 import configparser
 import os.path
 import re
+from typing import Any
 
 
 def match_many(pattern: str, input: list[str]):
@@ -17,7 +18,7 @@ def match_many(pattern: str, input: list[str]):
 
 def section_matches_as_dicts(
     cp: configparser.ConfigParser, pattern: str
-) -> dict:
+) -> dict[str, dict[str, str]]:
     """Transform a set of sections that match a pattern into a dict of dicts.
 
     The match must provide a "section" group that identifies the key for the
@@ -40,12 +41,11 @@ class SysConfig(object):
     config file and to allow tests overriding those values gracefully.
     """
 
-    cp: configparser.ConfigParser
-
     def __init__(self):
-        self.qemu = {}
-        self.ceph = {}
-        self.agent = {}
+        self.cp = configparser.ConfigParser()
+        self.qemu: dict[str, Any] = {}
+        self.ceph: dict[str, Any] = {}
+        self.agent: dict[str, Any] = {}
 
     def read_config_files(self):
         """Tries to open fc-qemu.conf at various location."""

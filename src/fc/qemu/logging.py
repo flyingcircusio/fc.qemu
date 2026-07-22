@@ -32,32 +32,35 @@ def _pad(s, target_length):
     return s + " " * (missing if missing > 0 else 0)
 
 
-if not os.environ.get("FCQEMU_NO_TTY", 0) and sys.stdout.isatty() and colorama:
-    COLORIZED_TTY_OUTPUT = True
+class TTYCodes:
+    def __init__(self, disabled=False):
+        if not disabled and sys.stdout.isatty() and colorama:
+            self.colorized_tty_output = True
+            self.reset_all = colorama.Style.RESET_ALL
+            self.bright = colorama.Style.BRIGHT
+            self.dim = colorama.Style.DIM
+            self.red = colorama.Fore.RED
+            self.backred = colorama.Back.RED
+            self.blue = colorama.Fore.BLUE
+            self.cyan = colorama.Fore.CYAN
+            self.magenta = colorama.Fore.MAGENTA
+            self.yellow = colorama.Fore.YELLOW
+            self.green = colorama.Fore.GREEN
+        else:
+            self.colorized_tty_output = False
+            self.reset_all = ""
+            self.bright = ""
+            self.dim = ""
+            self.red = ""
+            self.backred = ""
+            self.blue = ""
+            self.cyan = ""
+            self.magenta = ""
+            self.yellow = ""
+            self.green = ""
 
-    RESET_ALL = colorama.Style.RESET_ALL
-    BRIGHT = colorama.Style.BRIGHT
-    DIM = colorama.Style.DIM
-    RED = colorama.Fore.RED
-    BACKRED = colorama.Back.RED
-    BLUE = colorama.Fore.BLUE
-    CYAN = colorama.Fore.CYAN
-    MAGENTA = colorama.Fore.MAGENTA
-    YELLOW = colorama.Fore.YELLOW
-    GREEN = colorama.Fore.GREEN
-else:
-    COLORIZED_TTY_OUTPUT = False
 
-    RESET_ALL = ""
-    BRIGHT = ""
-    DIM = ""
-    RED = ""
-    BACKRED = ""
-    BLUE = ""
-    CYAN = ""
-    MAGENTA = ""
-    YELLOW = ""
-    GREEN = ""
+TTY_CODES = TTYCodes(disabled=bool(int(os.environ.get("FCQEMU_NO_TTY", 0))))
 
 
 class MultiOptimisticLoggerFactory(object):
@@ -125,22 +128,22 @@ class MultiConsoleRenderer(object):
             raise SystemError(
                 _MISSING.format(who=self.__class__.__name__, package="colorama")
             )
-        if COLORIZED_TTY_OUTPUT:
+        if TTY_CODES.colorized_tty_output:
             colorama.init()
 
         self._pad_event = pad_event
         self._level_to_color = {
-            "critical": RED,
-            "exception": RED,
-            "error": RED,
-            "warn": YELLOW,
-            "warning": YELLOW,
-            "info": GREEN,
-            "debug": GREEN,
-            "notset": BACKRED,
+            "critical": TTY_CODES.red,
+            "exception": TTY_CODES.red,
+            "error": TTY_CODES.red,
+            "warn": TTY_CODES.yellow,
+            "warning": TTY_CODES.yellow,
+            "info": TTY_CODES.green,
+            "debug": TTY_CODES.green,
+            "notset": TTY_CODES.backred,
         }
         for key in list(self._level_to_color.keys()):
-            self._level_to_color[key] += BRIGHT
+            self._level_to_color[key] += TTY_CODES.bright
         self._longest_level = len(
             max(self._level_to_color.keys(), key=lambda e: len(e))
         )
@@ -151,18 +154,18 @@ class MultiConsoleRenderer(object):
 
         def write(line):
             console_io.write(line)
-            if RESET_ALL:
+            if TTY_CODES.reset_all:
                 for SYMB in [
-                    RESET_ALL,
-                    BRIGHT,
-                    DIM,
-                    RED,
-                    BACKRED,
-                    BLUE,
-                    CYAN,
-                    MAGENTA,
-                    YELLOW,
-                    GREEN,
+                    TTY_CODES.reset_all,
+                    TTY_CODES.bright,
+                    TTY_CODES.dim,
+                    TTY_CODES.red,
+                    TTY_CODES.backred,
+                    TTY_CODES.blue,
+                    TTY_CODES.cyan,
+                    TTY_CODES.magenta,
+                    TTY_CODES.yellow,
+                    TTY_CODES.green,
                 ]:
                     line = line.replace(SYMB, "")
             log_io.write(line)
@@ -170,20 +173,23 @@ class MultiConsoleRenderer(object):
         ts = event_dict.pop("timestamp", None)
         if ts is not None:
             write(
-                DIM
+                TTY_CODES.dim
                 + str(ts)  # can be a number if timestamp is UNIXy
-                + RESET_ALL
+                + TTY_CODES.reset_all
                 + " "
             )
 
         pid = event_dict.pop("pid", None)
         if pid is not None:
-            write(DIM + str(pid) + RESET_ALL + " ")
+            write(TTY_CODES.dim + str(pid) + TTY_CODES.reset_all + " ")
 
         level = event_dict.pop("level", None)
         if level is not None:
             write(
-                self._level_to_color[level] + level[0].upper() + RESET_ALL + " "
+                self._level_to_color[level]
+                + level[0].upper()
+                + TTY_CODES.reset_all
+                + " "
             )
 
         machine = event_dict.pop("machine", "")
@@ -202,21 +208,33 @@ class MultiConsoleRenderer(object):
 
         event = event_dict.pop("event", None)
         if event:
-            write(BRIGHT + _pad(event, self._pad_event) + RESET_ALL + " ")
+            write(
+                TTY_CODES.bright
+                + _pad(event, self._pad_event)
+                + TTY_CODES.reset_all
+                + " "
+            )
 
             logger_name = event_dict.pop("logger", None)
             if logger_name is not None:
-                write("[" + BLUE + BRIGHT + logger_name + RESET_ALL + "] ")
+                write(
+                    "["
+                    + TTY_CODES.blue
+                    + TTY_CODES.bright
+                    + logger_name
+                    + TTY_CODES.reset_all
+                    + "] "
+                )
 
             write(
                 " ".join(
-                    CYAN
+                    TTY_CODES.cyan
                     + key
-                    + RESET_ALL
+                    + TTY_CODES.reset_all
                     + "="
-                    + MAGENTA
+                    + TTY_CODES.magenta
                     + format_value(event_dict[key])
-                    + RESET_ALL
+                    + TTY_CODES.reset_all
                     for key in sorted(event_dict.keys())
                 )
             )
@@ -224,16 +242,26 @@ class MultiConsoleRenderer(object):
             if args is not None:
                 write(
                     "\n"
-                    + DIM
+                    + TTY_CODES.dim
                     + prefix(machine, event + " " + "".join(args))
-                    + RESET_ALL
+                    + TTY_CODES.reset_all
                 )
 
         if output_line:
-            write("\n" + DIM + prefix(machine, output_line) + RESET_ALL)
+            write(
+                "\n"
+                + TTY_CODES.dim
+                + prefix(machine, output_line)
+                + TTY_CODES.reset_all
+            )
 
         if output is not None:
-            write("\n" + DIM + prefix(machine, output) + RESET_ALL)
+            write(
+                "\n"
+                + TTY_CODES.dim
+                + prefix(machine, output)
+                + TTY_CODES.reset_all
+            )
 
         if stack is not None:
             write("\n" + prefix(machine, stack))
