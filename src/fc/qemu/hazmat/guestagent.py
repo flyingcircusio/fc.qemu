@@ -2,7 +2,7 @@ import fcntl
 import json
 import random
 import socket
-from typing import IO
+from typing import IO, Any, Callable, Optional
 
 from ..util import log
 
@@ -17,7 +17,12 @@ SYNC_TIMEOUT = 30
 class GuestAgent(object):
     """Wraps qemu guest agent wire protocol."""
 
-    def __init__(self, machine, timeout, client_factory=socket.socket):
+    def __init__(
+        self,
+        machine: str,
+        timeout: float,
+        client_factory: Callable[..., socket.socket] = socket.socket,
+    ):
         self.machine = machine
         self.timeout = timeout
         self.log = log.bind(machine=machine, subsystem="qemu/guestagent")
@@ -26,7 +31,7 @@ class GuestAgent(object):
         self.client_factory = client_factory
         self.client: socket.socket | None = None
 
-    def read(self, unwrap=True):
+    def read(self, unwrap: bool = True) -> Any:
         """Reads single response from the GA and returns the result.
 
         Blocks and runs into a timeout if no response is available.
@@ -53,7 +58,13 @@ class GuestAgent(object):
         # just silently return `None` here.
         return result
 
-    def cmd(self, cmd, timeout=None, fire_and_forget=False, **args):
+    def cmd(
+        self,
+        cmd: str,
+        timeout: Optional[float] = None,
+        fire_and_forget: bool = False,
+        **args: Any,
+    ) -> Any:
         """Issues GA command and returns the result.
 
         All **args need to be serialisable to JSON, that implies that `bytes`
@@ -70,7 +81,7 @@ class GuestAgent(object):
             self.client.settimeout(timeout or self.timeout)
             return self.read(unwrap=(cmd != "guest-ping"))
 
-    def sync(self):
+    def sync(self) -> None:
         """Ensures that request and response are in order."""
         assert self.client is not None, "not connected"
 
@@ -109,7 +120,7 @@ class GuestAgent(object):
             f"Unable to sync with guest agent. Got invalid sync_id {sync_id}"
         )
 
-    def connect(self):
+    def connect(self) -> None:
         if self.client and self.file:
             return
         self.disconnect()
@@ -119,7 +130,7 @@ class GuestAgent(object):
         fcntl.flock(self.file.fileno(), fcntl.LOCK_EX)
         self.sync()
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         if self.file or self.client:
             self.log.debug("disconnect")
         try:

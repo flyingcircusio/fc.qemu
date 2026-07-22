@@ -3,10 +3,17 @@ import random
 import threading
 import time
 import xmlrpc.client
-from typing import Any
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, Callable, Type
+
+from structlog import BoundLogger
 
 from .exc import ConfigChanged
 from .timeout import TimeOut
+
+if TYPE_CHECKING:
+    # Only for annotations: agent imports this module.
+    from fc.qemu.agent import Agent
 
 
 class Heartbeat(object):
@@ -19,7 +26,7 @@ class Heartbeat(object):
 
     """
 
-    cookie = None
+    cookie: str | None = None
     failed = False
     url: str | None = None
 
@@ -33,8 +40,10 @@ class Heartbeat(object):
 
     def __init__(
         self,
-        log,
-        connect=lambda url: xmlrpc.client.ServerProxy(url, allow_none=True),
+        log: BoundLogger,
+        connect: Callable[[str], xmlrpc.client.ServerProxy] = lambda url: (
+            xmlrpc.client.ServerProxy(url, allow_none=True)
+        ),
     ):
         self.thread = threading.Thread(target=self.run)
         self.running = False
@@ -101,7 +110,7 @@ class Outgoing(object):
     # up over multiple hosts I'm giving a grace period of up to 12 hours here.
     migration_lock_timeout = 12 * 60 * 60  # 12 hours.
 
-    def __init__(self, agent):
+    def __init__(self, agent: "Agent"):
         self.agent = agent
         self.log = agent.log
         self.name = agent.name
@@ -125,8 +134,13 @@ class Outgoing(object):
     def __enter__(self):
         return self
 
-    def __exit__(self, _exc_type, _exc_value, _traceback):
-        if _exc_type is None:
+    def __exit__(
+        self,
+        exc_type: Type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ):
+        if exc_type is None:
             # We're on our happy path. Release the migration lock
             # optimistically and only in this case. Otherwise the
             # error reporting for why the migration has failed will
@@ -159,7 +173,7 @@ class Outgoing(object):
                 self.log.exception(
                     "rescue-failed", exc_info=True, action="destroy"
                 )
-                self.agent._destroy()
+                self.agent.destroy()
 
     def locate_inmigrate_service(self):
         service_name = "vm-inmigrate-" + self.name
@@ -303,11 +317,13 @@ class Outgoing(object):
             self.log.exception("error-waiting-for-migration", exc_info=True)
             raise
 
-        status = self.agent.qemu.qmp.command("query-status")
+        qmp = self.agent.qemu.qmp
+        assert qmp
+        status = qmp.command("query-status")
         assert not status["running"], status
         assert status["status"] == "postmigrate", status
         self.log.info("finish-migration")
-        self.agent._destroy(kill_supervisor=True)
+        self.agent.destroy(kill_supervisor=True)
         try:
             self.log.info("finish-remote")
             self.target.finish_incoming(self.cookie)
@@ -323,7 +339,7 @@ class Outgoing(object):
                 self.target.rescue(self.cookie)
                 self.target.finish_incoming(self.cookie)
                 self.log.info("rescue-remote-success", action="destroy local")
-                self.agent._destroy(kill_supervisor=True)
+                self.agent.destroy(kill_supervisor=True)
                 # We managed to rescue on the remote side - hooray!
                 self.migration_exitcode = 0
                 return
@@ -349,6 +365,6 @@ class Outgoing(object):
                 result="failed",
                 action="destroy local",
             )
-            self.agent._destroy()
+            self.agent.destroy()
         else:
             self.log.info("continue-locally", result="success")

@@ -25,7 +25,7 @@ def section_matches_as_dicts(
     section. The match must cover the whole key.
 
     """
-    result = {}
+    result: dict[str, dict[str, str]] = {}
     for m in match_many(pattern, cp.sections()):
         result[m.groupdict()["section"]] = dict(cp.items(m.string))
     return result

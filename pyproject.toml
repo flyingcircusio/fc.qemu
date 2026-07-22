@@ -41,6 +41,7 @@ include = ["fc.qemu", "fc.qemu.hazmat"]
 dev = [
     # keep-sorted start
     "mock>=5.2",
+    "pyright>=1.1.411",
     "pytest-cov>=6.2.1",
     "pytest-flakefinder>=1.1.0",
     "pytest-patterns>=0.3.0",
@@ -76,17 +77,14 @@ insert_marker = "- Nothing changed yet."
 categories = ""
 
 [tool.basedpyright]
-# typeCheckingMode = "basic"
+typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
 exclude = [
     # keep-sorted start
+    ".venv/**",
     "batou/**",
     "tests/**",
+    "typings/**"
     # keep-sorted end
 ]
-# Many attributes are intentionally initialized outside of `__init__`: either
-# injected wholesale from `sysconfig` via `self.__dict__.update(...)` or set up
-# lazily when entering a context manager. Declaring them in the class body
-# without a value is exactly how we document that, so don't complain about it.
-reportUninitializedInstanceVariable = "none"

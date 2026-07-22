@@ -12,16 +12,32 @@ import subprocess
 import sys
 import time
 import typing
-from ipaddress import ip_interface
+from ipaddress import (
+    IPv4Address,
+    IPv4Interface,
+    IPv6Address,
+    IPv6Interface,
+    ip_interface,
+)
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Any, Optional
+from types import TracebackType
+from typing import (
+    Any,
+    Callable,
+    Iterable,
+    Optional,
+    Type,
+    TypeVar,
+    cast,
+)
 
 import colorama
 import consulate
 import consulate.models.agent
 import requests
 import yaml
+from structlog import BoundLogger
 
 from . import directory, util
 from .exc import (
@@ -36,6 +52,7 @@ from .hazmat.ceph import Ceph
 from .hazmat.cpuscan import scan_cpus
 from .hazmat.qemu import (
     Qemu,
+    WatchDogActions,
     detect_current_machine_type,
     get_running_qemu_processes,
 )
@@ -43,10 +60,19 @@ from .incoming import IncomingServer
 from .outgoing import Outgoing
 from .sysconfig import sysconfig
 from .timeout import TimeOut
+from .typing import (
+    ConsulEvent,
+    EncDict,
+    EncParametersDict,
+    GuestPropertiesDict,
+    RouteDict,
+    SnapshotEventDict,
+    SupportsLocalLock,
+)
 from .util import GiB, MiB, locate_live_service, log
 
 
-def _handle_consul_event(event):
+def _handle_consul_event(event: ConsulEvent):
     handler = ConsulEventHandler()
     handler.handle(event)
 
@@ -73,12 +99,12 @@ def unwrap_consul_armour(value: str) -> dict[str, Any]:
     return json.loads(v)
 
 
-def identifiers_only(d: dict[str, Any]):
+def identifiers_only(d: dict[str, Any]) -> dict[str, Any]:
     """Return a dict that contains only keys that are usable as identifies.
 
     Ensures a dict can be passed via **kw.
     """
-    result = {}
+    result: dict[str, Any] = {}
     for k, v in d.items():
         if not k.isidentifier():
             continue
@@ -86,7 +112,7 @@ def identifiers_only(d: dict[str, Any]):
     return result
 
 
-def iops_settings(**kw):
+def iops_settings(**kw: int):
     """A helper to create a dict that makes it easy to handle IOPS settings.
 
     Useful for comparison and updating.
@@ -118,13 +144,13 @@ def iops_settings(**kw):
     return settings
 
 
-def nonzero(d: dict[str, Any]):
+def nonzero(d: dict[str, Any]) -> dict[str, Any]:
     """Return a dict with only values that are non-zero.
 
     Helpful to allow logging a dict in a compact fashion
     if many items are zeroes.
     """
-    result = {}
+    result: dict[str, Any] = {}
     for k, v in d.items():
         if not v:
             continue
@@ -138,7 +164,7 @@ class ConsulEventHandler(object):
 
     """
 
-    def handle(self, event):
+    def handle(self, event: ConsulEvent):
         """Actual handling of a single Consul event in a
         separate process."""
         try:
@@ -148,7 +174,7 @@ class ConsulEventHandler(object):
                 log.debug("ignore-key", key=event["Key"], reason="empty value")
                 return
             getattr(self, prefix)(event)
-        except BaseException as e:  # noqa
+        except BaseException:
             # This must be a bare-except as it protects threads and the main
             # loop from dying. It could be that I'm wrong, but I'm leaving this
             # in for good measure.
@@ -157,8 +183,11 @@ class ConsulEventHandler(object):
             )
         log.debug("finish-handle-key", key=event.get("Key", None))
 
-    def node(self, event):
-        config = unwrap_consul_armour(event["Value"])
+    def node(self, event: ConsulEvent):
+        # The payload is JSON from the directory, so it is untyped at this
+        # trust boundary. We assume the directory keeps to the schema, the
+        # same way `Agent._load_enc` trusts the on-disk config.
+        config = cast(EncDict, unwrap_consul_armour(event["Value"]))
 
         config["consul-generation"] = event["ModifyIndex"]
         vm = config["name"]
@@ -182,7 +211,8 @@ class ConsulEventHandler(object):
                 close_fds=True,
             )
             log_.debug("launch-ensure", subprocess_pid=s.pid)
-            stdout, stderr = s.communicate()
+            # stderr is redirected into stdout, so it is always None here.
+            stdout, _ = s.communicate()
             exit_code = s.wait()
             log_.debug("launch-ensure", exit_code=exit_code)
             if exit_code:
@@ -195,8 +225,8 @@ class ConsulEventHandler(object):
                 "ignore-consul-event", machine=vm, reason="config is unchanged"
             )
 
-    def snapshot(self, event):
-        value = unwrap_consul_armour(event["Value"])
+    def snapshot(self, event: ConsulEvent):
+        value = cast(SnapshotEventDict, unwrap_consul_armour(event["Value"]))
         vm = value["vm"]
         snapshot = value["snapshot"]
         log_ = log.bind(snapshot=snapshot, machine=vm)
@@ -217,9 +247,9 @@ class ConsulEventHandler(object):
                 pass
 
 
-def running(expected=True):
-    def wrap(f):
-        def checked(self, *args, **kw):
+def running(expected: bool = True):
+    def wrap(f: Callable[..., Any]):
+        def checked(self: "Agent", *args: Any, **kw: Any):
             if self.qemu.is_running() != expected:
                 self.log.error(
                     f.__name__,
@@ -237,7 +267,12 @@ def running(expected=True):
     return wrap
 
 
-def locked(blocking=True):
+_R = TypeVar("_R")
+
+
+def locked(
+    blocking: bool = True,
+) -> Callable[[Callable[..., _R]], Callable[..., _R | int]]:
     # This is thread-safe *AS LONG* as every thread uses a separate instance
     # of the agent. Using multiple file descriptors will guarantee that the
     # lock can only be held once even within a single process.
@@ -245,18 +280,23 @@ def locked(blocking=True):
     # However, we ensure locking status even for re-entrant / recursive usage.
     # For that we keep a counter how often we successfully acquired the lock
     # and then unlock when we're back to zero.
-    def lock_decorator(f):
-        def locked_func(self, *args, **kw):
+    #
+    # Note the `| int` in the return type: in non-blocking mode we bail out
+    # with `os.EX_TEMPFAIL` instead of ever calling the wrapped function.
+    def lock_decorator(f: Callable[..., _R]) -> Callable[..., _R | int]:
+        def locked_func(
+            self: SupportsLocalLock, *args: Any, **kw: Any
+        ) -> _R | int:
             # New lock file behaviour: lock with a global file that is really
             # only used for this purpose and is never replaced.
             self.log.debug("acquire-lock", target=str(self.lock_file))
-            if not self._lock_file_fd:
+            if not self.lock_file_fd:
                 if not os.path.exists(self.lock_file):
                     open(self.lock_file, "a+").close()
-                self._lock_file_fd = os.open(self.lock_file, os.O_RDONLY)
+                self.lock_file_fd = os.open(self.lock_file, os.O_RDONLY)
             mode = fcntl.LOCK_EX | (fcntl.LOCK_NB if not blocking else 0)
             try:
-                fcntl.flock(self._lock_file_fd, mode)
+                fcntl.flock(self.lock_file_fd, mode)
             except IOError:
                 # This happens in nonblocking mode and we just give up as
                 # that's what's expected to speed up things.
@@ -267,25 +307,25 @@ def locked(blocking=True):
                     mode="nonblocking",
                 )
                 return os.EX_TEMPFAIL
-            self._lock_count += 1
+            self.lock_count += 1
             self.log.debug(
                 "acquire-lock",
                 target=str(self.lock_file),
                 result="locked",
-                count=self._lock_count,
+                count=self.lock_count,
             )
             try:
                 return f(self, *args, **kw)
             finally:
-                self._lock_count -= 1
+                self.lock_count -= 1
                 self.log.debug(
                     "release-lock",
                     target=self.lock_file,
-                    count=self._lock_count,
+                    count=self.lock_count,
                 )
-                if self._lock_count == 0:
+                if self.lock_count == 0:
                     try:
-                        fcntl.flock(self._lock_file_fd, fcntl.LOCK_UN)
+                        fcntl.flock(self.lock_file_fd, fcntl.LOCK_UN)
                         self.log.debug(
                             "release-lock",
                             target=self.lock_file,
@@ -298,36 +338,43 @@ def locked(blocking=True):
                             target=self.lock_file,
                             result="error",
                         )
-                    os.close(self._lock_file_fd)
-                    self._lock_file_fd = None
+                    os.close(self.lock_file_fd)
+                    self.lock_file_fd = None
 
         return locked_func
 
     return lock_decorator
 
 
-def swap_size(memory):
+def swap_size(memory: int) -> int:
     """Returns the swap partition size in bytes."""
     swap_mib = max(1024, 32 * math.sqrt(memory))
     return int(swap_mib) * MiB
 
 
-def tmp_size(disk):
+def tmp_size(disk: int) -> int:
     """Returns the tmp partition size in bytes."""
     tmp_gib = max(5, math.sqrt(disk))
     return int(tmp_gib) * GiB
 
 
-def iproute2_json(log, args):
+def iproute2_json(log: BoundLogger, args: list[str]) -> list[RouteDict]:
     cmd = "ip -j {}".format(" ".join(args))
     data = util.cmd(cmd, log, encoding="utf-8")
-    return json.loads(data) if data else None
+    return json.loads(data) if data else []
 
 
 # The iteration order of items in a set is non-deterministic which is
 # a problem the integration tests
-def sorted_ipset(items):
-    return sorted(items, key=lambda x: (x.version, x.ip))
+def sorted_ipset(
+    items: Iterable[IPv4Interface | IPv6Interface],
+) -> Iterable[IPv4Interface | IPv6Interface]:
+    def key(
+        x: IPv4Interface | IPv6Interface,
+    ) -> tuple[int, IPv4Address | IPv6Address]:
+        return (x.version, x.ip)
+
+    return sorted(items, key=key)
 
 
 class Agent(object):
@@ -375,9 +422,12 @@ class Agent(object):
 
     ceph_attach_on_enter = True
 
+    enc: EncDict | None
+    cfg: EncParametersDict
+
     network_hooks: dict[str, str]
 
-    def __init__(self, name, enc=None):
+    def __init__(self, name: str, enc: EncDict | None = None):
         # Update configuration values from system or test config.
         self.log = log.bind(machine=name)
 
@@ -420,7 +470,7 @@ class Agent(object):
             / f"{self.cfg['resource_group']}.json"
         )
 
-    def _load_enc(self) -> dict[str, Any] | None:
+    def _load_enc(self) -> EncDict | None:
         try:
             with self.config_file.open() as f:
                 return yaml.safe_load(f)
@@ -470,7 +520,7 @@ class Agent(object):
 
     @classmethod
     def report_supported_cpu_models(cls):
-        variations = []
+        variations: list[str] = []
         for variation in scan_cpus():
             log.info(
                 "supported-cpu-model",
@@ -587,7 +637,7 @@ class Agent(object):
 
         d = directory.connect()
         host = socket.gethostname()
-        for attempt in range(3):
+        for _ in range(3):
             log.info("request-evacuation")
             evacuated = d.evacuate_vms(host)
             if not evacuated:
@@ -668,7 +718,7 @@ class Agent(object):
 
         Runs the shutdowns in parallel to speed up host reboots.
         """
-        vms = []
+        vms: list[Agent] = []
 
         for vm in cls._vm_agents_for_host():
             with vm:
@@ -705,7 +755,7 @@ class Agent(object):
                 else:
                     print("Please type 'yes' or 'no'.")
 
-        def stop_vm(vm):
+        def stop_vm(vm: Agent):
             # Isolate the stop call into separate fc-qemu
             # processes to ensure reliability.
             log.info("shutdown", vm=vm.name)
@@ -736,8 +786,8 @@ class Agent(object):
         """
         vms = list(cls._vm_agents_for_host())
 
-        large_overhead_vms = []
-        swapping_vms = []
+        large_overhead_vms: list[Agent] = []
+        swapping_vms: list[Agent] = []
         total_guest_and_overhead = 0
         expected_guest_and_overhead = 0
 
@@ -766,7 +816,7 @@ class Agent(object):
                 if vm_mem.pss > expected_size:
                     large_overhead_vms.append(vm)
 
-        output = []
+        output: list[str] = []
         result = OK
         if large_overhead_vms:
             result = WARNING
@@ -804,7 +854,7 @@ class Agent(object):
 
         return result
 
-    def stage_new_config(self):
+    def stage_new_config(self) -> bool:
         """Save the current config on the agent into a staging config file.
 
         This method is safe to call outside of the agent's context manager.
@@ -1048,10 +1098,15 @@ class Agent(object):
         for c in self.contexts:
             c.__enter__()
 
-    def __exit__(self, exc_value, exc_type, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ):
         for c in self.contexts:
             try:
-                c.__exit__(exc_value, exc_type, exc_tb)
+                c.__exit__(exc_type, exc_val, exc_tb)
             except Exception:
                 self.log.exception("leave-subsystems", exc_info=True)
 
@@ -1130,7 +1185,7 @@ class Agent(object):
                 self.log.error(
                     "inconsistent-state", action="destroy", exc_info=True
                 )
-                self._destroy()
+                self.destroy()
 
     def cleanup_offline(self):
         if self.qemu.existing_run_files():
@@ -1186,7 +1241,7 @@ class Agent(object):
         # Ensure state
         agent_likely_ready = True
         if not self.qemu.is_running():
-            current_host = self._requires_inmigrate_from()
+            current_host = self.requires_inmigrate_from()
             if current_host:
                 self.log.info(
                     "ensure-state",
@@ -1236,7 +1291,7 @@ class Agent(object):
             self.mark_qemu_guest_properties()
             self.update_root_ssh_keys_cloudinit()
 
-    def _destroy(self, kill_supervisor=False):
+    def destroy(self, kill_supervisor: bool = False):
         timeout = TimeOut(15, interval=1, raise_on_timeout=False)
         self.log.info("destroy-vm", action="kill vm")
         try:
@@ -1276,7 +1331,7 @@ class Agent(object):
             self.log.error("ensure-thawed-failed", reason=str(e))
 
     def mark_qemu_guest_properties(self):
-        props = {
+        props: GuestPropertiesDict = {
             "binary_generation": self.binary_generation,
             "cpu_model": self.cfg["cpu_model"],
             "rbd_pool": self.cfg["rbd_pool"],
@@ -1427,19 +1482,13 @@ class Agent(object):
             )
 
             try:
-                current_v4 = (
-                    iproute2_json(
-                        self.log,
-                        ["-4", "route", "show", "vrf", vrfname, "dev", ifname],
-                    )
-                    or []
+                current_v4 = iproute2_json(
+                    self.log,
+                    ["-4", "route", "show", "vrf", vrfname, "dev", ifname],
                 )
-                current_v6 = (
-                    iproute2_json(
-                        self.log,
-                        ["-6", "route", "show", "vrf", vrfname, "dev", ifname],
-                    )
-                    or []
+                current_v6 = iproute2_json(
+                    self.log,
+                    ["-6", "route", "show", "vrf", vrfname, "dev", ifname],
                 )
 
                 current_routes = {
@@ -1517,7 +1566,7 @@ class Agent(object):
                     exc_info=True,
                 )
 
-    def ensure_watchdog(self, action="none"):
+    def ensure_watchdog(self, action: WatchDogActions = "none"):
         """Ensure watchdog settings."""
         self.log.info("ensure-watchdog", action=action)
         self.qemu.watchdog_action(action)
@@ -1619,7 +1668,7 @@ class Agent(object):
 
     @locked()
     @running(True)
-    def snapshot(self, snapshot, keep=0):
+    def snapshot(self, snapshot: str, keep: int = 0):
         """Guarantees a _consistent_ snapshot to be created.
 
         If we can't properly freeze the VM then whoever needs a (consistent)
@@ -1721,9 +1770,9 @@ class Agent(object):
     @locked()
     @running(True)
     def kill(self):
-        self._destroy(kill_supervisor=True)
+        self.destroy(kill_supervisor=True)
 
-    def _requires_inmigrate_from(self) -> Optional[str]:
+    def requires_inmigrate_from(self) -> Optional[str]:
         """Check whether an inmigration makes sense.
 
         This makes sense if the VM isn't running locally and (Consul knows
@@ -1879,7 +1928,7 @@ class Agent(object):
 
         vhost = '  vhost = "on"' if self.vhost else ""
 
-        netconfig = []
+        netconfig: list[str] = []
         for net, net_config in sorted(self.cfg["interfaces"].items()):
             ifname = f"t{net}{self.cfg['id']}"
 

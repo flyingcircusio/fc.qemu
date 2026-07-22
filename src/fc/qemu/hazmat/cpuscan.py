@@ -1,8 +1,8 @@
 import itertools
 import os
 import subprocess
+from typing import Iterable, Optional
 
-from fc.qemu.timeout import TimeOut, TimeoutError
 from fc.qemu.util import log
 
 from .qemu import Qemu
@@ -11,19 +11,19 @@ FNULL = open(os.devnull, "w")
 
 
 class Model(object):
-    def __init__(self, architecture, identifier, description):
+    def __init__(self, architecture: str, identifier: str, description: str):
         self.architecture = architecture
         self.identifier = identifier
         self.description = description
 
 
 class Variation(object):
-    def __init__(self, model: Model, flags):
+    def __init__(self, model: Model, flags: Iterable[str]):
         self.model = model
         self.flags = tuple(sorted(set(flags)))
 
     @property
-    def cpu_arg(self):
+    def cpu_arg(self) -> str:
         return ",".join((self.model.identifier,) + self.flags)
 
 
@@ -106,29 +106,29 @@ class IntelHost(QemuHost):
     ]
 
 
-def scan_cpus(host=None):
+def scan_cpus(host: Optional["QemuHost"] = None) -> list[Variation]:
     if host is None:
         host = QemuHost.detect()
 
-    models = []
+    models: list[Model] = []
     for identifier in host.CPU_MODELS:
         models.append(Model("x86", identifier, ""))
 
     # Determine combinations with additional desirable flags
     desirable_flags = host.BUG_FLAGS
-    desirable_combinations = []
+    desirable_combinations: list[tuple[str, ...]] = []
     for L in range(0, len(desirable_flags) + 1):
         desirable_combinations.extend(
             itertools.combinations(desirable_flags, L)
         )
 
-    variations = []
+    variations: list[Variation] = []
 
     for model in models:
         for combination in desirable_combinations:
             variations.append(Variation(model, combination))
 
-    valid_models = []
+    valid_models: list[Variation] = []
 
     for variation in variations:
         log.debug(

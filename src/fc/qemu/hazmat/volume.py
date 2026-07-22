@@ -7,25 +7,31 @@ base class for both volumes and snapshots.
 
 import contextlib
 import subprocess
+from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 import fc.qemu.hazmat.libceph as libceph
+from fc.qemu.typing import SnapshotInfo
 
 from ..timeout import TimeOut
 from ..util import cmd, remove_empty_dirs
 
+if TYPE_CHECKING:
+    # Only for annotations: ceph imports libceph which imports this module.
+    from fc.qemu.hazmat.ceph import Ceph
 
-class Image(object):
+
+class Image(ABC):
     """Abstract base class for all images (volumes and snapshots)."""
 
     device: Optional[Path] = None
     mountpoint: Optional[Path] = None
     part1dev: Optional[Path] = None
 
-    _image = None
+    _image: Optional[libceph.Image] = None
 
-    def __init__(self, ceph, ioctx, name):
+    def __init__(self, ceph: "Ceph", ioctx: libceph.Ioctx, name: str):
         self.ceph = ceph
         self.ioctx = ioctx
         self.name = name
@@ -34,17 +40,21 @@ class Image(object):
         self._part1dev = None
         # `self.log` is re-bound by the subclasses after calling us, so we
         # have to look it up lazily.
-        self.cmd = lambda cmdline: cmd(cmdline, log=self.log)
+        self.cmd: Callable[[str], str] = lambda cmdline: cmd(
+            cmdline, log=self.log
+        )
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.fullname
 
     @property
-    def rbdimage(self):  # pragma: no cover
+    @abstractmethod
+    def rbdimage(self) -> libceph.Image:
         raise NotImplementedError
 
     @property
-    def fullname(self):  # pragma: no cover
+    @abstractmethod
+    def fullname(self) -> str:
         raise NotImplementedError
 
     def wait_for_part1dev(self):
@@ -136,6 +146,7 @@ class Image(object):
             must_unmap = True
         self.mount()
         try:
+            assert self.mountpoint
             yield self.mountpoint
         finally:
             self.umount()
@@ -146,7 +157,7 @@ class Image(object):
 class Snapshots(object):
     """Container for all snapshots of a Volume."""
 
-    def __init__(self, volume):
+    def __init__(self, volume: "Volume"):
         self.vol = volume
         self.log = self.vol.log
 
@@ -160,13 +171,13 @@ class Snapshots(object):
     def __len__(self):
         return len(list(self._list_snaps()))
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str):
         for s in self._list_snaps():
             if key == s["name"]:
                 return Snapshot(self.vol, s["name"], s["id"], s["size"])
         raise KeyError(key)
 
-    def _list_snaps(self):
+    def _list_snaps(self) -> list[SnapshotInfo]:
         try:
             return self.vol.rbdimage.list_snaps()
         except libceph.ImageNotFound:
@@ -182,7 +193,7 @@ class Snapshots(object):
             )
             snapshot.remove()
 
-    def create(self, snapname):
+    def create(self, snapname: str):
         self.log.info(
             "create-snapshot", volume=self.vol.fullname, snapshot=snapname
         )
@@ -192,7 +203,7 @@ class Snapshots(object):
 class Snapshot(Image):
     """Single snapshot of a Volume."""
 
-    def __init__(self, volume, snapname, id, snapsize):
+    def __init__(self, volume: "Volume", snapname: str, id: str, snapsize: int):
         super(Snapshot, self).__init__(volume.ceph, volume.ioctx, volume.name)
         self.vol = volume
         self.snapname = snapname
@@ -201,7 +212,7 @@ class Snapshot(Image):
         self.log = volume.log.bind(snapshot=snapname)
 
     @property
-    def rbdimage(self):
+    def rbdimage(self) -> libceph.Image:
         if self._image is None:
             self._image = libceph.Image(self.ioctx, self.name, self.snapname)
         return self._image
@@ -222,7 +233,7 @@ class Volume(Image):
     # ENC parameters which should be seeded at boot-time into the VM
     ENC_SEED_PARAMETERS = ["cpu_model", "rbd_pool"]
 
-    def __init__(self, ceph, ioctx, name):
+    def __init__(self, ceph: "Ceph", ioctx: libceph.Ioctx, name: str):
         super(Volume, self).__init__(ceph, ioctx, name)
         self.log = ceph.log.bind(volume=self.fullname)
         self.snapshots = Snapshots(self)
@@ -238,7 +249,7 @@ class Volume(Image):
     def close(self):
         if self._image:
             self._image.close()
-        self.ceph._clean_volume(self)
+        self.ceph.clean_volume(self)
 
     @property
     def fullname(self):
@@ -249,7 +260,7 @@ class Volume(Image):
         """Image size in Bytes."""
         return self.rbdimage.size()
 
-    def ensure_size(self, size):
+    def ensure_size(self, size: int):
         # The existing size must be considered as a minimum, because we can't
         # just reduce images that already exist and are bigger and expect them
         # to work properly.
@@ -311,10 +322,10 @@ class Volume(Image):
             return None
         if not len(lockers) == 1:
             raise NotImplementedError("I'm not prepared for shared locks")
-        client_id, lock_id, addr = lockers[0]
+        client_id, lock_id, _addr = lockers[0]
         return client_id, lock_id
 
-    def unlock(self, force=False):
+    def unlock(self, force: bool = False):
         locked_by = self.lock_status()
         if not locked_by:
             return

@@ -3,13 +3,29 @@
 # repository for complete details.
 # The ConsoleRenderer is based on structlog.dev.ConsoleRenderer
 
-
 import os
 import sys
 from io import StringIO
 from pathlib import Path
+from typing import Any, Callable, TextIO, TypedDict, cast
 
 import structlog
+from structlog.typing import WrappedLogger
+
+
+class EventDict(TypedDict, total=False):
+    pid: int
+    level: str
+    machine: str
+    subsystem: str
+    logger: str
+    event: str
+    args: list[str]
+    output: str
+    output_line: str
+    stack: str
+    exception: str
+
 
 try:
     import colorama
@@ -23,8 +39,13 @@ _MISSING = (
 )
 _EVENT_WIDTH = 30  # pad the event name to so many characters
 
+NULL_LOGGER = structlog.wrap_logger(
+    structlog.testing.ReturnLogger(),  # returns its args, writes nowhere
+    processors=[],  # skip formatting work entirely
+)
 
-def _pad(s, target_length):
+
+def _pad(s: str, target_length: int):
     """
     Pads *s* to length *l*.
     """
@@ -33,7 +54,7 @@ def _pad(s, target_length):
 
 
 class TTYCodes:
-    def __init__(self, disabled=False):
+    def __init__(self, disabled: bool = False):
         if not disabled and sys.stdout.isatty() and colorama:
             self.colorized_tty_output = True
             self.reset_all = colorama.Style.RESET_ALL
@@ -64,16 +85,16 @@ TTY_CODES = TTYCodes(disabled=bool(int(os.environ.get("FCQEMU_NO_TTY", 0))))
 
 
 class MultiOptimisticLoggerFactory(object):
-    def __init__(self, **factories):
+    def __init__(self, **factories: Callable[..., Any]):
         self.factories = factories
 
-    def __call__(self, *args):
+    def __call__(self, *args: Any):
         loggers = {k: f() for k, f in list(self.factories.items())}
         return MultiOptimisticLogger(loggers)
 
 
 class MultiOptimisticLogger(object):
-    def __init__(self, loggers):
+    def __init__(self, loggers: Any):
         self.loggers = loggers
 
     def __repr__(self) -> str:
@@ -81,7 +102,7 @@ class MultiOptimisticLogger(object):
             [repr(logger) for logger in self.loggers]
         )
 
-    def msg(self, **event_dict):
+    def msg(self, **event_dict: dict[str, str]) -> None:
         for name, logger in list(self.loggers.items()):
             try:
                 line = event_dict.get(name)
@@ -92,15 +113,15 @@ class MultiOptimisticLogger(object):
                 # to continue even if we face huge troubles logging stuff.
                 pass
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Callable[..., None]:
         return self.msg
 
 
-def prefix(prefix, line):
+def prefix(prefix: str, line: str) -> str:
     return "{}>\t".format(prefix) + line.replace("\n", "\n{}>\t".format(prefix))
 
 
-def format_value(value):
+def format_value(value: Any) -> str:
     if isinstance(value, Path):
         value = str(value)
     return repr(value)
@@ -122,7 +143,7 @@ class MultiConsoleRenderer(object):
         "debug",
     ]
 
-    def __init__(self, min_level, pad_event=_EVENT_WIDTH):
+    def __init__(self, min_level: str, pad_event: int = _EVENT_WIDTH):
         self.min_level = self.LEVELS.index(min_level.lower())
         if colorama is None:
             raise SystemError(
@@ -132,7 +153,7 @@ class MultiConsoleRenderer(object):
             colorama.init()
 
         self._pad_event = pad_event
-        self._level_to_color = {
+        self._level_to_color: dict[str, str] = {
             "critical": TTY_CODES.red,
             "exception": TTY_CODES.red,
             "error": TTY_CODES.red,
@@ -148,11 +169,17 @@ class MultiConsoleRenderer(object):
             max(self._level_to_color.keys(), key=lambda e: len(e))
         )
 
-    def __call__(self, logger, method_name, event_dict):
+    def __call__(
+        self,
+        logger: WrappedLogger,
+        method_name: str,
+        event_dict_: structlog.typing.EventDict,
+    ):
+        event_dict = cast(EventDict, event_dict_)
         console_io = StringIO()
         log_io = StringIO()
 
-        def write(line):
+        def write(line: str):
             console_io.write(line)
             if TTY_CODES.reset_all:
                 for SYMB in [
@@ -179,7 +206,7 @@ class MultiConsoleRenderer(object):
                 + " "
             )
 
-        pid = event_dict.pop("pid", None)
+        pid = event_dict.get("pid", None)
         if pid is not None:
             write(TTY_CODES.dim + str(pid) + TTY_CODES.reset_all + " ")
 
@@ -201,7 +228,7 @@ class MultiConsoleRenderer(object):
             write(subsystem.rjust(10)[:10] + " ")
 
         output = event_dict.pop("output", None)
-        output_line = event_dict.pop("output", None)
+        output_line = event_dict.pop("output_line", None)
         args = event_dict.pop("args", None)
         stack = event_dict.pop("stack", None)
         exc = event_dict.pop("exception", None)
@@ -266,7 +293,7 @@ class MultiConsoleRenderer(object):
         if stack is not None:
             write("\n" + prefix(machine, stack))
             if exc is not None:
-                write("\n\n" + prefix(machine, "=" * 79 + "\n"))
+                write("\n\n" + prefix(machine, ("=" * 79) + "\n"))
         if exc is not None:
             write("\n" + prefix(machine, exc))
 
@@ -279,17 +306,25 @@ class MultiConsoleRenderer(object):
         return {"console": console_io.getvalue(), "file": log_io.getvalue()}
 
 
-def method_to_level(logger, method_name, event_dict):
+def method_to_level(
+    logger: WrappedLogger,  # pyright: ignore[reportUnusedParameter]
+    method_name: str,
+    event_dict: structlog.typing.EventDict,
+):
     event_dict["level"] = method_name
     return event_dict
 
 
-def add_pid(logger, method_name, event_dict):
+def add_pid(
+    logger: WrappedLogger,  # pyright: ignore[reportUnusedParameter]
+    method_name: str,  # pyright: ignore[reportUnusedParameter]
+    event_dict: structlog.typing.EventDict,
+):
     event_dict["pid"] = os.getpid()
     return event_dict
 
 
-def init_logging(verbose=True, console_target=sys.stdout):
+def init_logging(verbose: bool = True, console_target: TextIO = sys.stdout):
     log_file = open("/var/log/fc-qemu.log", "a")
     structlog.configure(
         processors=[

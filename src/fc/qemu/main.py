@@ -1,11 +1,12 @@
 import os
 import os.path
 import sys
+from typing import IO, Any, Optional
 
 from .util import ControlledRuntimeException, ensure_separate_cgroup
 
 
-def daemonize(log=None):
+def daemonize(log: Optional[IO[Any]] = None) -> None:
     """
         Copyright/License abberation:
 
@@ -52,6 +53,8 @@ def daemonize(log=None):
     sys.stdout.flush()
     sys.stderr.flush()
     si = open("/dev/null", "r")
+    so: IO[Any]
+    se: IO[Any]
     if log:
         so = se = log
     else:
