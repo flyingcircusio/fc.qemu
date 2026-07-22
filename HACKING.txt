@@ -14,6 +14,10 @@ host1 $ sudo -i
 host1 $ run-tests
 ```
 
+Note: before interacting with fc-qemu live on a system, run the tests once to
+ensure live config (Ceph, networking, ...) that isn't managed properly by our
+NixOS layer is set up.
+
 If your Ceph setup becomes unclean/stuck, you can reboot `host1` or run (without rebooting):
 
 ```
