@@ -15,7 +15,7 @@ import typing
 from ipaddress import ip_interface
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import colorama
 import consulate
@@ -420,7 +420,7 @@ class Agent(object):
             / f"{self.cfg['resource_group']}.json"
         )
 
-    def _load_enc(self):
+    def _load_enc(self) -> dict[str, Any] | None:
         try:
             with self.config_file.open() as f:
                 return yaml.safe_load(f)
@@ -810,6 +810,8 @@ class Agent(object):
         This method is safe to call outside of the agent's context manager.
 
         """
+        assert self.enc is not None, "can't stage while missing current enc"
+
         # Ensure the config directory exists
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1010,6 +1012,7 @@ class Agent(object):
         # which is OK. We did this at some point and we're adding computed
         # data to the `cfg` structure, that we do not want to accidentally
         # reflect back into the config file.
+        assert self.enc
         self.cfg = copy.copy(self.enc["parameters"])
         self.cfg["name"] = self.enc["name"]
         self.cfg["root_size"] = self.cfg["disk"] * (1024**3)
@@ -1322,7 +1325,9 @@ class Agent(object):
     def ensure_online_disk_size(self):
         """Trigger block resize action for the root disk."""
         target_size = self.cfg["root_size"]
-        current_size = self.ceph.volumes["root"].size
+        root = self.ceph.volumes["root"]
+        assert root is not None, "root volume does not exist"
+        current_size = root.size
         if current_size >= target_size:
             self.log.info(
                 "check-disk-size",
@@ -1422,13 +1427,19 @@ class Agent(object):
             )
 
             try:
-                current_v4 = iproute2_json(
-                    self.log,
-                    ["-4", "route", "show", "vrf", vrfname, "dev", ifname],
+                current_v4 = (
+                    iproute2_json(
+                        self.log,
+                        ["-4", "route", "show", "vrf", vrfname, "dev", ifname],
+                    )
+                    or []
                 )
-                current_v6 = iproute2_json(
-                    self.log,
-                    ["-6", "route", "show", "vrf", vrfname, "dev", ifname],
+                current_v6 = (
+                    iproute2_json(
+                        self.log,
+                        ["-6", "route", "show", "vrf", vrfname, "dev", ifname],
+                    )
+                    or []
                 )
 
                 current_routes = {
@@ -1619,15 +1630,15 @@ class Agent(object):
         if keep:
             until = util.today() + datetime.timedelta(days=keep)
             snapshot = snapshot + "-keep-until-" + until.strftime("%Y%m%d")
-        if snapshot in [
-            x.snapname for x in self.ceph.volumes["root"].snapshots
-        ]:
+        root = self.ceph.volumes["root"]
+        assert root is not None, "root volume does not exist"
+        if snapshot in [x.snapname for x in root.snapshots]:
             self.log.info("snapshot-exists", snapshot=snapshot)
             return
         self.log.info("snapshot-create", name=snapshot)
         with self.frozen_vm() as frozen:
             if frozen:
-                self.ceph.volumes["root"].snapshots.create(snapshot)
+                root.snapshots.create(snapshot)
             else:
                 self.log.error("snapshot-ignore", reason="not frozen")
                 raise RuntimeError("VM not frozen, not making snapshot.")
@@ -1784,7 +1795,7 @@ class Agent(object):
     @locked()
     def lock(self):
         self.log.info("assume-all-locks")
-        for vol in self.ceph.volumes.values():
+        for vol in self.ceph.opened_volumes:
             vol.lock()
 
     @locked()

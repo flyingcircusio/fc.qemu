@@ -65,7 +65,7 @@ class QEMUMonitorProtocol:
             raise QMPConnectError
         # Greeting seems ok, negotiate capabilities
         resp = self.cmd("qmp_capabilities")
-        if "return" in resp:
+        if resp is not None and "return" in resp:
             return greeting
         raise QMPCapabilitiesError
 
@@ -99,12 +99,12 @@ class QEMUMonitorProtocol:
         """
 
         # Check for new events regardless and pull them into the cache:
-        self.__sock.setblocking(0)
+        self.__sock.setblocking(False)
         try:
             self.__json_read()
         except BlockingIOError:
             pass
-        self.__sock.setblocking(1)
+        self.__sock.setblocking(True)
 
         # Wait for new events, if needed.
         # if wait is 0.0, this means "no wait" and is also implicitly false.

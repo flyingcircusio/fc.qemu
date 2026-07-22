@@ -2,22 +2,22 @@ import json
 import os.path
 import urllib.parse
 import xmlrpc.client
+from typing import Literal
 
 
 def load_default_enc_json():
     if os.path.exists("/etc/nixos/enc.json"):
         with open("/etc/nixos/enc.json") as f:
             return json.load(f)
-    else:
-        with open("/etc/puppet/enc.json") as f:
-            data = json.load(f)
-        with open("/etc/directory.secret") as f:
-            data["parameters"]["directory_password"] = f.read().strip()
-        return data
-    raise RuntimeError("No ENC file found.")
+
+    with open("/etc/puppet/enc.json") as f:
+        data = json.load(f)
+    with open("/etc/directory.secret") as f:
+        data["parameters"]["directory_password"] = f.read().strip()
+    return data
 
 
-def connect(enc=None, ring=1):
+def connect(enc=None, ring: Literal["max", 0, 1] = 1):
     """Returns XML-RPC directory connection.
 
     The directory secret is read from `/etc/nixos/enc.json`.

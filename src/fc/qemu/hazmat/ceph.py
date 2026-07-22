@@ -586,6 +586,14 @@ class Ceph(object):
 
     CREATE_VM = None
 
+    # Injected from sysconfig.ceph in __init__().
+    CEPH_CLIENT: str
+    CEPH_CLUSTER: str
+    CEPH_CONF: str
+    CEPH_LOCK_HOST: str
+    MKFS_VFAT: str
+    MKFS_XFS: str
+
     # Those are two different representations of the disks/volumes we manage.
     # The can be treated from client code as well-known structures, so that
     # when the context manager is active then the keys 'root', 'tmp','swp'
@@ -611,7 +619,7 @@ class Ceph(object):
         # the original enc data
         self.enc = enc
 
-        self.rados = None
+        self.rados: Optional[libceph.Rados] = None
         self.ioctxs: Dict[str, libceph.Ioctx] = {}
         self.rbd = libceph.RBD()
 
@@ -649,6 +657,7 @@ class Ceph(object):
     def attach_volumes(self):
         if self.attached:
             return
+        assert self.rados is not None, "Ceph context manager is not active"
         # Keep open ioctx handles to all relevant pools.
         for pool_name in self.rados.list_pools():
             if not valid_rbd_pool_name(pool_name):
@@ -748,16 +757,15 @@ class Ceph(object):
 
     def locked_by_me(self):
         """Returns True if CEPH_LOCK_HOST holds locks for all volumes."""
-        if not list(self.opened_volumes):
+        volumes = list(self.opened_volumes)
+        if not volumes:
             # The images do not exist -> we don't hold locks.
             return False
-        try:
-            return all(
-                v.lock_status()[1] == self.CEPH_LOCK_HOST
-                for v in self.opened_volumes
-            )
-        except TypeError:  # status[1] not accessible
-            return False
+        for volume in volumes:
+            status = volume.lock_status()
+            if status is None or status[1] != self.CEPH_LOCK_HOST:
+                return False
+        return True
 
     def locked_by(self):
         """Returns a hostname holding all locks or None if not locked.
@@ -765,9 +773,11 @@ class Ceph(object):
         Raises ValueError if not all locks are held by same owner.
 
         """
-        lock_owners = set(
-            v.lock_status()[1] for v in self.opened_volumes if v.lock_status()
-        )
+        lock_owners = set()
+        for volume in self.opened_volumes:
+            status = volume.lock_status()
+            if status:
+                lock_owners.add(status[1])
         if not lock_owners:
             return None
         if len(lock_owners) != 1:
@@ -813,6 +823,7 @@ class Ceph(object):
             # This order needs to stay stable to support the auth cookie
             # between old and new versions of fc.qemu
             vol = self.volumes[key]
+            assert vol is not None, f"volume {key} does not exist"
             status = [vol.name]
             lock = vol.lock_status()
             if lock:

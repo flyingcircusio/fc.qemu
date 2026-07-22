@@ -67,7 +67,7 @@ class IncomingServer(object):
         self.consul = agent.consul
         self.had_contact = False
 
-    _now = time.time
+    _now = staticmethod(time.time)
 
     @contextlib.contextmanager
     def inmigrate_service_registered(self):
@@ -109,7 +109,8 @@ class IncomingServer(object):
         # method on the API which will cause a reset of the timeout before
         # it is checked the next time.
         s.timeout = 15
-        s._send_traceback_header = True
+        # Not declared in typeshed, but supported by SimpleXMLRPCServer.
+        s._send_traceback_header = True  # pyright: ignore[reportAttributeAccessIssue]
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()
         with self.inmigrate_service_registered():

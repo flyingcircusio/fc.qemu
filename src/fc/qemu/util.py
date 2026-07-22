@@ -12,13 +12,14 @@ import tempfile
 import time
 from typing import IO, Any, Callable, Dict, List, TypeVar
 
+import structlog.stdlib
 from pydantic import BaseModel
 from structlog import get_logger
 
 MiB = 2**20
 GiB = 2**30
 
-log = get_logger()
+log: structlog.stdlib.BoundLogger = get_logger()
 
 # Test harnesses
 log_data: List[str]
@@ -95,11 +96,11 @@ def remove_empty_dirs(d):
 
 
 def cmd(
-    cmdline,
-    log,
+    cmdline: str,
+    log: structlog.stdlib.BoundLogger,
     encoding="ascii",
     errors="replace",
-    timeout=None,
+    timeout: int | None = None,
     log_error_verbose=True,
 ):
     """Execute cmdline with stdin closed to avoid questions on terminal"""
@@ -120,6 +121,7 @@ def cmd(
         )
         # This allows for more interactive logging and capturing
         # stdout in unit tests even if we get stuck.
+        assert proc.stdout is not None
         stdout = ""
         while True:
             line = proc.stdout.readline()

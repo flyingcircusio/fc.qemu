@@ -546,7 +546,7 @@ def named_vm(name, request, clean_environment, monkeypatch, tmpdir):
     def cleanup():
         if p := vm.qemu.proc():
             parent = p.parent()
-            if "supervised-qemu-wrapped" in parent.cmdline()[1]:
+            if parent and "supervised-qemu-wrapped" in parent.cmdline()[1]:
                 parent.terminate()
             p.terminate()
 

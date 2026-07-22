@@ -34,3 +34,7 @@ repos:
   rev: v0.9.1
   hooks:
     - id: keep-sorted
+- repo: https://github.com/DetachHead/basedpyright-pre-commit-mirror
+  rev: 1.37.1 # or whatever the latest version is at the time
+  hooks:
+    - id: basedpyright

@@ -6,9 +6,11 @@ class TimeoutError(RuntimeError):
 
 
 class TimeOut(object):
-    _now = time.time
+    _now = staticmethod(time.time)
 
-    def __init__(self, timeout, interval=1, raise_on_timeout=False, log=None):
+    def __init__(
+        self, timeout, interval: float = 1, raise_on_timeout=False, log=None
+    ):
         self.cutoff = self._now() + timeout
         self.interval = interval
         self.timed_out = False

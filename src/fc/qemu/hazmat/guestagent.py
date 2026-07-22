@@ -2,6 +2,7 @@ import fcntl
 import json
 import random
 import socket
+from typing import IO
 
 from ..util import log
 
@@ -20,16 +21,17 @@ class GuestAgent(object):
         self.machine = machine
         self.timeout = timeout
         self.log = log.bind(machine=machine, subsystem="qemu/guestagent")
-        self.file = None
+        self.file: IO[str] | None = None
 
         self.client_factory = client_factory
-        self.client = None
+        self.client: socket.socket | None = None
 
     def read(self, unwrap=True):
         """Reads single response from the GA and returns the result.
 
         Blocks and runs into a timeout if no response is available.
         """
+        assert self.file is not None, "not connected"
         try:
             result = self.file.readline()
         except socket.timeout:
@@ -59,6 +61,7 @@ class GuestAgent(object):
 
         """
         self.connect()
+        assert self.client is not None
         message = json.dumps({"execute": cmd, "arguments": args})
         message = message.encode("utf-8")
         self.log.debug("send", message=message)
@@ -69,6 +72,7 @@ class GuestAgent(object):
 
     def sync(self):
         """Ensures that request and response are in order."""
+        assert self.client is not None, "not connected"
 
         # Phase 1: ensure a low-level thaw command. This is an emergency safety
         # belt. We really do not want the VM to be accidentally stuck in a

@@ -32,6 +32,9 @@ class Image(object):
         self.log = ceph.log.bind(image=self.name)
         self.rbd = libceph.RBD()
         self._part1dev = None
+        # `self.log` is re-bound by the subclasses after calling us, so we
+        # have to look it up lazily.
+        self.cmd = lambda cmdline: cmd(cmdline, log=self.log)
 
     def __str__(self):
         return self.fullname
@@ -45,6 +48,7 @@ class Image(object):
         raise NotImplementedError
 
     def wait_for_part1dev(self):
+        assert self.device is not None, "image must be mapped"
         self.cmd(f"partprobe {self.device}")
         candidates = [
             self.device.with_name(self.device.name + "-part1"),
@@ -193,7 +197,6 @@ class Snapshot(Image):
         self.id = id
         self.size = snapsize
         self.log = volume.log.bind(snapshot=snapname)
-        self.cmd = lambda cmdline: cmd(cmdline, self.log)
 
     @property
     def rbdimage(self):
@@ -220,7 +223,6 @@ class Volume(Image):
     def __init__(self, ceph, ioctx, name):
         super(Volume, self).__init__(ceph, ioctx, name)
         self.log = ceph.log.bind(volume=self.fullname)
-        self.cmd = lambda cmdline: cmd(cmdline, log=self.log)
         self.snapshots = Snapshots(self)
         self.locked_by_me = False
         self._image = None

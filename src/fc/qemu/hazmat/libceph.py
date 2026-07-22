@@ -12,6 +12,7 @@ import shlex
 import subprocess
 import time
 from pathlib import Path
+from typing import Any
 
 from fc.qemu import util
 
@@ -29,7 +30,7 @@ class ImageExists(Exception):
 
 
 class Rados:
-    POOLS_CACHE = []  # mutable on purpose as a global cache.
+    POOLS_CACHE: list[str] = []  # mutable on purpose as a global cache.
 
     def __init__(self, conffile, name, log):
         self.conffile = conffile
@@ -42,7 +43,7 @@ class Rados:
             self._ioctx[pool] = Ioctx(self, pool)
         return self._ioctx[pool]
 
-    def _ceph(self, *args, use_json=True):
+    def _ceph(self, *args, use_json=True) -> Any:
         shargs = shlex.join(args)
         format_arg = "--format json" if use_json else ""
         result = util.cmd(
@@ -54,7 +55,7 @@ class Rados:
             result = json.loads(result)
         return result
 
-    def _rbd(self, *args, use_json=True):
+    def _rbd(self, *args, use_json=True) -> Any:
         shargs = shlex.join(args)
         format_arg = "--format json" if use_json else ""
         result = util.cmd(

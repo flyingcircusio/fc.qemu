@@ -11,10 +11,6 @@ FNULL = open(os.devnull, "w")
 
 
 class Model(object):
-    architecture = None
-    identifier = None
-    description = None
-
     def __init__(self, architecture, identifier, description):
         self.architecture = architecture
         self.identifier = identifier
@@ -22,10 +18,7 @@ class Model(object):
 
 
 class Variation(object):
-    model = None
-    flags = ()
-
-    def __init__(self, model, flags):
+    def __init__(self, model: Model, flags):
         self.model = model
         self.flags = tuple(sorted(set(flags)))
 
@@ -35,8 +28,12 @@ class Variation(object):
 
 
 class QemuHost(object):
+    vendor: str
+    CPU_MODELS: list[str] = []
+    BUG_FLAGS: list[str] = []
+
     @classmethod
-    def detect(self):
+    def detect(cls) -> "QemuHost":
         for line in open("/proc/cpuinfo"):
             if not line.startswith("vendor_id"):
                 continue
@@ -46,8 +43,7 @@ class QemuHost(object):
                 if host.vendor == vendor:
                     return host()
             break
-        else:
-            raise RuntimeError("Could not determine CPU vendor.")
+        raise RuntimeError("Could not determine CPU vendor.")
 
 
 class AbstractHost(QemuHost):

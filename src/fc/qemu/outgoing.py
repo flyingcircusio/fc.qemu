@@ -3,6 +3,7 @@ import random
 import threading
 import time
 import xmlrpc.client
+from typing import Any
 
 from .exc import ConfigChanged
 from .timeout import TimeOut
@@ -85,7 +86,8 @@ class Heartbeat(object):
 
 class Outgoing(object):
     migration_exitcode = None
-    target = None
+    # An `xmlrpc.client.ServerProxy` dispatching dynamically, so `Any`.
+    target: Any = None
     cookie = None
 
     # How long to wait until we discover an inmigrate service?
@@ -157,7 +159,7 @@ class Outgoing(object):
                 self.log.exception(
                     "rescue-failed", exc_info=True, action="destroy"
                 )
-                self.destroy()
+                self.agent._destroy()
 
     def locate_inmigrate_service(self):
         service_name = "vm-inmigrate-" + self.name

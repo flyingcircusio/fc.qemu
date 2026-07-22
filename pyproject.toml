@@ -74,3 +74,14 @@ entry_title_template = ""
 rst_header_chars = "-~"
 insert_marker = "- Nothing changed yet."
 categories = ""
+
+[tool.basedpyright]
+typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"
+exclude = [
+    # keep-sorted start
+    "batou/**",
+    "tests/**",
+    # keep-sorted end
+]
