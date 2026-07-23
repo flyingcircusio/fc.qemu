@@ -81,7 +81,24 @@ class TTYCodes:
             self.green = ""
 
 
-TTY_CODES = TTYCodes(disabled=bool(int(os.environ.get("FCQEMU_NO_TTY", 0))))
+def parse_environ_bool(env: str):
+    env = env.lower()
+    if env in ["yes", "true"]:
+        return True
+    if env in ["no", "false"]:
+        return False
+    try:
+        env_i = int(env)
+    except ValueError:
+        return False
+    else:
+        return bool(env_i)
+    return bool(env)
+
+
+TTY_CODES = TTYCodes(
+    disabled=parse_environ_bool(os.environ.get("FCQEMU_NO_TTY", ""))
+)
 
 
 class MultiOptimisticLoggerFactory(object):
@@ -206,7 +223,7 @@ class MultiConsoleRenderer(object):
                 + " "
             )
 
-        pid = event_dict.get("pid", None)
+        pid = event_dict.pop("pid", None)
         if pid is not None:
             write(TTY_CODES.dim + str(pid) + TTY_CODES.reset_all + " ")
 
@@ -228,7 +245,7 @@ class MultiConsoleRenderer(object):
             write(subsystem.rjust(10)[:10] + " ")
 
         output = event_dict.pop("output", None)
-        output_line = event_dict.pop("output_line", None)
+        event_dict.pop("output_line", None)  # only used during testing
         args = event_dict.pop("args", None)
         stack = event_dict.pop("stack", None)
         exc = event_dict.pop("exception", None)
@@ -273,14 +290,6 @@ class MultiConsoleRenderer(object):
                     + prefix(machine, event + " " + "".join(args))
                     + TTY_CODES.reset_all
                 )
-
-        if output_line:
-            write(
-                "\n"
-                + TTY_CODES.dim
-                + prefix(machine, output_line)
-                + TTY_CODES.reset_all
-            )
 
         if output is not None:
             write(

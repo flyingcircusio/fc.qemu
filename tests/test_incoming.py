@@ -1,12 +1,13 @@
 import mock
 import pytest
 
+from fc.qemu.agent import Agent
 from fc.qemu.exc import MigrationError
 from fc.qemu.incoming import IncomingAPI, IncomingServer
 
 
 @pytest.fixture
-def mock_agent():
+def mock_agent() -> Agent:
     agent = mock.Mock()
     agent.migration_ctl_address = "localhost:12345"
     agent.qemu = mock.Mock()
@@ -15,24 +16,24 @@ def mock_agent():
     return agent
 
 
-def test_prepare_should_stop_ceph_on_exception(mock_agent):
+def test_prepare_should_stop_ceph_on_exception(mock_agent: mock.Mock):
     mock_agent.qemu.inmigrate.side_effect = Exception("boom!")
     s = IncomingServer(mock_agent)
     with pytest.raises(Exception):
-        s.prepare_incoming("args", "config")
+        s.prepare_incoming(["args"], "config")
     assert mock_agent.ceph.stop.called is True
 
 
-def test_rescue(mock_agent):
+def test_rescue(mock_agent: mock.Mock):
     s = IncomingServer(mock_agent)
     mock_agent.ceph.lock.side_effect = Exception("boom!")
     with pytest.raises(Exception):
         s.rescue()
-    assert mock_agent._destroy.called is True
+    assert mock_agent.destroy.called is True
 
 
 @mock.patch("fc.qemu.incoming.IncomingServer")
-def test_authentication_match(server):
+def test_authentication_match(server: IncomingServer):
     api = IncomingAPI(server)
     api.cookie = "cookie1"
     # should not raise an exception
@@ -40,14 +41,14 @@ def test_authentication_match(server):
 
 
 @mock.patch("fc.qemu.incoming.IncomingServer")
-def test_authentication_mismatch(server):
+def test_authentication_mismatch(server: IncomingServer):
     api = IncomingAPI(server)
     api.cookie = "cookie1"
     with pytest.raises(MigrationError):
         assert api.ping("cookie-does-not-match") is None
 
 
-def test_screen_config_disable_iommu(mock_agent):
+def test_screen_config_disable_iommu(mock_agent: Agent):
     s = IncomingServer(mock_agent)
     assert (
         s.screen_config(
@@ -69,7 +70,7 @@ def test_screen_config_disable_iommu(mock_agent):
     )
 
 
-def test_screen_args_rewrites_chroot_and_runas(mock_agent):
+def test_screen_args_rewrites_chroot_and_runas(mock_agent: Agent):
     s = IncomingServer(mock_agent)
     assert s.screen_args(
         [
@@ -86,7 +87,7 @@ def test_screen_args_rewrites_chroot_and_runas(mock_agent):
     ]
 
 
-def test_screen_args_passes_modern_args_through(mock_agent):
+def test_screen_args_passes_modern_args_through(mock_agent: Agent):
     s = IncomingServer(mock_agent)
     args = [
         "-nodefaults",

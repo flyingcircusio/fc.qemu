@@ -43,6 +43,12 @@ VolumeSizeKey = Literal["cidata_size", "root_size", "swap_size", "tmp_size"]
 class RouteDict(TypedDict):
     dst: str
     gateway: NotRequired[str]
+    dev: NotRequired[str]
+    scope: NotRequired[str]
+    flags: list[str]
+    protocol: NotRequired[str]
+    pref: NotRequired[str]
+    metric: NotRequired[int]
 
 
 class DefaultRouteDict(TypedDict):
@@ -110,8 +116,19 @@ class GuestPropertiesDict(TypedDict):
 
 class SupportsLocalLock(Protocol):
     # keep-sorted: start
-    lock_file: Path
     log: BoundLogger
     lock_file_fd: int | None
     lock_count: int
+    # keep-sorted: end
+
+    @property
+    def lock_file(self) -> Path: ...
+
+
+class SupportsGlobalLock(Protocol):
+    # keep-sorted: start
+    prefix: Path
+    log: BoundLogger
+    global_lock_fd: int | None
+    global_lock_count: int
     # keep-sorted: end

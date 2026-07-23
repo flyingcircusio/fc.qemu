@@ -130,6 +130,7 @@ def cmd(
     prefix = cmdline.split()[0]
     args = " ".join(cmdline.split()[1:])
     log.debug(prefix, args=args)
+    # unique tracer to allow the logger to only show output_line and output once
     with open("/dev/null") as null:
         proc = subprocess.Popen(
             cmdline,
@@ -148,7 +149,10 @@ def cmd(
             line = proc.stdout.readline()
             if line:
                 # This ensures we get partial output in case of test failures
-                log.debug(os.path.basename(prefix), output_line=line)
+                log.debug(
+                    os.path.basename(prefix),
+                    output_line=line,
+                )
                 stdout += line
             else:
                 break

@@ -3,8 +3,14 @@ import functools
 import re
 import time
 import xmlrpc.server
-from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable, Protocol
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Concatenate,
+    ParamSpec,
+    Protocol,
+    TypeVar,
+)
 
 import consulate.models.agent
 from structlog import BoundLogger
@@ -23,11 +29,18 @@ class SupportsAuthentication(Protocol):
     log: BoundLogger
 
 
-def authenticated(f: Callable[..., Any]):
+P = ParamSpec("P")
+R = TypeVar("R")
+S = TypeVar("S", bound=SupportsAuthentication)
+
+
+def authenticated(
+    f: Callable[Concatenate[S, P], R],
+) -> Callable[Concatenate[S, str, P], R]:
     """Decorator to express that authentication is required."""
 
     @functools.wraps(f)
-    def wrapper(self: SupportsAuthentication, cookie: str, *args: Any):
+    def auth(self: S, cookie: str, *args: P.args, **kw: P.kwargs) -> R:
         if cookie != self.cookie:
             self.log.debug(
                 "authentication-cookie-mismatch",
@@ -35,27 +48,29 @@ def authenticated(f: Callable[..., Any]):
                 received_cookie=cookie,
             )
             raise MigrationError("authentication cookie mismatch")
-        return f(self, *args)
+        return f(self, *args, **kw)
 
-    return wrapper
-
-
-class ServerWithTimeoutReset(ABC):
-    @abstractmethod
-    def extend_cutoff_time(self, soft_timeout: int): ...
+    return auth
 
 
 class SupportsTimeoutReset(Protocol):
-    server: ServerWithTimeoutReset
+    server: "IncomingServer"
     log: BoundLogger
 
 
-def reset_timeout(f: Callable[..., Any]):
+P1 = ParamSpec("P1")
+R1 = TypeVar("R1")
+S1 = TypeVar("S1", bound=SupportsTimeoutReset)
+
+
+def reset_timeout(
+    f: Callable[Concatenate[S1, P1], R1],
+) -> Callable[Concatenate[S1, P1], R1]:
     """Reset the timeout when interacting with the wrapped method."""
 
     @functools.wraps(f)
-    def wrapper(self: SupportsTimeoutReset, *args: Any):
-        result = f(self, *args)
+    def wrapper(self: S1, *args: P1.args, **kw: P1.kwargs) -> R1:
+        result = f(self, *args, **kw)
         self.log.debug("reset-timeout")
         self.server.extend_cutoff_time(soft_timeout=60)
         return result

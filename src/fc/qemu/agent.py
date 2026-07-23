@@ -18,7 +18,9 @@ from types import TracebackType
 from typing import (
     Any,
     Callable,
+    Concatenate,
     Optional,
+    ParamSpec,
     Type,
     TypeVar,
     cast,
@@ -29,6 +31,7 @@ import consulate
 import consulate.models.agent
 import requests
 import yaml
+from structlog import BoundLogger
 
 from . import directory, util
 from .config import Config
@@ -260,12 +263,7 @@ def running(expected: bool = True):
     return wrap
 
 
-_R = TypeVar("_R")
-
-
-def locked(
-    blocking: bool = True,
-) -> Callable[[Callable[..., _R]], Callable[..., _R | int]]:
+def locked(blocking: bool = True):
     # This is thread-safe *AS LONG* as every thread uses a separate instance
     # of the agent. Using multiple file descriptors will guarantee that the
     # lock can only be held once even within a single process.
@@ -276,10 +274,13 @@ def locked(
     #
     # Note the `| int` in the return type: in non-blocking mode we bail out
     # with `os.EX_TEMPFAIL` instead of ever calling the wrapped function.
-    def lock_decorator(f: Callable[..., _R]) -> Callable[..., _R | int]:
-        def locked_func(
-            self: SupportsLocalLock, *args: Any, **kw: Any
-        ) -> _R | int:
+    P = ParamSpec("P")
+    S = TypeVar("S", bound=SupportsLocalLock)
+
+    def lock_decorator(
+        f: Callable[Concatenate[S, P], int | None],
+    ) -> Callable[Concatenate[S, P], int | None]:
+        def locked_func(self: S, *args: P.args, **kw: P.kwargs) -> int | None:
             # New lock file behaviour: lock with a global file that is really
             # only used for this purpose and is never replaced.
             self.log.debug("acquire-lock", target=str(self.lock_file))
@@ -351,6 +352,20 @@ def tmp_size(disk: int) -> int:
     return int(tmp_gib) * GiB
 
 
+class DummyAgent:
+    log: BoundLogger
+    lock_file_fd: int | None
+    lock_count: int
+
+    @property
+    def lock_file(self) -> Path:
+        return Path("/")
+
+    @locked()
+    def foo(self):
+        pass
+
+
 class Agent(object):
     """The agent to control a single VM."""
 
@@ -383,17 +398,6 @@ class Agent(object):
     # this may change independently from fc.qemu releases.
     binary_generation = 0
 
-    # For upgrade-purposes we're running an old and a new locking mechanism
-    # in step-lock. We used to lock the config file but we're using rename to
-    # update it atomically. That's not compatible and will result in a consul
-    # event replacing the file and then getting a lock on the new file while
-    # there still is another process running. This will result in problems
-    # accessing the QMP socket as that only accepts a single connection and
-    # will then time out.
-    _lock_count = 0
-    _lock_file_fd = None
-    _config_file_fd = None
-
     ceph_attach_on_enter = True
 
     cfg: EncParametersDict
@@ -404,6 +408,10 @@ class Agent(object):
 
     # Hazmat subsystems
     network: Network
+
+    # SupportsLocalLock protocol
+    lock_file_fd: int | None = None
+    lock_count: int = 0
 
     def __init__(self, name: str, enc: EncDict | None = None):
         # Update configuration values from system or test config.
@@ -437,7 +445,7 @@ class Agent(object):
         return self.prefix / "etc/qemu/vm" / f".{self.name}.cfg.staging"
 
     @property
-    def lock_file(self):
+    def lock_file(self) -> Path:
         return self.prefix / "run" / f"qemu.{self.name}.lock"
 
     @property
@@ -1580,7 +1588,7 @@ class Agent(object):
     # Alternatively we'd had to connect/disconnect and do weird things
     # for every single command ...
     @locked()
-    def status(self) -> int:
+    def status(self):
         """Determine status of the VM.
 
         Return value is a process exit code (0 = online, 1 = offline, 255 = error)

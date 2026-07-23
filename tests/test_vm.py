@@ -7,18 +7,21 @@ import shutil
 import subprocess
 import textwrap
 import time
+from typing import Callable
 
 import pytest
 import yaml
+from pytest_patterns.plugin import PatternsLib
 
 from fc.qemu import util
 from fc.qemu.agent import Agent, InvalidCommand, swap_size, tmp_size
+from fc.qemu.typing import RouteDict
 from fc.qemu.util import GiB, MiB
 from tests.conftest import get_log
 from tests.ellipsis import Ellipsis
 
 
-def clean_output(output):
+def clean_output(output: str):
     output = re.sub(
         r"^[a-zA-Z0-9\-:\. ]+ (E|C|I|D|W) ", "", output, flags=re.MULTILINE
     )
@@ -222,7 +225,7 @@ release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
 
 
 @pytest.mark.live
-def test_simple_vm_lifecycle_start_stop(vm, patterns):
+def test_simple_vm_lifecycle_start_stop(vm: Agent, patterns: PatternsLib):
     status = patterns.status
     status.continuous(
         """
@@ -935,7 +938,7 @@ def kernel_vrf_device():
 
 
 @pytest.fixture
-def kernel_tap_device(kernel_vrf_device):
+def kernel_tap_device(kernel_vrf_device: str):
     subprocess.run(["ip", "link", "delete", "taptest"])
     subprocess.check_call(["ip", "tuntap", "add", "taptest", "mode", "tap"])
     subprocess.check_call(["ip", "link", "set", "taptest", "master", "vrfpub"])
@@ -944,16 +947,16 @@ def kernel_tap_device(kernel_vrf_device):
     subprocess.check_call(["ip", "link", "delete", "taptest"])
 
 
-def manage_routes_for_vrf(vrfname):
-    def func(*args):
+def manage_routes_for_vrf(vrfname: str) -> Callable[..., None]:
+    def func(*args: str):
         subprocess.check_call(["ip", "route"] + list(args) + ["vrf", vrfname])
 
     return func
 
 
-def show_routes_for_vrf(vrfname):
-    def func():
-        routes = []
+def show_routes_for_vrf(vrfname: str) -> Callable[[], list[RouteDict]]:
+    def func() -> list[RouteDict]:
+        routes: list[RouteDict] = []
         for family in ["-4", "-6"]:
             data = subprocess.check_output(
                 ["ip", "-j", family, "route", "show", "vrf", vrfname]
@@ -970,24 +973,34 @@ def show_routes_for_vrf(vrfname):
     return func
 
 
-def route_json_v4(dst, iface, protocol: str | None = "fc-qemu", flags=[]):
-    data = {
+def route_json_v4(
+    dst: str,
+    iface: str,
+    protocol: str | None = "fc-qemu",
+    flags: list[str] = [],
+) -> RouteDict:
+    data: RouteDict = {
         "dst": dst,
         "dev": iface,
         "scope": "link",
-        "flags": flags,
+        "flags": list(flags),
     }
     if protocol:
         data["protocol"] = protocol
     return data
 
 
-def route_json_v6(dst, iface, protocol="fc-qemu", flags=[]):
-    data = {
+def route_json_v6(
+    dst: str,
+    iface: str,
+    protocol: str | None = "fc-qemu",
+    flags: list[str] = [],
+) -> RouteDict:
+    data: RouteDict = {
         "dst": dst,
         "dev": iface,
         "metric": 1024,
-        "flags": flags,
+        "flags": list(flags),
         "pref": "medium",
     }
     if protocol:
@@ -996,7 +1009,7 @@ def route_json_v6(dst, iface, protocol="fc-qemu", flags=[]):
 
 
 @pytest.mark.live
-def test_vm_host_routes(vm_with_pub, kernel_vrf_device):
+def test_vm_host_routes(vm_with_pub: Agent, kernel_vrf_device: str):
     vm = vm_with_pub
 
     manage_routes = manage_routes_for_vrf(kernel_vrf_device)
@@ -1012,36 +1025,38 @@ def test_vm_host_routes(vm_with_pub, kernel_vrf_device):
     assert get_log() == Ellipsis(
         """\
 ...
-ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
-ip args=... machine=simplepubvm
+ensure-routes action=start iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
+ip args=... machine=simplepubvm subsystem=network
 ip> ...
-ip machine=simplepubvm returncode=0
-ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=... machine=simplepubvm subsystem=network
 ip> ...
-ip machine=simplepubvm returncode=0
-ensure-routes action=reconciling current_routes=[] iface=tpub3456 machine=simplepubvm target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
-ip args=... machine=simplepubvm
-ip machine=simplepubvm returncode=0
-ip args=... machine=simplepubvm
-ip machine=simplepubvm returncode=0
-ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub
+ip machine=simplepubvm returncode=0 subsystem=network
+ensure-routes action=reconciling current_routes=[] iface=tpub3456 machine=simplepubvm subsystem=network target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
+ip args=... machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=... machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
 ..."""
     )
     assert show_routes() == [guest_v4, guest_v6]
 
     # ensure_online_host_routes() should be idempotent if nothing has
     # changed.
-    vm.ensure_online_host_routes()
+    vm.network.start()
     assert get_log() == Ellipsis(
         """\
-ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
-ip args=... machine=simplepubvm
+...
+ensure-routes action=start iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
+ip args=... machine=simplepubvm subsystem=network
 ip> ...
-ip machine=simplepubvm returncode=0
-ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=... machine=simplepubvm subsystem=network
 ip> ...
-ip machine=simplepubvm returncode=0
-ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+ip machine=simplepubvm returncode=0 subsystem=network
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
+..."""
     )
     assert show_routes() == [guest_v4, guest_v6]
 
@@ -1049,20 +1064,22 @@ ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
     manage_routes("delete", "2001:db8:0:42::23/128", "dev", "tpub3456")
     assert show_routes() == [guest_v4]
 
-    vm.ensure_online_host_routes()
+    vm.network.start()
     assert get_log() == Ellipsis(
         """\
-ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
-ip args=... machine=simplepubvm
+...
+ensure-routes action=start iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
+ip args=... machine=simplepubvm subsystem=network
 ip> ...
-ip machine=simplepubvm returncode=0
-ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=... machine=simplepubvm subsystem=network
 ip> ...
-ip machine=simplepubvm returncode=0
-ensure-routes action=reconciling current_routes=['192.0.2.23/32'] iface=tpub3456 machine=simplepubvm target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
-ip args=... machine=simplepubvm
-ip machine=simplepubvm returncode=0
-ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+ip machine=simplepubvm returncode=0 subsystem=network
+ensure-routes action=reconciling current_routes=['192.0.2.23/32'] iface=tpub3456 machine=simplepubvm subsystem=network target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
+ip args=... machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
+..."""
     )
     assert show_routes() == [guest_v4, guest_v6]
 
@@ -1075,59 +1092,105 @@ ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
         guest_v6,
     ]
 
-    vm.ensure_online_host_routes()
+    vm.network.start()
     assert get_log() == Ellipsis(
         """\
-ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
-ip args=... machine=simplepubvm
+...
+ensure-routes action=start iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
+ip args=... machine=simplepubvm subsystem=network
 ip> ...
-ip machine=simplepubvm returncode=0
-ip args=... machine=simplepubvm
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=... machine=simplepubvm subsystem=network
 ip> ...
-ip machine=simplepubvm returncode=0
-ensure-routes action=reconciling current_routes=['192.0.2.23/32', '192.0.2.24/32', '2001:db8:0:42::23/128'] iface=tpub3456 machine=simplepubvm target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
-ip args=... machine=simplepubvm
-ip machine=simplepubvm returncode=0
-ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+ip machine=simplepubvm returncode=0 subsystem=network
+ensure-routes action=reconciling current_routes=['192.0.2.23/32', '192.0.2.24/32', '2001:db8:0:42::23/128'] iface=tpub3456 machine=simplepubvm subsystem=network target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
+ip args=... machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
+..."""
     )
     assert show_routes() == [guest_v4, guest_v6]
 
     # If the addresses assigned to the guest in ENC change then the
     # routes should be updated correctly
-    vm.cfg["interfaces"]["pub"]["networks"] = {
-        "203.0.113.38/24": ["203.0.113.38"],
-        "2001:db8:0:47::2014/64": ["2001:db8:0:47::2014"],
+    assert vm.enc
+    vm.enc["parameters"]["interfaces"]["pub"]["networks"] = {
+        "203.0.113.0/24": ["203.0.113.38"],
+        "2001:db8:0:47::0/64": ["2001:db8:0:47::2014"],
     }
+    vm._update_from_enc()  # pyright: ignore[reportPrivateUsage]
     new_guest_v4 = route_json_v4("203.0.113.38", "tpub3456")
     new_guest_v6 = route_json_v6("2001:db8:0:47::2014", "tpub3456")
 
-    vm.ensure_online_host_routes()
-    assert get_log() == Ellipsis(
+    vm.network.start()
+    log = get_log()
+    assert log == Ellipsis(
         """\
-ensure-routes action=start iface=tpub3456 machine=simplepubvm vrf=vrfpub
-ip args=... machine=simplepubvm
-ip> ...
-ip machine=simplepubvm returncode=0
-ip args=... machine=simplepubvm
-ip> ...
-ip machine=simplepubvm returncode=0
-ensure-routes action=reconciling current_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] iface=tpub3456 machine=simplepubvm target_routes=['203.0.113.38/32', '2001:db8:0:47::2014/128'] vrf=vrfpub
-ip args=... machine=simplepubvm
-ip machine=simplepubvm returncode=0
-ip args=... machine=simplepubvm
-ip machine=simplepubvm returncode=0
-ip args=... machine=simplepubvm
-ip machine=simplepubvm returncode=0
-ip args=... machine=simplepubvm
-ip machine=simplepubvm returncode=0
-ensure-routes action=finished iface=tpub3456 machine=simplepubvm vrf=vrfpub"""
+ip args=-d -j link show dev tfe3456 machine=simplepubvm subsystem=network
+ip>\t[{"ifindex":...,"ifname":"tfe3456","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,...,"altnames":["fcqemu-vm-3456-net-2"]}]
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=link set tfe3456 up machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=link set mtu 1500 dev tfe3456 up machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=-d -j link show dev tfe3456 machine=simplepubvm subsystem=network
+ip>\t[{"ifindex":...,"ifname":"tfe3456","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,...,"altnames":["fcqemu-vm-3456-net-2"]}]
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=link set tfe3456 master brfe machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=-d -j link show dev tpub3456 machine=simplepubvm subsystem=network
+ip>\t[{"ifindex":...,"ifname":"tpub3456","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,...,"altnames":["fcqemu-vm-3456-net-5"]}]
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=link set tpub3456 up machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=link set mtu 1500 dev tpub3456 up machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=-d -j link show dev tpub3456 machine=simplepubvm subsystem=network
+ip>\t[{"ifindex":...,"ifname":"tpub3456","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,...,"altnames":["fcqemu-vm-3456-net-5"]}]
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=link set tpub3456 master vrfpub machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=address replace 169.254.83.168/16 dev tpub3456 machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=address replace fe80::1/64 dev tpub3456 machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ensure-routes action=start iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
+ip args=-j -4 route show vrf vrfpub dev tpub3456 machine=simplepubvm subsystem=network
+ip>\t[{"dst":"169.254.0.0/16","protocol":"kernel","scope":"link","prefsrc":"169.254.83.168","flags":[]},{"dst":"192.0.2.23","protocol":"fc-qemu","scope":"link","flags":[]}]
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=-j -6 route show vrf vrfpub dev tpub3456 machine=simplepubvm subsystem=network
+ip>\t[{"dst":"2001:db8:0:42::23","protocol":"fc-qemu","metric":1024,"flags":[],"pref":"medium"},{"dst":"fe80::/64","protocol":"kernel","metric":256,"flags":[],"pref":"medium"},{"type":"multicast","dst":"ff00::/8","protocol":"kernel","metric":256,"flags":[],"pref":"medium"}]
+ip machine=simplepubvm returncode=0 subsystem=network
+ensure-routes action=reconciling current_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] iface=tpub3456 machine=simplepubvm subsystem=network target_routes=['203.0.113.38/32', '2001:db8:0:47::2014/128'] vrf=vrfpub
+ip args=-6 route add 2001:db8:0:47::2014/128 dev tpub3456 vrf vrfpub proto fc-qemu machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=-4 route add 203.0.113.38/32 dev tpub3456 vrf vrfpub proto fc-qemu machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=-4 route del 192.0.2.23/32 dev tpub3456 vrf vrfpub machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=-6 route del 2001:db8:0:42::23/128 dev tpub3456 vrf vrfpub machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
+ip args=-d -j link show dev tsrv3456 machine=simplepubvm subsystem=network
+ip>\t[{"ifindex":...,"ifname":"tsrv3456","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,..."altnames":["fcqemu-vm-3456-net-3"]}]
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=link set tsrv3456 up machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=link set mtu 1500 dev tsrv3456 up machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=-d -j link show dev tsrv3456 machine=simplepubvm subsystem=network
+ip>\t[{"ifindex":...,"ifname":"tsrv3456","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,...,"altnames":["fcqemu-vm-3456-net-3"]}]
+ip machine=simplepubvm returncode=0 subsystem=network
+ip args=link set tsrv3456 master brsrv machine=simplepubvm subsystem=network
+ip machine=simplepubvm returncode=0 subsystem=network\
+"""
     )
     assert show_routes() == [new_guest_v4, new_guest_v6]
 
 
 @pytest.mark.live
 def test_vm_host_routes_orthogonal(
-    vm_with_pub, kernel_vrf_device, kernel_tap_device, patterns
+    vm_with_pub: Agent, kernel_vrf_device: str, kernel_tap_device: str, patterns
 ):
 
     vm = vm_with_pub
@@ -1175,6 +1238,7 @@ ensure-routes action=finished iface=tpub3456 machine=simplepubvm subsystem=netwo
     vm.network.start()
     assert get_log() == Ellipsis(
         """\
+...
 ensure-routes action=start iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
 ip args=... machine=simplepubvm subsystem=network
 ip> ...
@@ -1182,7 +1246,9 @@ ip machine=simplepubvm returncode=0 subsystem=network
 ip args=... machine=simplepubvm subsystem=network
 ip> ...
 ip machine=simplepubvm returncode=0 subsystem=network
-ensure-routes action=finished iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub"""
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
+...
+"""
     )
     assert show_routes() == [guest_v4, tap_v4, guest_v6]
 
@@ -1197,11 +1263,12 @@ ensure-routes action=finished iface=tpub3456 machine=simplepubvm subsystem=netwo
         guest_v6,
     ]
 
-    vm.network.start()()
-    assert get_log() == Ellipsis(
-        """\
+    vm.network.start()
+    reconciling = patterns.reconciling
+    reconciling.optional("...")
+    reconciling.continuous("""
 ensure-routes action=start iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
-ip args=... subsystem=network machine=simplepubvm
+ip args=... machine=simplepubvm subsystem=network
 ip> ...
 ip machine=simplepubvm returncode=0 subsystem=network
 ip args=... machine=simplepubvm subsystem=network
@@ -1210,13 +1277,14 @@ ip machine=simplepubvm returncode=0 subsystem=network
 ensure-routes action=reconciling current_routes=['192.0.2.23/32', '192.0.2.24/32', '2001:db8:0:42::23/128'] iface=tpub3456 machine=simplepubvm subsystem=network target_routes=['192.0.2.23/32', '2001:db8:0:42::23/128'] vrf=vrfpub
 ip args=... machine=simplepubvm subsystem=network
 ip machine=simplepubvm returncode=0 subsystem=network
-ensure-routes action=finished iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub"""
-    )
+ensure-routes action=finished iface=tpub3456 machine=simplepubvm subsystem=network vrf=vrfpub
+""")
+    assert get_log() == reconciling
     assert show_routes() == [guest_v4, tap_v4, guest_v6]
 
 
 @pytest.mark.live
-def test_vm_resize_disk(vm, patterns):
+def test_vm_resize_disk(vm: Agent, patterns):
     vm.start()
     get_log()
 
@@ -1284,7 +1352,7 @@ def test_tmp_size():
 
 
 @pytest.fixture
-def outmigrate_pattern(patterns):
+def outmigrate_pattern(patterns: PatternsLib):
     outmigrate = patterns.outmigrate
     outmigrate.in_order(
         """
@@ -1366,7 +1434,7 @@ simplevm      libceph ...
 """
     )
     # Expect debug output that doesn't matter as much
-    patterns.debug.optional("simplevm> ...")
+    patterns.debug.optional("simplevm>...")
 
     patterns.network.optional("simplevm      network ip...")
 
@@ -1392,7 +1460,7 @@ simplevm              stopped-heartbeat-ping
     return outmigrate
 
 
-def test_vm_migration_pattern(outmigrate_pattern):
+def test_vm_migration_pattern(outmigrate_pattern: PatternsLib):
     # This is a variety of outputs we have seen that are valid and where we want to be
     # sure that the Ellipsis matches them properly.
     assert outmigrate_pattern == (
@@ -1658,32 +1726,32 @@ simplevm         qemu vm-destroy-vm-via-qmp
 simplevm     qemu/qmp quit                           arguments={} id=None
 simplevm     qemu/qmp query-status                   arguments={} id=None
 simplevm              destroy-vm                     action='unlock ceph'
-simplevm␠␠␠␠␠␠network␠ip
+simplevm      network ip
 simplevm> ip -d -j link show dev tfe2345
-simplevm␠␠␠␠␠␠network␠ip␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠output_line='[{"ifindex":121,"ifname":"tfe2345","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"qdisc":"fq_codel","master":"brfe","operstate":"DOWN","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"66:ac:c5:43:6a:2a","broadcast":"ff:ff:ff:ff:ff:ff","promiscuity":1,"allmulti":1,"min_mtu":68,"max_mtu":65521,"linkinfo":{"info_kind":"tun","info_data":{"type":"tap","pi":false,"vnet_hdr":true,"multi_queue":false,"persist":true},"info_slave_kind":"bridge","info_slave_data":{"state":"disabled","priority":32,"cost":2,"hairpin":false,"guard":false,"root_block":false,"fastleave":false,"learning":true,"flood":true,"id":"0x8001","no":"0x1","designated_port":32769,"designated_cost":0,"bridge_id":"8000.7e:e7:51:6:cd:11","root_id":"8000.7e:e7:51:6:cd:11","hold_timer":0.00,"message_age_timer":0.00,"forward_delay_timer":0.00,"topology_change_ack":0,"config_pending":0,"proxy_arp":false,"proxy_arp_wifi":false,"multicast_router":1,"mcast_flood":true,"bcast_flood":true,"mcast_to_unicast":false,"neigh_suppress":false,"neigh_vlan_suppress":false,"group_fwd_mask":"0","group_fwd_mask_str":"0x0","vlan_tunnel":false,"isolated":false,"locked":false,"mab":false}},"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":65536,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"altnames":["fcqemu-vm-2345-net-2"]}]\n'
-simplevm␠␠␠␠␠␠network␠ip␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠returncode=0
-simplevm␠␠␠␠␠␠network␠ip
+simplevm> [{"ifindex":121,"ifname":"tfe2345","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"qdisc":"fq_codel","master":"brfe","operstate":"DOWN","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"66:ac:c5:43:6a:2a","broadcast":"ff:ff:ff:ff:ff:ff","promiscuity":1,"allmulti":1,"min_mtu":68,"max_mtu":65521,"linkinfo":{"info_kind":"tun","info_data":{"type":"tap","pi":false,"vnet_hdr":true,"multi_queue":false,"persist":true},"info_slave_kind":"bridge","info_slave_data":{"state":"disabled","priority":32,"cost":2,"hairpin":false,"guard":false,"root_block":false,"fastleave":false,"learning":true,"flood":true,"id":"0x8001","no":"0x1","designated_port":32769,"designated_cost":0,"bridge_id":"8000.7e:e7:51:6:cd:11","root_id":"8000.7e:e7:51:6:cd:11","hold_timer":0.00,"message_age_timer":0.00,"forward_delay_timer":0.00,"topology_change_ack":0,"config_pending":0,"proxy_arp":false,"proxy_arp_wifi":false,"multicast_router":1,"mcast_flood":true,"bcast_flood":true,"mcast_to_unicast":false,"neigh_suppress":false,"neigh_vlan_suppress":false,"group_fwd_mask":"0","group_fwd_mask_str":"0x0","vlan_tunnel":false,"isolated":false,"locked":false,"mab":false}},"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":65536,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"altnames":["fcqemu-vm-2345-net-2"]}]
+simplevm      network ip                             returncode=0
+simplevm      network ip
 simplevm> ip link set tfe2345 nomaster
-simplevm␠␠␠␠␠␠network␠ip␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠returncode=0
-simplevm␠␠␠␠␠␠network␠ip
+simplevm      network ip                             returncode=0
+simplevm      network ip
 simplevm> ip link set tfe2345 down
-simplevm␠␠␠␠␠␠network␠ip␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠returncode=0
-simplevm␠␠␠␠␠␠network␠ip
+simplevm      network ip                             returncode=0
+simplevm      network ip
 simplevm> ip link delete tfe2345
-simplevm␠␠␠␠␠␠network␠ip␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠returncode=0
-simplevm␠␠␠␠␠␠network␠ip
+simplevm      network ip                             returncode=0
+simplevm      network ip
 simplevm> ip -d -j link show dev tsrv2345
-simplevm␠␠␠␠␠␠network␠ip␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠output_line='[{"ifindex":122,"ifname":"tsrv2345","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"qdisc":"fq_codel","master":"brsrv","operstate":"DOWN","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"66:59:50:a6:03:e4","broadcast":"ff:ff:ff:ff:ff:ff","promiscuity":1,"allmulti":1,"min_mtu":68,"max_mtu":65521,"linkinfo":{"info_kind":"tun","info_data":{"type":"tap","pi":false,"vnet_hdr":true,"multi_queue":false,"persist":true},"info_slave_kind":"bridge","info_slave_data":{"state":"disabled","priority":32,"cost":2,"hairpin":false,"guard":false,"root_block":false,"fastleave":false,"learning":true,"flood":true,"id":"0x8001","no":"0x1","designated_port":32769,"designated_cost":0,"bridge_id":"8000.76:2b:bb:f5:bc:6d","root_id":"8000.76:2b:bb:f5:bc:6d","hold_timer":0.00,"message_age_timer":0.00,"forward_delay_timer":0.00,"topology_change_ack":0,"config_pending":0,"proxy_arp":false,"proxy_arp_wifi":false,"multicast_router":1,"mcast_flood":true,"bcast_flood":true,"mcast_to_unicast":false,"neigh_suppress":false,"neigh_vlan_suppress":false,"group_fwd_mask":"0","group_fwd_mask_str":"0x0","vlan_tunnel":false,"isolated":false,"locked":false,"mab":false}},"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":65536,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"altnames":["fcqemu-vm-2345-net-3"]}]\n'
-simplevm␠␠␠␠␠␠network␠ip␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠returncode=0
-simplevm␠␠␠␠␠␠network␠ip
+simplevm> [{"ifindex":122,"ifname":"tsrv2345","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"qdisc":"fq_codel","master":"brsrv","operstate":"DOWN","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"66:59:50:a6:03:e4","broadcast":"ff:ff:ff:ff:ff:ff","promiscuity":1,"allmulti":1,"min_mtu":68,"max_mtu":65521,"linkinfo":{"info_kind":"tun","info_data":{"type":"tap","pi":false,"vnet_hdr":true,"multi_queue":false,"persist":true},"info_slave_kind":"bridge","info_slave_data":{"state":"disabled","priority":32,"cost":2,"hairpin":false,"guard":false,"root_block":false,"fastleave":false,"learning":true,"flood":true,"id":"0x8001","no":"0x1","designated_port":32769,"designated_cost":0,"bridge_id":"8000.76:2b:bb:f5:bc:6d","root_id":"8000.76:2b:bb:f5:bc:6d","hold_timer":0.00,"message_age_timer":0.00,"forward_delay_timer":0.00,"topology_change_ack":0,"config_pending":0,"proxy_arp":false,"proxy_arp_wifi":false,"multicast_router":1,"mcast_flood":true,"bcast_flood":true,"mcast_to_unicast":false,"neigh_suppress":false,"neigh_vlan_suppress":false,"group_fwd_mask":"0","group_fwd_mask_str":"0x0","vlan_tunnel":false,"isolated":false,"locked":false,"mab":false}},"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":65536,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"altnames":["fcqemu-vm-2345-net-3"]}]
+simplevm      network ip                             returncode=0
+simplevm      network ip
 simplevm> ip link set tsrv2345 nomaster
-simplevm␠␠␠␠␠␠network␠ip␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠returncode=0
-simplevm␠␠␠␠␠␠network␠ip
+simplevm      network ip                             returncode=0
+simplevm      network ip
 simplevm> ip link set tsrv2345 down
-simplevm␠␠␠␠␠␠network␠ip␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠returncode=0
-simplevm␠␠␠␠␠␠network␠ip
+simplevm      network ip                             returncode=0
+simplevm      network ip
 simplevm> ip link delete tsrv2345
-simplevm␠␠␠␠␠␠network␠ip␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠␠returncode=0
+simplevm      network ip                             returncode=0
 simplevm              destroy-vm                     action='deregister consul'
 simplevm              consul-deregister
 simplevm              destroy-vm                     action='cleanup'
@@ -1978,7 +2046,11 @@ simplevm              release-lock                   result='unlocked' target='/
 @pytest.mark.live
 @pytest.mark.timeout(300)
 def test_vm_migration(
-    request, vm, outmigrate_pattern, patterns, kill_vms_host2
+    request,
+    vm: Agent,
+    outmigrate_pattern: PatternsLib,
+    patterns: PatternsLib,
+    kill_vms_host2: None,
 ):
     def call(cmd, wait=True, host=None, fail_on_exit_code=True):
         for ssh_cmd in ["scp", "ssh"]:
@@ -2083,7 +2155,8 @@ simplevm              release-lock                   result='unlocked' target='/
 """
     )
     inmigrate_pattern.optional(
-        """
+        f"""
+simplevm>{" "}
 simplevm>
 simplevm              received-ping                  timeout=60
 simplevm              reset-timeout

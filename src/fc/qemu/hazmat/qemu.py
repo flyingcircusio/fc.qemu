@@ -9,13 +9,20 @@ import subprocess
 from codecs import encode
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Callable, List, Literal, Protocol
+from typing import (
+    Any,
+    Callable,
+    Concatenate,
+    List,
+    Literal,
+    ParamSpec,
+    TypeVar,
+)
 
 import psutil
 import yaml
-from structlog import BoundLogger
 
-from fc.qemu.typing import EncParametersDict
+from fc.qemu.typing import EncParametersDict, SupportsGlobalLock
 
 from ..exc import QemuNotRunning, VMStateInconsistent
 from ..sysconfig import sysconfig
@@ -94,20 +101,20 @@ def detect_current_machine_type(
     return candidates[0]
 
 
-class SupportsGlobalLock(Protocol):
-    prefix: Path
-    log: BoundLogger
-    global_lock_fd: int | None
-    global_lock_count: int
+P = ParamSpec("P")
+R = TypeVar("R")
+S = TypeVar("S", bound=SupportsGlobalLock)
 
 
-def locked_global(f: Callable[..., Any]) -> Any:
+def locked_global(
+    f: Callable[Concatenate[S, P], R],
+) -> Callable[Concatenate[S, P], R]:
     LOCK = Path("run/fc-qemu.lock")
 
     # This is thread-safe *AS LONG* as every thread uses a separate instance
     # of the agent. Using multiple file descriptors will guarantee that the
     # lock can only be held once even within a single process.
-    def locked(self: SupportsGlobalLock, *args: Any, **kw: Any):
+    def locked(self: S, *args: P.args, **kw: P.kwargs) -> R:
         lock = self.prefix / LOCK
         self.log.debug("acquire-global-lock", target=lock)
         if not self.global_lock_fd:  # pyright: ignore[reportPrivateUsage]
@@ -229,11 +236,12 @@ class Qemu(object):
     qmp_socket = Path("run/qemu.{name}.qmp.sock")
     serial_file = Path("var/log/vm/{name}.log")
 
-    _global_lock_fd = None
-    _global_lock_count = 0
-
     migration_lock_file = Path("run/qemu.migration.lock")
     _migration_lock_fd = None
+
+    # SupportsGlobalLock protocol
+    global_lock_fd: int | None = None
+    global_lock_count: int = 0
 
     def __init__(self, vm_cfg: EncParametersDict):
         # Update configuration values from system or test config.
@@ -540,7 +548,7 @@ class Qemu(object):
             break
 
     def inmigrate(self):
-        self._start([f"-incoming {self.migration_address}"])
+        self._start((f"-incoming {self.migration_address}",))
 
         timeout = TimeOut(30, 1, raise_on_timeout=True)
         while (qmp := self.qmp) is None:

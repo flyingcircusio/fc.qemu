@@ -39,6 +39,7 @@ include = ["fc.qemu", "fc.qemu.hazmat"]
 
 [dependency-groups]
 dev = [
+    "basedpyright>=1.39.9",
     # keep-sorted start
     "mock>=5.2",
     "pyright>=1.1.411",
@@ -78,8 +79,6 @@ categories = ""
 
 [tool.basedpyright]
 typeCheckingMode = "strict"
-venvPath = "."
-venv = ".venv"
 exclude = [
     # keep-sorted start
     ".venv/**",

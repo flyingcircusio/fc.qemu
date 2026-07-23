@@ -16,9 +16,9 @@ from unittest.mock import Mock, patch
 import mock
 import pytest
 import structlog
+from structlog.typing import WrappedLogger
 
 import fc.qemu.agent
-import fc.qemu.hazmat.network
 import fc.qemu.hazmat.qemu
 import fc.qemu.logging
 from fc.qemu.agent import Agent
@@ -698,28 +698,31 @@ def setup_structlog():
     # set to True to temporarily get detailed tracebacks
     log_exceptions = True
 
-    def test_logger(logger, method_name, event):
+    def test_logger(
+        logger: WrappedLogger,
+        method_name: str,
+        event: fc.qemu.logging.EventDict,
+    ):
         stack = event.pop("stack", None)
         exc = event.pop("exception", None)
         event_name = event.pop("event", "")
         event_prefix = os.path.basename(event_name) if event_name else " "
-        result = []
+
+        result: str
+        # In reality we log via `output` but in the tests we log via `output_line` to help
+        # with diagnosis on partially completed/hanging calls.
+        event.pop("output", None)
         if "output_line" in event:
             result = fc.qemu.logging.prefix(
-                event_prefix, event["output_line"].strip()
+                event_prefix, event.pop("output_line").rstrip()
             )
         else:
-            output = event.pop("output", None)
-
-            result = []
+            result_: list[str] = []
             if event_name:
-                result.append(event_name)
+                result_.append(event_name)
             for key in sorted(event):
-                result.append("{}={}".format(key, str(event[key]).strip()))
-            result = " ".join(result)
-
-            if output:
-                result += fc.qemu.logging.prefix(event_prefix, output)
+                result_.append("{}={}".format(key, str(event[key]).strip()))
+            result = " ".join(result_)
 
         # Ensure we get something to read on stdout in case we have errors.
         reltime = time.time() - util.test_log_start

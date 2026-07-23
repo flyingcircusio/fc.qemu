@@ -173,7 +173,7 @@ class Route(BaseModel):
     scope: str | None = None
     prefsrc: IPvAnyAddress | None = None
     flags: Sequence[str] = ()
-    protocol: str
+    protocol: str | None = None
     metric: int | None = None
     gateway: IPvAnyAddress | None = None
 

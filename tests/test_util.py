@@ -4,6 +4,7 @@ from subprocess import CalledProcessError
 from pydantic import BaseModel, ValidationError
 
 from fc.qemu.util import model_from_json_cmd, parse_export_format
+from tests.conftest import get_log
 from tests.test_agent import pytest
 
 
@@ -42,3 +43,13 @@ def test_json_cmd_call_cmd_error():
     log = unittest.mock.Mock()
     with pytest.raises(CalledProcessError) as e:
         model_from_json_cmd(DummyModel, "notfound", log)
+
+
+def test_log_is_emptied():
+    from fc.qemu import util
+
+    util.log_data.append("asdf")
+    util.log_data.append("bsdf")
+    assert get_log() == "asdf\nbsdf"
+    assert get_log() == ""
+    assert get_log() == ""

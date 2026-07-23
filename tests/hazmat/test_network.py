@@ -16,8 +16,9 @@ def test_interface_info_lo():
 
 
 def test_interface_info_missing():
+    assert iproute2.Interface.get("nointerface", Mock()) is None
     with pytest.raises(CalledProcessError):
-        iproute2.Interface.get("nointerface", Mock())
+        iproute2.Interface.get("not a valid name", Mock())
 
 
 def test_interface_ensure():
