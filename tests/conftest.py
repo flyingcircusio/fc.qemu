@@ -18,11 +18,13 @@ import pytest
 import structlog
 
 import fc.qemu.agent
+import fc.qemu.hazmat.network
 import fc.qemu.hazmat.qemu
 import fc.qemu.logging
 from fc.qemu.agent import Agent
 from fc.qemu.hazmat import libceph
 from fc.qemu.hazmat.ceph import Ceph, RootSpec, VolumeSpecification
+from fc.qemu.hazmat.iproute2 import TunTap
 from fc.qemu.util import GiB, cmd
 
 ########################################################
@@ -882,11 +884,11 @@ def pytest_assertrepr_compare(op, left, right):
 
 @pytest.fixture(autouse=True)
 def cleanup_tap_devices():
-    for tuntap in fc.qemu.hazmat.qemu.TunTapInfo.list(Mock()):
+    for tuntap in TunTap.list(Mock()):
         cmd(f"ip l delete dev {tuntap.ifname}", Mock())
     yield
     try:
-        for tuntap in fc.qemu.hazmat.qemu.TunTapInfo.list(Mock()):
+        for tuntap in TunTap.list(Mock()):
             cmd(f"ip l delete dev {tuntap.ifname}", Mock())
     except Exception:
         # Optimistic here: some tests patch out `cmd` and this may

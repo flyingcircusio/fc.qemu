@@ -107,9 +107,13 @@ class SysConfig(object):
             "qemu", "maintenance-evacuation-timeout"
         )
 
-        self.agent["network_hooks"] = nh = {}
-        for key, path in self.cp.items("network"):
-            nh[key] = path
+        network: dict[str, Any] = {"hooks": {}}
+        self.agent["network_cfg"] = network
+        for key, value in self.cp.items("network"):
+            if key.startswith("tap-if"):
+                network["hooks"][key] = value
+            else:
+                network[key] = value
 
         # Ceph
         self.agent["this_host"] = self.cp.get("ceph", "lock_host")

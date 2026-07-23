@@ -7,7 +7,7 @@ import psutil
 import pytest
 
 import fc.qemu.util as util
-from fc.qemu.agent import Agent, iproute2_json
+from fc.qemu.agent import Agent
 from fc.qemu.exc import EnvironmentChanged, VMStateInconsistent
 from fc.qemu.hazmat.qemu import (
     Qemu,
@@ -71,7 +71,6 @@ def test_config_template_netscripts(simplevm_cfg, ceph_inst):
         a.ceph.start()
         a.generate_config()
     assert 'script = "/etc/kvm/kvm-ifup"' in a.qemu.config
-    assert 'downscript = "/etc/kvm/kvm-ifdown"' in a.qemu.config
 
 
 def test_config_template_netscripts_linktype(simplevm_linktype_cfg, ceph_inst):
@@ -80,7 +79,6 @@ def test_config_template_netscripts_linktype(simplevm_linktype_cfg, ceph_inst):
         a.ceph.start()
         a.generate_config()
     assert 'script = "/etc/kvm/kvm-ifup-vrf"' in a.qemu.config
-    assert 'downscript = "/etc/kvm/kvm-ifdown-vrf"' in a.qemu.config
 
 
 def test_config_template_vrf_netscripts(simplepubvm_cfg, ceph_inst):
@@ -89,7 +87,6 @@ def test_config_template_vrf_netscripts(simplepubvm_cfg, ceph_inst):
         a.ceph.start()
         a.generate_config()
     assert 'script = "/etc/kvm/kvm-ifup-vrf"' in a.qemu.config
-    assert 'downscript = "/etc/kvm/kvm-ifdown-vrf"' in a.qemu.config
 
 
 def test_consistency_vm_running(simplevm_cfg, ceph_inst):
@@ -293,46 +290,6 @@ def test_ensure_lock_contention_returns_ex_tempfail(
     log_output = get_log()  # only returns logs since previous invocation
     assert "exit" in log_output
     assert "status=42" in log_output
-
-
-def test_iproute2_json_loopback():
-    """Basic functional test of iproute2 JSON output handling."""
-    data = iproute2_json(util.log, ["address", "show", "lo"])
-    assert data == [
-        {
-            "ifindex": 1,
-            "ifname": "lo",
-            "flags": ["LOOPBACK", "UP", "LOWER_UP"],
-            "mtu": 65536,
-            "qdisc": "noqueue",
-            "operstate": "UNKNOWN",
-            "group": "default",
-            "txqlen": 1000,
-            "link_type": "loopback",
-            "address": "00:00:00:00:00:00",
-            "broadcast": "00:00:00:00:00:00",
-            "addr_info": [
-                {
-                    "family": "inet",
-                    "local": "127.0.0.1",
-                    "prefixlen": 8,
-                    "scope": "host",
-                    "label": "lo",
-                    "valid_life_time": 4294967295,
-                    "preferred_life_time": 4294967295,
-                },
-                {
-                    "family": "inet6",
-                    "local": "::1",
-                    "prefixlen": 128,
-                    "scope": "host",
-                    "noprefixroute": True,
-                    "valid_life_time": 4294967295,
-                    "preferred_life_time": 4294967295,
-                },
-            ],
-        }
-    ]
 
 
 def test_id_to_name(capsys, simplevm_cfg, simplepubvm_cfg):

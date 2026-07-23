@@ -9,12 +9,10 @@ import subprocess
 from codecs import encode
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Callable, List, Literal, Protocol, Self
+from typing import Any, Callable, List, Literal, Protocol
 
 import psutil
 import yaml
-from pydantic import BaseModel
-from pydantic.root_model import RootModel
 from structlog import BoundLogger
 
 from fc.qemu.typing import EncParametersDict
@@ -25,9 +23,7 @@ from ..timeout import TimeOut
 from ..util import (
     ControlledRuntimeException,
     UnicodeErrorStrategy,
-    cmd,
     log,
-    model_from_json_cmd,
 )
 from .guestagent import ClientError, GuestAgent
 from .qmp import QEMUMonitorProtocol as Qmp
@@ -186,89 +182,6 @@ def get_running_qemu_processes() -> list[psutil.Process]:
             name=p.info["name"], cmdline=p.info["cmdline"], exe=p.info["exe"]
         )
     ]
-
-
-class InterfaceInfo(BaseModel):
-    ifname: str
-    altnames: tuple[str, ...] = ()
-
-    # ip -j l show dev foobar
-    # [
-    #   {
-    #     "ifindex": 327,
-    #     "ifname": "foobar",
-    #     "flags": [
-    #       "BROADCAST",
-    #       "MULTICAST"
-    #     ],
-    #     "mtu": 1500,
-    #     "qdisc": "noop",
-    #     "operstate": "DOWN",
-    #     "linkmode": "DEFAULT",
-    #     "group": "default",
-    #     "txqlen": 1000,
-    #     "link_type": "ether",
-    #     "address": "32:d7:f0:59:83:92",
-    #     "broadcast": "ff:ff:ff:ff:ff:ff",
-    #     "altnames": [
-    #       "asdf",
-    #       "vm-1235",
-    #       "vlan-123431341",
-    #       "vm-1235-vlan-123312321"
-    #     ]
-    #   }
-    # ]
-
-    @classmethod
-    def get(cls, ifname: str, log: BoundLogger) -> Self:
-        interfaces = model_from_json_cmd(
-            RootModel[list[cls]], f"ip -j link show dev '{ifname}'", log=log
-        ).root
-        assert len(interfaces) == 1
-        interface = interfaces[0]
-        assert interface.ifname == ifname
-        return interface
-
-
-class TunTapInfo(BaseModel):
-    ifname: str
-    flags: tuple[str, ...]
-
-    # root@host1 .../developer/fc.qemu # ip -j tuntap show | jq
-    # [
-    #   {
-    #     "ifname": "tfe2345",
-    #     "flags": [
-    #       "tap",
-    #       "one_queue",
-    #       "vnet_hdr",
-    #       "persist"
-    #     ]
-    #   },
-    #   ...
-    # ]
-
-    @classmethod
-    def list(cls, log: BoundLogger) -> list[Self]:
-        interfaces = model_from_json_cmd(
-            RootModel[list[cls]], "ip -j tuntap show", log=log
-        ).root
-        return interfaces
-
-
-def ensure_tap_interface(
-    name: str, altname: str, log: BoundLogger
-) -> InterfaceInfo:
-    try:
-        interface = InterfaceInfo.get(name, log)
-    except subprocess.CalledProcessError:
-        cmd(f"ip tuntap add '{name}' mode tap", log=log)
-        interface = InterfaceInfo.get(name, log)
-
-    if altname not in interface.altnames:
-        cmd(f"ip link property add dev '{name}' altname '{altname}'", log=log)
-
-    return InterfaceInfo.get(name, log)
 
 
 class Qemu(object):
@@ -507,7 +420,6 @@ class Qemu(object):
         self._verify_memory()
 
         self.prepare_config()
-        self.prepare_network()
         self.prepare_log()
         try:
             args = list(self.local_args) + list(additional_args)
@@ -904,22 +816,6 @@ class Qemu(object):
 
         # Qemu tends to overwrite the pid file incompletely -> truncate
         self.pid_file.open("w").close()
-
-    def prepare_network(self):
-        """Prepare network config before Qemu start.
-
-        This establishes all links (as tap devices) from the hypervisor
-        and puts an altname on them so we can properly identify them in the
-        ifup/down scripts.
-
-        """
-        assert self.cfg
-        for net, net_config in sorted(self.cfg["interfaces"].items()):
-            id = self.cfg["id"]
-            network_number = net_config["network_number"]
-            iface = f"t{net}{id}"
-            altname = f"fcqemu-vm-{id}-net-{network_number}"
-            ensure_tap_interface(iface, altname, self.log)
 
     def get_running_config(self):
         """Return the host-independent version of the current running

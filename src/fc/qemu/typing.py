@@ -42,11 +42,18 @@ VolumeSizeKey = Literal["cidata_size", "root_size", "swap_size", "tmp_size"]
 
 class RouteDict(TypedDict):
     dst: str
+    gateway: NotRequired[str]
+
+
+class DefaultRouteDict(TypedDict):
+    dst: Literal["default"]
+    gateway: str
 
 
 class EncParametersDict(TypedDict):
     id: int
     # keep-sorted: start
+    agent: "AgentDict"
     binary_generation: int
     ceph_id: str
     cidata_size: int
@@ -72,6 +79,15 @@ class EncParametersDict(TypedDict):
     swap_size: int
     tmp_size: int
     # keep-sorted: end
+
+
+class AgentDict(TypedDict):
+    prefix: Path
+    network: "AgentNetworkConfigDict"
+
+
+class AgentNetworkConfigDict(TypedDict):
+    use_vhost: bool
 
 
 class InterfaceDict(TypedDict):

@@ -7,11 +7,9 @@ parameters:
   interfaces:
     fe:
       mac: aa-bb-cc-00-ee-ff
-      networks:
       network_number: 2
     srv:
       mac: aa-bb-cc-dd-ee-ff
-      networks:
       network_number: 3
   kvm_host: host1
   memory: 256
