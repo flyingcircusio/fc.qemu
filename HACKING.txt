@@ -65,4 +65,8 @@ To interact with the tests using PDB you can add breakpoints and/or cause the te
 * switch the system-installed fc.qemu package to the fc.qemu dev package referencing your code
 * rebuild the system, enjoy
 
+## Qemu upgrades
+
+* check poll_migration_status and validate the migration states are properly supported.
+
 .. vim: set ft=rst:

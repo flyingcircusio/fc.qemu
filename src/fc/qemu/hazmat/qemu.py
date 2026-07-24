@@ -16,6 +16,7 @@ from typing import (
     List,
     Literal,
     ParamSpec,
+    TypedDict,
     TypeVar,
 )
 
@@ -60,6 +61,29 @@ type WatchDogActions = Literal[
 
 class InvalidMigrationStatus(Exception):
     pass
+
+
+class MigrationInfo(TypedDict):
+    # see qapi/migration.json
+    status: Literal[
+        "none",
+        "setup",
+        "cancelling",
+        "cancelled",
+        "active",
+        "postcopy-device",
+        "postcopy-active",
+        "postcopy-paused",
+        "postcopy-recover-setup",
+        "postcopy-recover",
+        "completed",
+        "failing",
+        "failed",
+        "colo",
+        "pre-switchover",
+        "device",
+        "wait-unplug",
+    ]
 
 
 def _machine_type_sort_key(name: str):
@@ -595,23 +619,34 @@ class Qemu(object):
         while timeout_obj.tick():
             if timeout_obj.interval < 10:
                 timeout_obj.interval *= 1.4142
-            info = qmp.command("query-migrate")
+            info: MigrationInfo = qmp.command("query-migrate")
             yield info
+            # XXX it's a bit weird we only check this after yielding ...
+            match info["status"]:
+                # a bit weird, but generally ok - nothing migration-related
+                # happened in the lifetime of this vm yet.
+                case "none":
+                    pass
+                # regular migration
+                case (
+                    "setup"
+                    | "active"
+                    | "device"
+                    | "pre-switchover"
+                    | "wait-unplug"
+                ):
+                    pass
+                # keep watching, cleanup is happening
+                case "cancelling" | "failing":
+                    pass
+                # completed successfully
+                case "completed":
+                    break
+                # Abort with an error - we either failed or a in a state
+                # that we do not support.
+                case _:
+                    raise InvalidMigrationStatus(info)
 
-            if info["status"] == "setup":
-                pass
-            elif info["status"] == "completed":
-                break
-            elif info["status"] == "active":
-                # This didn't work out of the box on our 2.5, so I'll leave
-                # this out for now. I think it's due to the need for the
-                # userfaultd that needs to be installed on the host.
-                # if info['ram']['transferred'] > info['ram']['total']:
-                #     self.log.info('migrate-start-postcopy')
-                #     self.qmp.command('migrate-start-postcopy')
-                pass
-            else:
-                raise InvalidMigrationStatus(info)
             timeout_obj.cutoff += 30
 
     def process_exists(self):
