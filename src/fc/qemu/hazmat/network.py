@@ -278,11 +278,11 @@ class ConfigureDynamicInterface(ConfigureInterface):
                 f"dstport {self.VXLAN_PORT} nolearning"
             )
         self._ip(f"link set {vxlan} addrgenmode none")
-        self._ip(f"link set {vxlan} up")
+        self._ip(f"link set {vxlan} master {bridge}")
         self._ip(
             f"link set {vxlan} type bridge_slave learning off neigh_suppress on"
         )
-        self._ip(f"link set {vxlan} master {bridge}")
+        self._ip(f"link set {vxlan} up")
 
         # Prepare the VM interface
         super().up()
