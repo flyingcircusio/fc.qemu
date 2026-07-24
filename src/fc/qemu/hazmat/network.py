@@ -304,8 +304,21 @@ class ConfigureDynamicInterface(ConfigureInterface):
         for iface in iproute2.Interface.list(self.log):
             if iface.ifname != vxlan and iface.master == bridge:
                 # There's someone else using it, abort.
+                self.log.debug(
+                    "gc-dynamic-interface",
+                    action="none",
+                    bridge=bridge,
+                    vxlan=vxlan,
+                    user=iface.ifname,
+                )
                 break
         else:
+            self.log.debug(
+                "gc-dynamic-interface",
+                action="cleanup",
+                bridge=bridge,
+                vxlan=vxlan,
+            )
             try:
                 self._ip(f"link delete {bridge}")
             except Exception:

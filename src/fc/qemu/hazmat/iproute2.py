@@ -138,7 +138,7 @@ class VXLANInfo(BaseModel):
 
 class GenericLinkInfo(BaseModel):
     info_kind: str
-    info_data: dict[str, Any]
+    info_data: dict[str, Any] = {}
 
 
 class TunTap(BaseModel):
