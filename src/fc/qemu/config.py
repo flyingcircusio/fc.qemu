@@ -41,7 +41,7 @@ class Agent(BaseModel):
 class Network(BaseModel):
     use_vhost: bool = False
     hooks: dict[str, Path] = {}
-    underlay_loopback: IPv4Address
+    underlay_loopback: IPv4Address | None = None
 
     @field_validator("hooks")
     @classmethod

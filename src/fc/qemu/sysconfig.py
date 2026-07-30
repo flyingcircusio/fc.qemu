@@ -113,7 +113,11 @@ class SysConfig(object):
             if key.startswith("tap-if"):
                 network["hooks"][key] = value
             else:
-                network[key] = value
+                # XXX: Hacky workaround as the Nixpkgs INI generator doesn't
+                # (easily) support writing INI files without a value (i.e.
+                # without '=').
+                # Maybe migrate to a better typed config format in the future.
+                network[key] = value if value != "null" else None
 
         # Ceph
         self.agent["this_host"] = self.cp.get("ceph", "lock_host")
