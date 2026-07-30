@@ -2133,7 +2133,7 @@ simplevm         qemu global-lock-acquire            result='locked' target='/ru
 simplevm         qemu global-lock-status             count=1 target='/run/fc-qemu.lock'
 simplevm         qemu sufficient-host-memory         available_real=... bookable=... required=768
 simplevm         qemu start-qemu
-simplevm         qemu qemu-system-x86_64             additional_args=['-incoming tcp:...:...'] local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-run-with chroot=/srv/vm/simplevm', '-run-with user=nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg']
+simplevm         qemu qemu-system-x86_64             additional_args=('-incoming tcp:...:...',) local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-run-with chroot=/srv/vm/simplevm', '-run-with user=nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg']
 simplevm         qemu exec                           cmd='supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -run-with chroot=/srv/vm/simplevm -run-with user=nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -incoming tcp:...:2345 -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log'
 simplevm         qemu supervised-qemu-stdout
 simplevm         qemu supervised-qemu-stderr
