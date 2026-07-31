@@ -4,6 +4,11 @@ Release notes
 1.8 (unreleased)
 ----------------
 
+- tests: fix race for lock in `test_crashed_vm_clean_restart` (PL-134257)
+
+  Ensure the reduced guest-agent timeouts are also used by daemonised background processes, by
+  overriding these values through fc-qemu.conf
+
 - tests: refactor fc-qemu.conf override Nix config to be shareable with external NixOS test
 
 - tests: fix race conditions and potential flakyness in `ceph_live_setup` fixture (PL-134257)

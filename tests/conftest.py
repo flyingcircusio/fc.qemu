@@ -529,8 +529,6 @@ def named_vm(name, request, clean_environment, monkeypatch, tmpdir):
     import fc.qemu.hazmat.qemu
 
     monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "guestagent_timeout", 0.1)
-    monkeypatch.setattr(fc.qemu.hazmat.qemu, "FREEZE_TIMEOUT", 1)
-    monkeypatch.setattr(fc.qemu.hazmat.guestagent, "SYNC_TIMEOUT", 1)
 
     cfg = Path(__file__).parent / "fixtures" / f"{name}.yaml"
     shutil.copy(

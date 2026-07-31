@@ -4,6 +4,7 @@ import random
 import socket
 from typing import IO, Any, Callable, Optional
 
+from ..sysconfig import sysconfig
 from ..util import log
 
 
@@ -11,6 +12,7 @@ class ClientError(RuntimeError):
     pass
 
 
+# Fallback guest-sync timeout. Effective value is read from sysconfig.
 SYNC_TIMEOUT = 30
 
 
@@ -110,7 +112,10 @@ class GuestAgent(object):
         # test this with two diagnostic calls. The timeout can be higher now
         # as we expect the agent to actually have to respond to us.
         sync_id = random.randint(0, 0xFFFF)
-        result = self.cmd("guest-sync", timeout=SYNC_TIMEOUT, id=sync_id)
+        sync_timeout = sysconfig.qemu.get(
+            "guestagent_sync_timeout", SYNC_TIMEOUT
+        )
+        result = self.cmd("guest-sync", timeout=sync_timeout, id=sync_id)
 
         self.log.debug("sync-response", expected=sync_id, got=result)
         if result == sync_id:

@@ -673,6 +673,8 @@ rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simpl
     )
 
     util.test_log_print("=== Running ensure() ... ===")
+    # The supervisor process will also restart the VM at some point, but we want an explicit
+    # serialisation here to simplify matching on the status of an expectedly running machine.
     vm.ensure()
     util.test_log_print("=== Running status() ===")
 
