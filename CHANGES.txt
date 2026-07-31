@@ -4,6 +4,8 @@ Release notes
 1.8 (unreleased)
 ----------------
 
+- tests: refactor fc-qemu.conf override Nix config to be shareable with external NixOS test
+
 - tests: fix race conditions and potential flakyness in `ceph_live_setup` fixture (PL-134257)
 
 - fc-qemu maintenance enter: fix VM counting under qemu 10.1 (PL-131408)
