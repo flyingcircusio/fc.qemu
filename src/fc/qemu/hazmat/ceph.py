@@ -16,6 +16,7 @@ import yaml
 
 import fc.qemu.directory
 import fc.qemu.hazmat.libceph as libceph
+from fc.qemu.config import LinkType
 from fc.qemu.typing import (
     EncDict,
     EncParametersDict,
@@ -557,40 +558,57 @@ class CloudInitSpec(VolumeSpecification):
                         continue
                     ip_network = ipaddress.ip_network(net)
                     type_ = "static" if ip_network.version == 4 else "static6"
+                    linktype = ifaceconfig.get("linktype")
+                    if not linktype:
+                        linktype = (
+                            LinkType.routed.value
+                            if ifaceconfig["routed"]
+                            else LinkType.bridged.value
+                        )
                     prefixlen = (
                         ip_network.max_prefixlen
-                        if ifaceconfig["routed"]
+                        if linktype == LinkType.routed.value
                         else ip_network.prefixlen
                     )
-                    match (ifaceconfig["routed"], ip_network.version):
-                        case (False, 4):
+                    gateway = None
+                    nameservers = []
+                    match (linktype, ip_network.version):
+                        case (LinkType.bridged.value, 4):
                             gateway = ifaceconfig["gateways"][net]
                             nameservers = ["9.9.9.9", "8.8.8.8"]
-                        case (False, 6):
+                        case (LinkType.bridged.value, 6):
                             gateway = ifaceconfig["gateways"][net]
                             nameservers = [
                                 "2620:fe::fe",
                                 "2001:4860:4860::8888",
                             ]
-                        case (True, 4):
+                        case (LinkType.routed.value, 4):
                             gateway = ROUTED_VIRTUAL_GATEWAY_V4
                             nameservers = [ROUTED_VIRTUAL_NAMESERVER_V4]
-                        case (True, 6):
+                        case (LinkType.routed.value, 6):
                             gateway = ROUTED_VIRTUAL_GATEWAY_V6
                             nameservers = (
                                 [str(ip_network[1])]
                                 if ip_network.num_addresses >= 4
                                 else []
                             )
+                        case (LinkType.dynamic.value, _):
+                            # dynamic interfaces do not have gateways
+                            # configured.
+                            pass
+                        case _:
+                            pass
                     for address in netconfig:
-                        cfg["subnets"].append(
-                            {
-                                "type": type_,
-                                "address": f"{address}/{prefixlen}",
-                                "gateway": gateway,
-                                "dns_nameservers": nameservers,
-                            }
-                        )
+                        subnet: dict[str, Any]
+                        subnet = {
+                            "type": type_,
+                            "address": f"{address}/{prefixlen}",
+                        }
+                        if gateway:
+                            subnet["gateway"] = gateway
+                        if nameservers:
+                            subnet["dns_nameservers"] = nameservers
+                        cfg["subnets"].append(subnet)
                 networkconfig["config"].append(cfg)
             with networkconfig_path.open("w") as f:
                 yaml.safe_dump(networkconfig, f)

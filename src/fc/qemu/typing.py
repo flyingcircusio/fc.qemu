@@ -98,11 +98,12 @@ class AgentNetworkConfigDict(TypedDict):
 
 class InterfaceDict(TypedDict):
     # keep-sorted: start
+    linktype: NotRequired[str]
+    gateways: dict[str, str]
     routed: bool
     networks: dict[str, list[str]]
     network_number: int | None
     mac: str
-    gateways: dict[str, str]
     # keep-sorted: end
 
 
