@@ -1,0 +1,26 @@
+name: simplevmlinktype
+consul-generation: 0
+parameters:
+  cores: 1
+  disk: 2
+  id: 2346
+  interfaces:
+    fe:
+      mac: aa-bb-cc-00-ee-ff
+      linktype: routed
+      network_number: 2
+    srv:
+      mac: aa-bb-cc-dd-ee-ff
+      network_number: 3
+  kvm_host: host1
+  memory: 256
+  location: test
+  name: simplevmlinktype
+  online: true
+  rbd_pool: rbd.ssd
+  resource_group: test
+  swap_size: 1073741824
+  tmp_size: 5368709120
+  environment: fc-21.05-dev
+  environment_class: NixOS
+  environment_class_type: nixos

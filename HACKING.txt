@@ -14,6 +14,10 @@ host1 $ sudo -i
 host1 $ run-tests
 ```
 
+Note: before interacting with fc-qemu live on a system, run the tests once to
+ensure live config (Ceph, networking, ...) that isn't managed properly by our
+NixOS layer is set up.
+
 If your Ceph setup becomes unclean/stuck, you can reboot `host1` or run (without rebooting):
 
 ```
@@ -60,5 +64,9 @@ To interact with the tests using PDB you can add breakpoints and/or cause the te
 * sync your fc.qemu code to that machine
 * switch the system-installed fc.qemu package to the fc.qemu dev package referencing your code
 * rebuild the system, enjoy
+
+## Qemu upgrades
+
+* check poll_migration_status and validate the migration states are properly supported.
 
 .. vim: set ft=rst:

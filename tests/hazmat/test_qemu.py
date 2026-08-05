@@ -9,15 +9,8 @@ from fc.qemu.hazmat.qemu import (
 )
 
 
-def test_write_file_expects_bytes(guest_agent):
-    qemu = Qemu({"name": "vm00", "id": 2345})
-    qemu.guestagent = guest_agent
-    with pytest.raises(TypeError):
-        qemu.write_file("/tmp/foo", '"asdf"')
-
-
 def test_write_file_no_error(guest_agent):
-    # We do't have access to a real guest agent here
+    # We do not have access to a real guest agent here
     # but we saw errors even encoding the data to the socket.
     qemu = Qemu({"name": "vm00", "id": 2345})
     # the emulated answers of the guest agent:
@@ -105,25 +98,25 @@ def mock_machine_help(monkeypatch):
     )
 
 
-def test_detect_current_machine_type_version_prefix(mock_machine_help):
+def test_detect_current_machine_type_version_prefix(mock_machine_help: None):
     from fc.qemu.hazmat.qemu import detect_current_machine_type
 
     assert detect_current_machine_type("pc-i440fx") == "pc-i440fx-10.1"
 
 
-def test_detect_current_machine_type_exact_version(mock_machine_help):
+def test_detect_current_machine_type_exact_version(mock_machine_help: None):
     from fc.qemu.hazmat.qemu import detect_current_machine_type
 
     assert detect_current_machine_type("pc-i440fx-6.1") == "pc-i440fx-6.1"
 
 
-def test_detect_current_machine_type_q35(mock_machine_help):
+def test_detect_current_machine_type_q35(mock_machine_help: None):
     from fc.qemu.hazmat.qemu import detect_current_machine_type
 
     assert detect_current_machine_type("pc-q35") == "pc-q35-10.1"
 
 
-def test_detect_current_machine_type_not_found(mock_machine_help):
+def test_detect_current_machine_type_not_found(mock_machine_help: None):
     from fc.qemu.hazmat.qemu import detect_current_machine_type
 
     with pytest.raises(KeyError):
@@ -133,7 +126,7 @@ def test_detect_current_machine_type_not_found(mock_machine_help):
 # excerpt from a real system, can be obtained via
 # import psutil; import pprint; pprint.pprint(list(map(lambda p: p.as_dict(["name", "exe", "cmdline"]), psutil.process_iter(["pid", "name", "exe", "cmdline"]))))
 
-QEMU10_PROCS = [
+QEMU10_PROCS: list[dict[str, list[str] | str]] = [
     {
         "cmdline": [
             "/nix/store/60m4rxhg2fldqaak400c0lry96ijrzqn-python3-3.13.13/bin/python3.13",
@@ -200,9 +193,9 @@ QEMU10_PROCS = [
 ]
 
 
-def test_get_running_qemu_processes(monkeypatch):
+def test_get_running_qemu_processes(monkeypatch: pytest.MonkeyPatch):
 
-    processes = [Mock(as_dict=Mock(return_value=p)) for p in QEMU10_PROCS]
+    processes = [Mock(info=p) for p in QEMU10_PROCS]
     monkeypatch.setattr("psutil.process_iter", lambda *a, **kw: processes)
 
     assert len(get_running_qemu_processes()) == 1
@@ -211,7 +204,7 @@ def test_get_running_qemu_processes(monkeypatch):
 def test_is_qemu_proc():
     assert is_qemu_proc(
         "kvm.somevm",
-        "qemu-system-x86_64",
+        ["qemu-system-x86_64"],
         "/nix/store/asdf-qemu/bin/qemu-system-x86_64",
     )
     assert not is_qemu_proc("", [], "")

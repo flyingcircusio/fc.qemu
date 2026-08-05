@@ -10,20 +10,27 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import IO, Any, Callable, Dict, List
+from pathlib import Path
+from typing import IO, Any, Callable, Dict, List, Literal, TypedDict, TypeVar
 
+import consulate
+import structlog
+from pydantic import BaseModel
 from structlog import get_logger
+
+type UnicodeErrorStrategy = Literal["replace", "strict", "ignore"]
+
 
 MiB = 2**20
 GiB = 2**30
 
-log = get_logger()
+log: structlog.BoundLogger = get_logger()
 
 # Test harnesses
 log_data: List[str]
 test_log_start: float
 test_log_options: Dict[str, List[str]]
-test_log_print: Callable
+test_log_print: Callable[..., None]
 
 
 # workaround for ValueError: can't have unbuffered text I/O
@@ -45,10 +52,11 @@ class FlushingStream(IO[Any]):
 class ControlledRuntimeException(RuntimeError):
     """An exception that is used for flow control but doesn't have to be logged
     as it is handled properly inside.
+
     """
 
 
-def parse_address(addr):
+def parse_address(addr: str) -> tuple[str, int]:
     if addr.startswith("["):
         host, port = addr[1:].split("]:")
     else:
@@ -56,14 +64,16 @@ def parse_address(addr):
     return host, int(port)
 
 
-def locate_live_service(consul, service_id):
+def locate_live_service(
+    consul: consulate.Consul, service_id: str
+) -> dict[str, Any] | None:
     """Locate Consul service with at least one passing health check.
 
     It is an error if multiple live services with the same service name
     are found.
     """
 
-    def passing(checks):
+    def passing(checks: list[dict[str, Any]]):
         return any(
             check["Status"] == "passing" for check in checks
         ) and not any(check["Status"] == "critical" for check in checks)
@@ -80,33 +90,47 @@ def locate_live_service(consul, service_id):
     return live[0]["Service"] if len(live) else None
 
 
-def remove_empty_dirs(d):
+def remove_empty_dirs(d: Path):
     """Remove all empty directories from d up.
 
-    Stops on the first non-empty directory.
+    Stops on the first non-empty directory and does not
+    delete any directories on root level.
+
     """
-    while d != "/":
+    while d.parent != Path("/"):
         try:
-            os.rmdir(d)
+            d.rmdir()
         except OSError:
             return
-        d = os.path.dirname(d)
+        d = d.parent
+
+
+class CmdOptions(TypedDict, total=False):
+    """The optional keyword arguments of `cmd`.
+
+    Callers that wrap `cmd` with an already-bound `log` can forward their
+    `**kwargs` to it as `Unpack[CmdOptions]` and stay fully type checked.
+    """
+
+    encoding: str
+    errors: UnicodeErrorStrategy
+    log_error_verbose: bool
 
 
 def cmd(
-    cmdline,
-    log,
-    encoding="ascii",
-    errors="replace",
-    timeout=None,
-    log_error_verbose=True,
-):
+    cmdline: str,
+    log: structlog.BoundLogger,
+    encoding: str = "ascii",
+    errors: UnicodeErrorStrategy = "replace",
+    log_error_verbose: bool = True,
+) -> str:
     """Execute cmdline with stdin closed to avoid questions on terminal"""
     # XXX need to implement the timeout ... this likely requires switching to
     # using asyncio with something like this: https://stackoverflow.com/a/34114767
     prefix = cmdline.split()[0]
     args = " ".join(cmdline.split()[1:])
     log.debug(prefix, args=args)
+    # unique tracer to allow the logger to only show output_line and output once
     with open("/dev/null") as null:
         proc = subprocess.Popen(
             cmdline,
@@ -119,12 +143,16 @@ def cmd(
         )
         # This allows for more interactive logging and capturing
         # stdout in unit tests even if we get stuck.
+        assert proc.stdout is not None
         stdout = ""
         while True:
             line = proc.stdout.readline()
             if line:
                 # This ensures we get partial output in case of test failures
-                log.debug(os.path.basename(prefix), output_line=line)
+                log.debug(
+                    os.path.basename(prefix),
+                    output_line=line,
+                )
                 stdout += line
             else:
                 break
@@ -144,7 +172,7 @@ def cmd(
 
 
 @contextlib.contextmanager
-def timeit(label):
+def timeit(label: str):
     start = time.time()
     yield
     print(
@@ -172,7 +200,7 @@ def ensure_separate_cgroup():
         f.write(str(os.getpid()))
 
 
-def parse_export_format(data: str) -> Dict[str, str]:
+def parse_export_format(data: str) -> dict[str, str]:
     """Parses formats intended for shell exports into a dict.
 
     ASDF=foo
@@ -181,7 +209,7 @@ def parse_export_format(data: str) -> Dict[str, str]:
     Introduced to support output from `blkid`.
 
     """
-    result = {}
+    result: dict[str, str] = {}
     for line in data.splitlines():
         try:
             k, v = line.strip().split("=")
@@ -195,7 +223,9 @@ def parse_export_format(data: str) -> Dict[str, str]:
     return result
 
 
-def conditional_update(filename, data, mode=0o640, encode_json=True):
+def conditional_update(
+    filename: str, data: Any, mode: int = 0o640, encode_json: bool = True
+):
     """Updates JSON file on disk only if there is different content."""
     with tempfile.NamedTemporaryFile(
         mode="w",
@@ -218,7 +248,7 @@ def conditional_update(filename, data, mode=0o640, encode_json=True):
         os.unlink(tf.name)
 
 
-def inplace_update(filename, data):
+def inplace_update(filename: str, data: Any):
     """Last-resort JSON update for added robustness.
 
     If there is no free disk space, `conditional_update` will fail
@@ -234,16 +264,25 @@ def inplace_update(filename, data):
 
 
 def generate_cloudinit_ssh_keyfile(
-    users: List[Dict], resource_group: str
+    users: List[Dict[str, Any]], resource_group: str
 ) -> str:
-    authorized_ssh_keys = [
+    authorized_ssh_keys: list[str] = [
         u["ssh_pubkey"]
         for u in users
         if set(u["permissions"][resource_group]) & set(["sudo-srv", "manager"])
     ]
-    flattened_ssh_keys = sum(authorized_ssh_keys, [])
+    start: list[str] = []
+    flattened_ssh_keys = sum(authorized_ssh_keys, start)
     return (
         "### managed by Flying Circus - do not edit! ###\n"
         + "\n".join(flattened_ssh_keys)
         + "\n"
     )
+
+
+T = TypeVar("T", bound=BaseModel)
+
+
+def model_from_json_cmd(model: type[T], *args: Any, **kw: Any) -> T:
+    output = cmd(*args, **kw)
+    return model.model_validate_json(output)

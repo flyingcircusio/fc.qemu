@@ -1,6 +1,7 @@
 import configparser
 import os.path
 import re
+from typing import Any
 
 
 def match_many(pattern: str, input: list[str]):
@@ -17,14 +18,14 @@ def match_many(pattern: str, input: list[str]):
 
 def section_matches_as_dicts(
     cp: configparser.ConfigParser, pattern: str
-) -> dict:
+) -> dict[str, dict[str, str]]:
     """Transform a set of sections that match a pattern into a dict of dicts.
 
     The match must provide a "section" group that identifies the key for the
     section. The match must cover the whole key.
 
     """
-    result = {}
+    result: dict[str, dict[str, str]] = {}
     for m in match_many(pattern, cp.sections()):
         result[m.groupdict()["section"]] = dict(cp.items(m.string))
     return result
@@ -40,12 +41,11 @@ class SysConfig(object):
     config file and to allow tests overriding those values gracefully.
     """
 
-    cp: configparser.ConfigParser
-
     def __init__(self):
-        self.qemu = {}
-        self.ceph = {}
-        self.agent = {}
+        self.cp = configparser.ConfigParser()
+        self.qemu: dict[str, Any] = {}
+        self.ceph: dict[str, Any] = {}
+        self.agent: dict[str, Any] = {}
 
     def read_config_files(self):
         """Tries to open fc-qemu.conf at various location."""
@@ -107,9 +107,17 @@ class SysConfig(object):
             "qemu", "maintenance-evacuation-timeout"
         )
 
-        self.agent["network_hooks"] = nh = {}
-        for key, path in self.cp.items("network"):
-            nh[key.lstrip("tap-")] = path
+        network: dict[str, Any] = {"hooks": {}}
+        self.agent["network_cfg"] = network
+        for key, value in self.cp.items("network"):
+            if key.startswith("tap-if"):
+                network["hooks"][key] = value
+            else:
+                # XXX: Hacky workaround as the Nixpkgs INI generator doesn't
+                # (easily) support writing INI files without a value (i.e.
+                # without '=').
+                # Maybe migrate to a better typed config format in the future.
+                network[key] = value if value != "null" else None
 
         # Ceph
         self.agent["this_host"] = self.cp.get("ceph", "lock_host")

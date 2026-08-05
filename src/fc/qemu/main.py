@@ -1,11 +1,12 @@
 import os
 import os.path
 import sys
+from typing import IO, Any, Optional
 
 from .util import ControlledRuntimeException, ensure_separate_cgroup
 
 
-def daemonize(log=None):
+def daemonize(log: Optional[IO[Any]] = None) -> None:
     """
         Copyright/License abberation:
 
@@ -52,6 +53,8 @@ def daemonize(log=None):
     sys.stdout.flush()
     sys.stderr.flush()
     si = open("/dev/null", "r")
+    so: IO[Any]
+    se: IO[Any]
     if log:
         so = se = log
     else:
@@ -70,6 +73,7 @@ def main():
     a = argparse.ArgumentParser(description="Qemu VM agent")
     a.set_defaults(func="print_usage")
     a.set_defaults(ceph_attach_on_enter=True)
+    a.set_defaults(console_target=sys.stdout)
 
     a.add_argument(
         "--verbose",
@@ -89,6 +93,11 @@ def main():
 
     p = sub.add_parser("ls", help="List VMs on this host.")
     p.set_defaults(func="ls")
+
+    p = sub.add_parser("id-to-name", help="Look up a VM name by ID.")
+    p.add_argument("id")
+    p.set_defaults(func="id_to_name")
+    p.set_defaults(console_target=sys.stderr)
 
     maint = sub.add_parser("maintenance", help="Perform maintenance tasks.")
     maint_sub = maint.add_subparsers()
@@ -204,6 +213,7 @@ def main():
     del kwargs["daemonize"]
     del kwargs["verbose"]
     del kwargs["ceph_attach_on_enter"]
+    del kwargs["console_target"]
 
     if args.daemonize:
         # Needed to help spawn subprocesses from consul without blocking.
@@ -215,7 +225,7 @@ def main():
 
     exitcode = os.EX_UNAVAILABLE
     try:
-        init_logging(args.verbose)
+        init_logging(args.verbose, args.console_target)
         log.debug(" ".join(sys.argv))
         log.debug("load-system-config")
 

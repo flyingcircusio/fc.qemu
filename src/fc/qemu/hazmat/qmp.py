@@ -11,6 +11,9 @@
 import json
 import socket
 import sys
+from typing import Any
+
+from structlog import BoundLogger
 
 
 class QMPError(Exception):
@@ -30,7 +33,13 @@ class QMPTimeoutError(QMPError):
 
 
 class QEMUMonitorProtocol:
-    def __init__(self, address, log, server=False, debug=False):
+    def __init__(
+        self,
+        address: str,
+        log: BoundLogger,
+        server: bool = False,
+        debug: bool = False,
+    ):
         """
         Create a QEMUMonitorProtocol class.
 
@@ -43,7 +52,7 @@ class QEMUMonitorProtocol:
               accept() methods
         """
         self.log = log.bind(subsystem="qemu/qmp")
-        self.__events = []
+        self.__events: list[Any] = []
         self.__address = address
         self._debug = debug
         self.__sock = self.__get_sock()
@@ -65,11 +74,11 @@ class QEMUMonitorProtocol:
             raise QMPConnectError
         # Greeting seems ok, negotiate capabilities
         resp = self.cmd("qmp_capabilities")
-        if "return" in resp:
+        if resp is not None and "return" in resp:
             return greeting
         raise QMPCapabilitiesError
 
-    def __json_read(self, only_event=False):
+    def __json_read(self, only_event: bool = False):
         while True:
             data = self.__sockfile.readline()
             if not data:
@@ -85,7 +94,7 @@ class QEMUMonitorProtocol:
 
     error = socket.error
 
-    def __get_events(self, wait=False):
+    def __get_events(self, wait: bool | float = False):
         """
         Check for new events in the stream and cache them in __events.
 
@@ -99,12 +108,12 @@ class QEMUMonitorProtocol:
         """
 
         # Check for new events regardless and pull them into the cache:
-        self.__sock.setblocking(0)
+        self.__sock.setblocking(False)
         try:
             self.__json_read()
         except BlockingIOError:
             pass
-        self.__sock.setblocking(1)
+        self.__sock.setblocking(True)
 
         # Wait for new events, if needed.
         # if wait is 0.0, this means "no wait" and is also implicitly false.
@@ -121,7 +130,7 @@ class QEMUMonitorProtocol:
                 raise QMPConnectError("Error while reading from socket")
             self.__sock.settimeout(None)
 
-    def connect(self, negotiate=True):
+    def connect(self, negotiate: bool = True):
         """
         Connect to the QMP Monitor and perform capabilities negotiation.
 
@@ -149,7 +158,7 @@ class QEMUMonitorProtocol:
         self.__sockfile = self.__sock.makefile()
         return self.__negotiate_capabilities()
 
-    def cmd_obj(self, qmp_cmd):
+    def cmd_obj(self, qmp_cmd: dict[str, Any]):
         """
         Send a QMP command to the QMP Monitor.
 
@@ -173,7 +182,7 @@ class QEMUMonitorProtocol:
             print("QMP:<<< %s" % resp, file=sys.stderr)
         return resp
 
-    def cmd(self, name, args=None, id=None):
+    def cmd(self, name: str, args: Any = None, id: str | None = None):
         """
         Build a QMP command and send it to the QMP Monitor.
 
@@ -188,7 +197,7 @@ class QEMUMonitorProtocol:
             qmp_cmd["id"] = id
         return self.cmd_obj(qmp_cmd)
 
-    def command(self, cmd, **kwds):
+    def command(self, cmd: str, **kwds: Any):
         ret = self.cmd(cmd, kwds)
         if ret is None:
             raise QMPConnectError("Connection went away.")
@@ -196,7 +205,7 @@ class QEMUMonitorProtocol:
             raise Exception(ret["error"]["desc"])
         return ret["return"]
 
-    def pull_event(self, wait=False):
+    def pull_event(self, wait: bool | float = False):
         """
         Get and delete the first available QMP event.
 
@@ -216,7 +225,7 @@ class QEMUMonitorProtocol:
             return self.__events.pop(0)
         return None
 
-    def get_events(self, wait=False):
+    def get_events(self, wait: bool | float = False):
         """
         Get a list of available QMP events.
 
@@ -245,7 +254,7 @@ class QEMUMonitorProtocol:
 
     timeout = socket.timeout
 
-    def settimeout(self, timeout):
+    def settimeout(self, timeout: float):
         self.__sock.settimeout(timeout)
 
     def get_sock_fd(self):

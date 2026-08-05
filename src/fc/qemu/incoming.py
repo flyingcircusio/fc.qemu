@@ -3,19 +3,44 @@ import functools
 import re
 import time
 import xmlrpc.server
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Concatenate,
+    ParamSpec,
+    Protocol,
+    TypeVar,
+)
 
 import consulate.models.agent
+from structlog import BoundLogger
 
-from .exc import EnvironmentChanged, MigrationError, QemuNotRunning
+from .exc import EnvironmentChanged, MigrationError
 from .timeout import TimeOut
 from .util import log, parse_address
 
+if TYPE_CHECKING:
+    # Only for annotations: agent imports this module.
+    from fc.qemu.agent import Agent
 
-def authenticated(f):
+
+class SupportsAuthentication(Protocol):
+    cookie: str
+    log: BoundLogger
+
+
+P = ParamSpec("P")
+R = TypeVar("R")
+S = TypeVar("S", bound=SupportsAuthentication)
+
+
+def authenticated(
+    f: Callable[Concatenate[S, P], R],
+) -> Callable[Concatenate[S, str, P], R]:
     """Decorator to express that authentication is required."""
 
     @functools.wraps(f)
-    def wrapper(self, cookie, *args):
+    def auth(self: S, cookie: str, *args: P.args, **kw: P.kwargs) -> R:
         if cookie != self.cookie:
             self.log.debug(
                 "authentication-cookie-mismatch",
@@ -23,17 +48,29 @@ def authenticated(f):
                 received_cookie=cookie,
             )
             raise MigrationError("authentication cookie mismatch")
-        return f(self, *args)
+        return f(self, *args, **kw)
 
-    return wrapper
+    return auth
 
 
-def reset_timeout(f):
+class SupportsTimeoutReset(Protocol):
+    server: "IncomingServer"
+    log: BoundLogger
+
+
+P1 = ParamSpec("P1")
+R1 = TypeVar("R1")
+S1 = TypeVar("S1", bound=SupportsTimeoutReset)
+
+
+def reset_timeout(
+    f: Callable[Concatenate[S1, P1], R1],
+) -> Callable[Concatenate[S1, P1], R1]:
     """Reset the timeout when interacting with the wrapped method."""
 
     @functools.wraps(f)
-    def wrapper(self, *args):
-        result = f(self, *args)
+    def wrapper(self: S1, *args: P1.args, **kw: P1.kwargs) -> R1:
+        result = f(self, *args, **kw)
         self.log.debug("reset-timeout")
         self.server.extend_cutoff_time(soft_timeout=60)
         return result
@@ -51,12 +88,13 @@ class IncomingServer(object):
     # Maybe keep this in sync with the identically named timeout in outgoing.py
     connect_timeout = 60 * 60  # 1 hour
 
-    def __init__(self, agent):
+    def __init__(self, agent: "Agent"):
         self.agent = agent
         self.log = agent.log
         self.name = agent.name
         self.qemu = agent.qemu
         self.ceph = agent.ceph
+        assert self.agent.migration_ctl_address
         self.bind_address = parse_address(self.agent.migration_ctl_address)
         self.timeout = TimeOut(
             self.connect_timeout,
@@ -67,7 +105,7 @@ class IncomingServer(object):
         self.consul = agent.consul
         self.had_contact = False
 
-    _now = time.time
+    _now = staticmethod(time.time)
 
     @contextlib.contextmanager
     def inmigrate_service_registered(self):
@@ -109,7 +147,8 @@ class IncomingServer(object):
         # method on the API which will cause a reset of the timeout before
         # it is checked the next time.
         s.timeout = 15
-        s._send_traceback_header = True
+        # Not declared in typeshed, but supported by SimpleXMLRPCServer.
+        s._send_traceback_header = True  # pyright: ignore[reportAttributeAccessIssue]
         s.register_instance(IncomingAPI(self))
         s.register_introspection_functions()
         with self.inmigrate_service_registered():
@@ -117,7 +156,7 @@ class IncomingServer(object):
                 s.handle_request()
                 if not self.had_contact and (
                     self.agent.has_new_config()
-                    or not self.agent._requires_inmigrate_from()
+                    or not self.agent.requires_inmigrate_from()
                 ):
                     # We are sure that we have not been in contact with the
                     # outgoing server and thus we can simply abort here
@@ -145,7 +184,9 @@ class IncomingServer(object):
             self.qemu.destroy()
             return 1
 
-    def extend_cutoff_time(self, hard_timeout=None, soft_timeout=None):
+    def extend_cutoff_time(
+        self, hard_timeout: int | None = None, soft_timeout: int | None = None
+    ):
         assert bool(hard_timeout) != bool(soft_timeout)  # XOR
         # We start with a relatively high timeout but once we get a first
         # request we switch to always giving a new cutoff time starting from
@@ -158,7 +199,7 @@ class IncomingServer(object):
             if self.timeout.remaining < soft_timeout:
                 self.timeout.cutoff = self._now() + soft_timeout
 
-    def screen_config(self, config):
+    def screen_config(self, config: str):
         """Remove obsolete items from transferred Qemu config."""
         # There are currently no config changes necessary for the versions in
         # use. This is just a placeholder to demonstrate and check functionality
@@ -174,14 +215,14 @@ class IncomingServer(object):
             )
         return config
 
-    def screen_args(self, args):
+    def screen_args(self, args: list[str]):
         """Translate obsolete CLI args from older fc.qemu/Qemu senders.
 
         Each rewrite pattern shall be grouped and annotated by the qemu versions
         affected, and can be removed in later versions when the migration has
         happened.
         """
-        result = []
+        result: list[str] = []
         for arg in args:
             match arg.split(" ", 1):
                 # Qemu 10.0 removed `-chroot DIR` and `-runas USER`
@@ -213,7 +254,7 @@ class IncomingServer(object):
                     result.append(arg)
         return result
 
-    def prepare_incoming(self, args, config):
+    def prepare_incoming(self, args: list[str], config: str):
         self.qemu.args = self.screen_args(args)
         # Adapt actual VM memory size: we will start with the proper parameter
         # but the memory verification needs to find the real value.
@@ -276,18 +317,18 @@ class IncomingServer(object):
         # Do not kill the supervisor. We will be giving up here, but the
         # supervisor will restart the process, potentially with updated
         # config data so we get a "free" retry.
-        self.agent._destroy()
+        self.agent.destroy()
 
 
 class IncomingAPI(object):
-    def __init__(self, server):
+    def __init__(self, server: IncomingServer):
         self.server = server
         self.log = self.server.log
         self.cookie = server.agent.ceph.auth_cookie()
         self.log.debug("setup-incoming-api", cookie=self.cookie)
 
     @authenticated
-    def ping(self, timeout=60):
+    def ping(self, timeout: int = 60):
         """Check connectivity and extend timeout.
 
         Allow the remote peer to inform us about ongoing slow
@@ -321,7 +362,7 @@ class IncomingAPI(object):
 
     @authenticated
     @reset_timeout
-    def prepare_incoming(self, args, config):
+    def prepare_incoming(self, args: list[str], config: str):
         """Spawn KVM process ready to receive the VM.
 
         `args` and `config` should be the output of

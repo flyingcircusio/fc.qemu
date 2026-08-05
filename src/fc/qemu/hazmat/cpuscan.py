@@ -1,8 +1,8 @@
 import itertools
 import os
 import subprocess
+from typing import Iterable, Optional
 
-from fc.qemu.timeout import TimeOut, TimeoutError
 from fc.qemu.util import log
 
 from .qemu import Qemu
@@ -11,32 +11,29 @@ FNULL = open(os.devnull, "w")
 
 
 class Model(object):
-    architecture = None
-    identifier = None
-    description = None
-
-    def __init__(self, architecture, identifier, description):
+    def __init__(self, architecture: str, identifier: str, description: str):
         self.architecture = architecture
         self.identifier = identifier
         self.description = description
 
 
 class Variation(object):
-    model = None
-    flags = ()
-
-    def __init__(self, model, flags):
+    def __init__(self, model: Model, flags: Iterable[str]):
         self.model = model
         self.flags = tuple(sorted(set(flags)))
 
     @property
-    def cpu_arg(self):
+    def cpu_arg(self) -> str:
         return ",".join((self.model.identifier,) + self.flags)
 
 
 class QemuHost(object):
+    vendor: str
+    CPU_MODELS: list[str] = []
+    BUG_FLAGS: list[str] = []
+
     @classmethod
-    def detect(self):
+    def detect(cls) -> "QemuHost":
         for line in open("/proc/cpuinfo"):
             if not line.startswith("vendor_id"):
                 continue
@@ -46,8 +43,7 @@ class QemuHost(object):
                 if host.vendor == vendor:
                     return host()
             break
-        else:
-            raise RuntimeError("Could not determine CPU vendor.")
+        raise RuntimeError("Could not determine CPU vendor.")
 
 
 class AbstractHost(QemuHost):
@@ -110,29 +106,29 @@ class IntelHost(QemuHost):
     ]
 
 
-def scan_cpus(host=None):
+def scan_cpus(host: Optional["QemuHost"] = None) -> list[Variation]:
     if host is None:
         host = QemuHost.detect()
 
-    models = []
+    models: list[Model] = []
     for identifier in host.CPU_MODELS:
         models.append(Model("x86", identifier, ""))
 
     # Determine combinations with additional desirable flags
     desirable_flags = host.BUG_FLAGS
-    desirable_combinations = []
+    desirable_combinations: list[tuple[str, ...]] = []
     for L in range(0, len(desirable_flags) + 1):
         desirable_combinations.extend(
             itertools.combinations(desirable_flags, L)
         )
 
-    variations = []
+    variations: list[Variation] = []
 
     for model in models:
         for combination in desirable_combinations:
             variations.append(Variation(model, combination))
 
-    valid_models = []
+    valid_models: list[Variation] = []
 
     for variation in variations:
         log.debug(

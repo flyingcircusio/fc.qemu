@@ -12,18 +12,29 @@ import subprocess
 import sys
 import time
 import typing
-from ipaddress import ip_interface
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Optional
+from types import TracebackType
+from typing import (
+    Any,
+    Callable,
+    Concatenate,
+    Optional,
+    ParamSpec,
+    Type,
+    TypeVar,
+    cast,
+)
 
 import colorama
 import consulate
 import consulate.models.agent
 import requests
 import yaml
+from structlog import BoundLogger
 
 from . import directory, util
+from .config import Config
 from .exc import (
     ConfigChanged,
     EnvironmentChanged,
@@ -34,8 +45,10 @@ from .exc import (
 )
 from .hazmat.ceph import Ceph
 from .hazmat.cpuscan import scan_cpus
+from .hazmat.network import Network
 from .hazmat.qemu import (
     Qemu,
+    WatchDogActions,
     detect_current_machine_type,
     get_running_qemu_processes,
 )
@@ -43,10 +56,19 @@ from .incoming import IncomingServer
 from .outgoing import Outgoing
 from .sysconfig import sysconfig
 from .timeout import TimeOut
+from .typing import (
+    AgentNetworkConfigDict,
+    ConsulEvent,
+    EncDict,
+    EncParametersDict,
+    GuestPropertiesDict,
+    SnapshotEventDict,
+    SupportsLocalLock,
+)
 from .util import GiB, MiB, locate_live_service, log
 
 
-def _handle_consul_event(event):
+def _handle_consul_event(event: ConsulEvent):
     handler = ConsulEventHandler()
     handler.handle(event)
 
@@ -62,7 +84,7 @@ LOCKTOOL_TIMEOUT_SECS = 30
 UNLOCK_MAX_RETRIES = 5
 
 
-def unwrap_consul_armour(value: str) -> dict:
+def unwrap_consul_armour(value: str) -> dict[str, Any]:
     # See test_consul.py:prepare_consul_event.
     # The directory is providing a somewhat weird (likely historical)
     # structure with an ASCII armour. Due to Python only encoding/decoding
@@ -73,12 +95,12 @@ def unwrap_consul_armour(value: str) -> dict:
     return json.loads(v)
 
 
-def identifiers_only(d: dict):
+def identifiers_only(d: dict[str, Any]) -> dict[str, Any]:
     """Return a dict that contains only keys that are usable as identifies.
 
     Ensures a dict can be passed via **kw.
     """
-    result = {}
+    result: dict[str, Any] = {}
     for k, v in d.items():
         if not k.isidentifier():
             continue
@@ -86,7 +108,7 @@ def identifiers_only(d: dict):
     return result
 
 
-def iops_settings(**kw):
+def iops_settings(**kw: int):
     """A helper to create a dict that makes it easy to handle IOPS settings.
 
     Useful for comparison and updating.
@@ -118,13 +140,13 @@ def iops_settings(**kw):
     return settings
 
 
-def nonzero(d: dict):
+def nonzero(d: dict[str, Any]) -> dict[str, Any]:
     """Return a dict with only values that are non-zero.
 
     Helpful to allow logging a dict in a compact fashion
     if many items are zeroes.
     """
-    result = {}
+    result: dict[str, Any] = {}
     for k, v in d.items():
         if not v:
             continue
@@ -138,7 +160,7 @@ class ConsulEventHandler(object):
 
     """
 
-    def handle(self, event):
+    def handle(self, event: ConsulEvent):
         """Actual handling of a single Consul event in a
         separate process."""
         try:
@@ -148,7 +170,7 @@ class ConsulEventHandler(object):
                 log.debug("ignore-key", key=event["Key"], reason="empty value")
                 return
             getattr(self, prefix)(event)
-        except BaseException as e:  # noqa
+        except BaseException:
             # This must be a bare-except as it protects threads and the main
             # loop from dying. It could be that I'm wrong, but I'm leaving this
             # in for good measure.
@@ -157,8 +179,11 @@ class ConsulEventHandler(object):
             )
         log.debug("finish-handle-key", key=event.get("Key", None))
 
-    def node(self, event):
-        config = unwrap_consul_armour(event["Value"])
+    def node(self, event: ConsulEvent):
+        # The payload is JSON from the directory, so it is untyped at this
+        # trust boundary. We assume the directory keeps to the schema, the
+        # same way `Agent._load_enc` trusts the on-disk config.
+        config = cast(EncDict, unwrap_consul_armour(event["Value"]))
 
         config["consul-generation"] = event["ModifyIndex"]
         vm = config["name"]
@@ -182,7 +207,8 @@ class ConsulEventHandler(object):
                 close_fds=True,
             )
             log_.debug("launch-ensure", subprocess_pid=s.pid)
-            stdout, stderr = s.communicate()
+            # stderr is redirected into stdout, so it is always None here.
+            stdout, _ = s.communicate()
             exit_code = s.wait()
             log_.debug("launch-ensure", exit_code=exit_code)
             if exit_code:
@@ -195,8 +221,8 @@ class ConsulEventHandler(object):
                 "ignore-consul-event", machine=vm, reason="config is unchanged"
             )
 
-    def snapshot(self, event):
-        value = unwrap_consul_armour(event["Value"])
+    def snapshot(self, event: ConsulEvent):
+        value = cast(SnapshotEventDict, unwrap_consul_armour(event["Value"]))
         vm = value["vm"]
         snapshot = value["snapshot"]
         log_ = log.bind(snapshot=snapshot, machine=vm)
@@ -217,9 +243,9 @@ class ConsulEventHandler(object):
                 pass
 
 
-def running(expected=True):
-    def wrap(f):
-        def checked(self, *args, **kw):
+def running(expected: bool = True):
+    def wrap(f: Callable[..., Any]):
+        def checked(self: "Agent", *args: Any, **kw: Any):
             if self.qemu.is_running() != expected:
                 self.log.error(
                     f.__name__,
@@ -237,7 +263,7 @@ def running(expected=True):
     return wrap
 
 
-def locked(blocking=True):
+def locked(blocking: bool = True):
     # This is thread-safe *AS LONG* as every thread uses a separate instance
     # of the agent. Using multiple file descriptors will guarantee that the
     # lock can only be held once even within a single process.
@@ -245,18 +271,26 @@ def locked(blocking=True):
     # However, we ensure locking status even for re-entrant / recursive usage.
     # For that we keep a counter how often we successfully acquired the lock
     # and then unlock when we're back to zero.
-    def lock_decorator(f):
-        def locked_func(self, *args, **kw):
+    #
+    # Note the `| int` in the return type: in non-blocking mode we bail out
+    # with `os.EX_TEMPFAIL` instead of ever calling the wrapped function.
+    P = ParamSpec("P")
+    S = TypeVar("S", bound=SupportsLocalLock)
+
+    def lock_decorator(
+        f: Callable[Concatenate[S, P], int | None],
+    ) -> Callable[Concatenate[S, P], int | None]:
+        def locked_func(self: S, *args: P.args, **kw: P.kwargs) -> int | None:
             # New lock file behaviour: lock with a global file that is really
             # only used for this purpose and is never replaced.
             self.log.debug("acquire-lock", target=str(self.lock_file))
-            if not self._lock_file_fd:
+            if not self.lock_file_fd:
                 if not os.path.exists(self.lock_file):
                     open(self.lock_file, "a+").close()
-                self._lock_file_fd = os.open(self.lock_file, os.O_RDONLY)
+                self.lock_file_fd = os.open(self.lock_file, os.O_RDONLY)
             mode = fcntl.LOCK_EX | (fcntl.LOCK_NB if not blocking else 0)
             try:
-                fcntl.flock(self._lock_file_fd, mode)
+                fcntl.flock(self.lock_file_fd, mode)
             except IOError:
                 # This happens in nonblocking mode and we just give up as
                 # that's what's expected to speed up things.
@@ -267,25 +301,25 @@ def locked(blocking=True):
                     mode="nonblocking",
                 )
                 return os.EX_TEMPFAIL
-            self._lock_count += 1
+            self.lock_count += 1
             self.log.debug(
                 "acquire-lock",
                 target=str(self.lock_file),
                 result="locked",
-                count=self._lock_count,
+                count=self.lock_count,
             )
             try:
                 return f(self, *args, **kw)
             finally:
-                self._lock_count -= 1
+                self.lock_count -= 1
                 self.log.debug(
                     "release-lock",
                     target=self.lock_file,
-                    count=self._lock_count,
+                    count=self.lock_count,
                 )
-                if self._lock_count == 0:
+                if self.lock_count == 0:
                     try:
-                        fcntl.flock(self._lock_file_fd, fcntl.LOCK_UN)
+                        fcntl.flock(self.lock_file_fd, fcntl.LOCK_UN)
                         self.log.debug(
                             "release-lock",
                             target=self.lock_file,
@@ -298,36 +332,38 @@ def locked(blocking=True):
                             target=self.lock_file,
                             result="error",
                         )
-                    os.close(self._lock_file_fd)
-                    self._lock_file_fd = None
+                    os.close(self.lock_file_fd)
+                    self.lock_file_fd = None
 
         return locked_func
 
     return lock_decorator
 
 
-def swap_size(memory):
+def swap_size(memory: int) -> int:
     """Returns the swap partition size in bytes."""
     swap_mib = max(1024, 32 * math.sqrt(memory))
     return int(swap_mib) * MiB
 
 
-def tmp_size(disk):
+def tmp_size(disk: int) -> int:
     """Returns the tmp partition size in bytes."""
     tmp_gib = max(5, math.sqrt(disk))
     return int(tmp_gib) * GiB
 
 
-def iproute2_json(log, args):
-    cmd = "ip -j {}".format(" ".join(args))
-    data = util.cmd(cmd, log, encoding="utf-8")
-    return json.loads(data) if data else None
+class DummyAgent:
+    log: BoundLogger
+    lock_file_fd: int | None
+    lock_count: int
 
+    @property
+    def lock_file(self) -> Path:
+        return Path("/")
 
-# The iteration order of items in a set is non-deterministic which is
-# a problem the integration tests
-def sorted_ipset(items):
-    return sorted(items, key=lambda x: (x.version, x.ip))
+    @locked()
+    def foo(self):
+        pass
 
 
 class Agent(object):
@@ -362,20 +398,22 @@ class Agent(object):
     # this may change independently from fc.qemu releases.
     binary_generation = 0
 
-    # For upgrade-purposes we're running an old and a new locking mechanism
-    # in step-lock. We used to lock the config file but we're using rename to
-    # update it atomically. That's not compatible and will result in a consul
-    # event replacing the file and then getting a lock on the new file while
-    # there still is another process running. This will result in problems
-    # accessing the QMP socket as that only accepts a single connection and
-    # will then time out.
-    _lock_count = 0
-    _lock_file_fd = None
-    _config_file_fd = None
-
     ceph_attach_on_enter = True
 
-    def __init__(self, name, enc=None):
+    cfg: EncParametersDict
+    cfg_obj: Config
+    enc: EncDict | None
+
+    network_cfg: AgentNetworkConfigDict
+
+    # Hazmat subsystems
+    network: Network
+
+    # SupportsLocalLock protocol
+    lock_file_fd: int | None = None
+    lock_count: int = 0
+
+    def __init__(self, name: str, enc: EncDict | None = None):
         # Update configuration values from system or test config.
         self.log = log.bind(machine=name)
 
@@ -407,7 +445,7 @@ class Agent(object):
         return self.prefix / "etc/qemu/vm" / f".{self.name}.cfg.staging"
 
     @property
-    def lock_file(self):
+    def lock_file(self) -> Path:
         return self.prefix / "run" / f"qemu.{self.name}.lock"
 
     @property
@@ -418,7 +456,7 @@ class Agent(object):
             / f"{self.cfg['resource_group']}.json"
         )
 
-    def _load_enc(self):
+    def _load_enc(self) -> EncDict | None:
         try:
             with self.config_file.open() as f:
                 return yaml.safe_load(f)
@@ -468,7 +506,7 @@ class Agent(object):
 
     @classmethod
     def report_supported_cpu_models(cls):
-        variations = []
+        variations: list[str] = []
         for variation in scan_cpus():
             log.info(
                 "supported-cpu-model",
@@ -510,6 +548,19 @@ class Agent(object):
                     )
                 else:
                     log.info("offline", machine=vm.name)
+
+    @classmethod
+    def id_to_name(cls, id: str) -> int:
+        # XXX This would be a good candidate to improve with aramaki by
+        # just querying the inventory instead of running through config files...
+        for candidate in (cls.prefix / Path("etc/qemu/vm")).glob("*.cfg"):
+            with candidate.open() as f:
+                cfg = yaml.safe_load(f)
+                if str(cfg["parameters"]["id"]) == id:
+                    print(cfg["parameters"]["name"])
+                    return 0
+        print(f"No VM with id {id} known.", file=sys.stderr)
+        return 1
 
     @classmethod
     def _ensure_maintenance_volume(cls):
@@ -572,7 +623,7 @@ class Agent(object):
 
         d = directory.connect()
         host = socket.gethostname()
-        for attempt in range(3):
+        for _ in range(3):
             log.info("request-evacuation")
             evacuated = d.evacuate_vms(host)
             if not evacuated:
@@ -653,7 +704,7 @@ class Agent(object):
 
         Runs the shutdowns in parallel to speed up host reboots.
         """
-        vms = []
+        vms: list[Agent] = []
 
         for vm in cls._vm_agents_for_host():
             with vm:
@@ -690,7 +741,7 @@ class Agent(object):
                 else:
                     print("Please type 'yes' or 'no'.")
 
-        def stop_vm(vm):
+        def stop_vm(vm: Agent):
             # Isolate the stop call into separate fc-qemu
             # processes to ensure reliability.
             log.info("shutdown", vm=vm.name)
@@ -721,8 +772,8 @@ class Agent(object):
         """
         vms = list(cls._vm_agents_for_host())
 
-        large_overhead_vms = []
-        swapping_vms = []
+        large_overhead_vms: list[Agent] = []
+        swapping_vms: list[Agent] = []
         total_guest_and_overhead = 0
         expected_guest_and_overhead = 0
 
@@ -751,7 +802,7 @@ class Agent(object):
                 if vm_mem.pss > expected_size:
                     large_overhead_vms.append(vm)
 
-        output = []
+        output: list[str] = []
         result = OK
         if large_overhead_vms:
             result = WARNING
@@ -789,12 +840,14 @@ class Agent(object):
 
         return result
 
-    def stage_new_config(self):
+    def stage_new_config(self) -> bool:
         """Save the current config on the agent into a staging config file.
 
         This method is safe to call outside of the agent's context manager.
 
         """
+        assert self.enc is not None, "can't stage while missing current enc"
+
         # Ensure the config directory exists
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -995,6 +1048,7 @@ class Agent(object):
         # which is OK. We did this at some point and we're adding computed
         # data to the `cfg` structure, that we do not want to accidentally
         # reflect back into the config file.
+        assert self.enc
         self.cfg = copy.copy(self.enc["parameters"])
         self.cfg["name"] = self.enc["name"]
         self.cfg["root_size"] = self.cfg["disk"] * (1024**3)
@@ -1008,7 +1062,6 @@ class Agent(object):
         self.qemu = Qemu(self.cfg)
         self.ceph = Ceph(self.cfg, self.enc)
         self.ceph.attach_on_enter = self.ceph_attach_on_enter
-        self.contexts = [self.qemu, self.ceph]
         for attr in ["migration_ctl_address"]:
             setattr(self, attr, getattr(self, attr).format(**self.cfg))
         for candidate in [
@@ -1021,6 +1074,15 @@ class Agent(object):
         else:
             raise RuntimeError("Could not find Qemu config file template.")
 
+        # Migration towards pydantic models
+        self.cfg["agent"] = {"prefix": self.prefix, "network": self.network_cfg}
+        self.cfg["agent"]["network"]["use_vhost"] = self.vhost
+
+        self.cfg_obj = Config.model_validate(self.cfg)
+        self.network = Network(self.cfg_obj, self.log)
+
+        self.contexts = [self.qemu, self.ceph, self.network]
+
     def __enter__(self):
         # Allow updating our config by exiting/entering after setting new ENC
         # data.
@@ -1030,10 +1092,15 @@ class Agent(object):
         for c in self.contexts:
             c.__enter__()
 
-    def __exit__(self, exc_value, exc_type, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ):
         for c in self.contexts:
             try:
-                c.__exit__(exc_value, exc_type, exc_tb)
+                c.__exit__(exc_type, exc_val, exc_tb)
             except Exception:
                 self.log.exception("leave-subsystems", exc_info=True)
 
@@ -1112,13 +1179,14 @@ class Agent(object):
                 self.log.error(
                     "inconsistent-state", action="destroy", exc_info=True
                 )
-                self._destroy()
+                self.destroy()
 
     def cleanup_offline(self):
         if self.qemu.existing_run_files():
             self.ceph.attach_volumes()
             if self.ceph.locked_by_me():
                 self.ceph.unlock()
+            self.network.stop()
             self.consul_deregister()
             self.cleanup()
 
@@ -1160,6 +1228,7 @@ class Agent(object):
         # Ensure ongoing maintenance for a VM that was potentially outmigrated.
         # But where the outmigration may have left bits and pieces.
         self.ceph.stop()
+        self.network.stop()
         self.consul_deregister()
         self.cleanup()
 
@@ -1168,7 +1237,7 @@ class Agent(object):
         # Ensure state
         agent_likely_ready = True
         if not self.qemu.is_running():
-            current_host = self._requires_inmigrate_from()
+            current_host = self.requires_inmigrate_from()
             if current_host:
                 self.log.info(
                     "ensure-state",
@@ -1200,7 +1269,7 @@ class Agent(object):
 
         # Perform ongoing adjustments of the operational parameters of the
         # running VM.
-        self.ensure_online_host_routes()
+        self.network.start()
         self.consul_register()
         self.ensure_online_disk_size()
         self.ensure_online_disk_throttle()
@@ -1218,7 +1287,7 @@ class Agent(object):
             self.mark_qemu_guest_properties()
             self.update_root_ssh_keys_cloudinit()
 
-    def _destroy(self, kill_supervisor=False):
+    def destroy(self, kill_supervisor: bool = False):
         timeout = TimeOut(15, interval=1, raise_on_timeout=False)
         self.log.info("destroy-vm", action="kill vm")
         try:
@@ -1232,6 +1301,7 @@ class Agent(object):
                     self.ceph.stop()
                 except Exception:
                     pass
+                self.network.stop()
                 self.log.info("destroy-vm", action="deregister consul")
                 self.consul_deregister()
                 self.log.info("destroy-vm", action="cleanup")
@@ -1258,7 +1328,7 @@ class Agent(object):
             self.log.error("ensure-thawed-failed", reason=str(e))
 
     def mark_qemu_guest_properties(self):
-        props = {
+        props: GuestPropertiesDict = {
             "binary_generation": self.binary_generation,
             "cpu_model": self.cfg["cpu_model"],
             "rbd_pool": self.cfg["rbd_pool"],
@@ -1307,7 +1377,9 @@ class Agent(object):
     def ensure_online_disk_size(self):
         """Trigger block resize action for the root disk."""
         target_size = self.cfg["root_size"]
-        current_size = self.ceph.volumes["root"].size
+        root = self.ceph.volumes["root"]
+        assert root is not None, "root volume does not exist"
+        current_size = root.size
         if current_size >= target_size:
             self.log.info(
                 "check-disk-size",
@@ -1385,113 +1457,7 @@ class Agent(object):
                     ),
                 )
 
-    def ensure_online_host_routes(self):
-        """Ensure that host VRF routes are configured for this VM."""
-        for net, net_config in sorted(self.cfg["interfaces"].items()):
-            if not net_config.get("routed"):
-                continue
-            ifname = f"t{net}{self.cfg['id']}"
-            vrfname = f"vrf{net}"
-            target_routes = {
-                ip_interface(addr)
-                for addrs in net_config["networks"].values()
-                for addr in addrs
-            }
-            current_routes = {}
-
-            self.log.info(
-                "ensure-routes",
-                iface=ifname,
-                vrf=vrfname,
-                action="start",
-            )
-
-            try:
-                current_v4 = iproute2_json(
-                    self.log,
-                    ["-4", "route", "show", "vrf", vrfname, "dev", ifname],
-                )
-                current_v6 = iproute2_json(
-                    self.log,
-                    ["-6", "route", "show", "vrf", vrfname, "dev", ifname],
-                )
-
-                current_routes = {
-                    ip_interface(x["dst"])
-                    for x in (current_v4 + current_v6)
-                    # ignore routes managed by the kernel
-                    if "protocol" not in x or x["protocol"] != "kernel"
-                }
-
-                add = target_routes - current_routes
-                remove = current_routes - target_routes
-
-                if add or remove:
-                    self.log.info(
-                        "ensure-routes",
-                        iface=ifname,
-                        vrf=vrfname,
-                        current_routes=[
-                            x.with_prefixlen
-                            for x in sorted_ipset(current_routes)
-                        ],
-                        target_routes=[
-                            x.with_prefixlen
-                            for x in sorted_ipset(target_routes)
-                        ],
-                        action="reconciling",
-                    )
-
-                for x in add:
-                    iproute2_json(
-                        self.log,
-                        [
-                            # fmt: off
-                            f"-{x.version}",
-                            "route",
-                            "add",
-                            f"{x}",
-                            "dev",
-                            ifname,
-                            "vrf",
-                            vrfname,
-                            "proto",
-                            "fc-qemu",
-                            # fmt: on
-                        ],
-                    )
-                for x in remove:
-                    iproute2_json(
-                        self.log,
-                        [
-                            # fmt: off
-                            f"-{x.version}",
-                            "route",
-                            "del",
-                            f"{x}",
-                            "dev",
-                            ifname,
-                            "vrf",
-                            vrfname,
-                            # fmt: on
-                        ],
-                    )
-
-                self.log.info(
-                    "ensure-routes",
-                    iface=ifname,
-                    vrf=vrfname,
-                    action="finished",
-                )
-            except subprocess.CalledProcessError:
-                self.log.exception(
-                    "ensure-routes-failed",
-                    iface=ifname,
-                    vrf=vrfname,
-                    exc_info=True,
-                )
-
-    def ensure_watchdog(self, action="none"):
+    def ensure_watchdog(self, action: WatchDogActions = "none"):
         """Ensure watchdog settings."""
         self.log.info("ensure-watchdog", action=action)
         self.qemu.watchdog_action(action)
@@ -1537,8 +1503,8 @@ class Agent(object):
     def start(self):
         self.ceph.start()
         self.generate_config()
+        self.network.start()
         self.qemu.start()
-        self.ensure_online_host_routes()
         self.consul_register()
         self.ensure_online_disk_throttle()
         self.ensure_watchdog()
@@ -1593,7 +1559,7 @@ class Agent(object):
 
     @locked()
     @running(True)
-    def snapshot(self, snapshot, keep=0):
+    def snapshot(self, snapshot: str, keep: int = 0):
         """Guarantees a _consistent_ snapshot to be created.
 
         If we can't properly freeze the VM then whoever needs a (consistent)
@@ -1604,15 +1570,15 @@ class Agent(object):
         if keep:
             until = util.today() + datetime.timedelta(days=keep)
             snapshot = snapshot + "-keep-until-" + until.strftime("%Y%m%d")
-        if snapshot in [
-            x.snapname for x in self.ceph.volumes["root"].snapshots
-        ]:
+        root = self.ceph.volumes["root"]
+        assert root is not None, "root volume does not exist"
+        if snapshot in [x.snapname for x in root.snapshots]:
             self.log.info("snapshot-exists", snapshot=snapshot)
             return
         self.log.info("snapshot-create", name=snapshot)
         with self.frozen_vm() as frozen:
             if frozen:
-                self.ceph.volumes["root"].snapshots.create(snapshot)
+                root.snapshots.create(snapshot)
             else:
                 self.log.error("snapshot-ignore", reason="not frozen")
                 raise RuntimeError("VM not frozen, not making snapshot.")
@@ -1622,7 +1588,7 @@ class Agent(object):
     # Alternatively we'd had to connect/disconnect and do weird things
     # for every single command ...
     @locked()
-    def status(self) -> int:
+    def status(self):
         """Determine status of the VM.
 
         Return value is a process exit code (0 = online, 1 = offline, 255 = error)
@@ -1678,6 +1644,7 @@ class Agent(object):
             if not self.qemu.is_running():
                 self.log.info("vm-offline")
                 self.ceph.stop()
+                self.network.stop()
                 self.consul_deregister()
                 self.cleanup()
                 self.log.info("graceful-shutdown-completed")
@@ -1695,9 +1662,9 @@ class Agent(object):
     @locked()
     @running(True)
     def kill(self):
-        self._destroy(kill_supervisor=True)
+        self.destroy(kill_supervisor=True)
 
-    def _requires_inmigrate_from(self) -> Optional[str]:
+    def requires_inmigrate_from(self) -> Optional[str]:
         """Check whether an inmigration makes sense.
 
         This makes sense if the VM isn't running locally and (Consul knows
@@ -1769,7 +1736,7 @@ class Agent(object):
     @locked()
     def lock(self):
         self.log.info("assume-all-locks")
-        for vol in self.ceph.volumes.values():
+        for vol in self.ceph.opened_volumes:
             vol.lock()
 
     @locked()
@@ -1851,37 +1818,7 @@ class Agent(object):
         ]
         self.qemu.args = [a.format(**self.cfg) for a in self.qemu.args]
 
-        vhost = '  vhost = "on"' if self.vhost else ""
-
-        netconfig = []
-        for net, net_config in sorted(self.cfg["interfaces"].items()):
-            ifname = f"t{net}{self.cfg['id']}"
-
-            iface_type = "vrf" if net_config.get("routed") else "bridge"
-            ifup_path = self.network_hooks[f"ifup-{iface_type}"]
-            ifdown_path = self.network_hooks[f"ifdown-{iface_type}"]
-
-            netconfig.append(
-                """
-[device]
-  driver = "virtio-net-pci"
-  netdev = "{ifname}"
-  mac = "{mac}"
-
-[netdev "{ifname}"]
-  type = "tap"
-  ifname = "{ifname}"
-  script = "{ifup}"
-  downscript = "{ifdown}"
-{vhost}
-""".format(
-                    ifname=ifname,
-                    mac=net_config["mac"],
-                    vhost=vhost,
-                    ifup=ifup_path,
-                    ifdown=ifdown_path,
-                )
-            )
+        netconfig = self.network.generate_config()
 
         with self.vm_config_template.open() as f:
             tpl = f.read()
@@ -1894,7 +1831,7 @@ class Agent(object):
         self.qemu.config = tpl.format(
             accelerator=accelerator,
             machine_type=machine_type,
-            network="".join(netconfig),
+            network=netconfig,
             ceph=self.ceph,
             **self.cfg,
         )

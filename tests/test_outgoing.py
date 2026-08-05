@@ -16,10 +16,10 @@ def outgoing():
     return o
 
 
-def test_prefer_remote_rescue(outgoing):
+def test_prefer_remote_rescue(outgoing: Outgoing):
     outgoing.rescue()
     assert outgoing.target.rescue.called is True
-    assert outgoing.agent._destroy.called is True
+    assert outgoing.agent.destroy.called is True
 
 
 def test_request_remote_destroy_if_remote_rescue_fails(outgoing):

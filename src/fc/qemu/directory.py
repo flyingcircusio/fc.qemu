@@ -2,22 +2,27 @@ import json
 import os.path
 import urllib.parse
 import xmlrpc.client
+from typing import Literal
+
+from fc.qemu.typing import EncDict
 
 
-def load_default_enc_json():
+def load_default_enc_json() -> EncDict:
     if os.path.exists("/etc/nixos/enc.json"):
         with open("/etc/nixos/enc.json") as f:
             return json.load(f)
-    else:
-        with open("/etc/puppet/enc.json") as f:
-            data = json.load(f)
-        with open("/etc/directory.secret") as f:
-            data["parameters"]["directory_password"] = f.read().strip()
-        return data
-    raise RuntimeError("No ENC file found.")
+
+    with open("/etc/puppet/enc.json") as f:
+        data = json.load(f)
+    with open("/etc/directory.secret") as f:
+        data["parameters"]["directory_password"] = f.read().strip()
+    return data
 
 
-def connect(enc=None, ring=1):
+def connect(
+    enc: EncDict | None = None,
+    ring: Literal["max", 0, 1] = 1,
+) -> xmlrpc.client.ServerProxy:
     """Returns XML-RPC directory connection.
 
     The directory secret is read from `/etc/nixos/enc.json`.
@@ -30,13 +35,14 @@ def connect(enc=None, ring=1):
     if not enc:
         enc = load_default_enc_json()
     if ring == "max":
+        assert enc
         ring = enc["parameters"]["directory_ring"]
-    base_url = enc["parameters"].get(
+    base_url: str = enc["parameters"].get(
         "directory_url", "https://directory.fcio.net/v2/api"
     )
     url_parts = urllib.parse.urlsplit(base_url)
 
-    url = (
+    url: str = (
         url_parts.scheme + "://"
         + enc["name"] + ":" + enc["parameters"]["directory_password"] + "@"
         + url_parts.netloc + url_parts.path

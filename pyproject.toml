@@ -8,18 +8,23 @@ authors = [
 ]
 
 requires-python = "==3.13.*"
-# NOTE: Please keep this sorted!
 dependencies = [
+    # keep-sorted start
     "PyYaml>=5.3.1",
     "colorama>=0.3.3",
     "consulate",
     "psutil>=5.4.2",
+    "pydantic>=2.13.4",
     "requests>=2.11.1",
     "setuptools>=75.1",
     "structlog>=16.1.0",
-    "websockets>=13.1"
+    "websockets>=13.1",
+    # keep-sorted end
 ]
-# NOTE: Please keep this sorted!
+
+
+[tool.uv]
+exclude-newer = "7 days"
 
 [tool.uv.sources]
 consulate = { git = "https://github.com/flyingcircusio/consulate", rev = "90e46a4f307e281bf0e050d510fa367fd2826a2f" }
@@ -33,23 +38,25 @@ where = ["src/"]
 include = ["fc.qemu", "fc.qemu.hazmat"]
 
 [dependency-groups]
-# NOTE: Please keep this sorted!
 dev = [
+    "basedpyright>=1.39.9",
+    # keep-sorted start
     "mock>=5.2",
+    "pyright>=1.1.411",
     "pytest-cov>=6.2.1",
     "pytest-flakefinder>=1.1.0",
     "pytest-patterns>=0.3.0",
     "pytest-profiling>=1.8.1",
     "pytest-timeout>=2.4.0",
     "pytest>=9.0",
+    # keep-sorted end
 ]
-# NOTE: Please keep this sorted!
 
 [project.scripts]
-# NOTE: Please keep this sorted!
+# keep-sorted start
 fc-qemu = "fc.qemu.main:main"
 supervised-qemu = "fc.qemu.hazmat.supervise:main"
-# NOTE: Please keep this sorted!
+# keep-sorted end
 
 [tool.ruff]
 line-length = 80
@@ -69,3 +76,14 @@ entry_title_template = ""
 rst_header_chars = "-~"
 insert_marker = "- Nothing changed yet."
 categories = ""
+
+[tool.basedpyright]
+typeCheckingMode = "strict"
+exclude = [
+    # keep-sorted start
+    ".venv/**",
+    "batou/**",
+    "tests/**",
+    "typings/**"
+    # keep-sorted end
+]

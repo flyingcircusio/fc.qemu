@@ -9,10 +9,10 @@ from fc.qemu.main import daemonize
 from fc.qemu.util import FlushingStream, ensure_separate_cgroup
 
 
-def run_supervised(cmd, name, logfile):
+def run_supervised(cmd: str, name: str, logfile: str) -> None:
     _log = FlushingStream(open(logfile, "a+"))
 
-    def log(msg):
+    def log(msg: str) -> None:
         now = datetime.datetime.now().isoformat()
         _log.write(f"{now} - {msg}\n")
 
@@ -56,6 +56,6 @@ def run_supervised(cmd, name, logfile):
         time.sleep(DELAY)
 
 
-def main():
+def main() -> None:
     ensure_separate_cgroup()
     run_supervised(*sys.argv[1:])

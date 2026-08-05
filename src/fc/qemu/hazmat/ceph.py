@@ -9,13 +9,22 @@ import json
 import os
 import xmlrpc.client
 from pathlib import Path
-from typing import Dict, Optional
+from types import TracebackType
+from typing import Any, Dict, Optional, Type, Unpack
 
 import yaml
 
 import fc.qemu.directory
 import fc.qemu.hazmat.libceph as libceph
+from fc.qemu.config import LinkType
+from fc.qemu.typing import (
+    EncDict,
+    EncParametersDict,
+    VolumeSizeKey,
+    VolumeSuffix,
+)
 from fc.qemu.util import (
+    CmdOptions,
     conditional_update,
     generate_cloudinit_ssh_keyfile,
     inplace_update,
@@ -36,8 +45,14 @@ ROUTED_VIRTUAL_NAMESERVER_V4 = "169.254.83.168"
 ENC_SEED_PARAMETERS = ["cpu_model", "rbd_pool"]
 
 
-def seed_enc(spec, enc, generation, compatibility_mode=False):
+def seed_enc(
+    spec: "VolumeSpecification",
+    enc: EncDict,
+    generation: int,
+    compatibility_mode: bool = False,
+):
     spec.log.info("seed-fc")
+    assert spec.volume
     with spec.volume.mounted() as target:
         if compatibility_mode:
             target.chmod(0o1777)
@@ -73,7 +88,7 @@ def seed_enc(spec, enc, generation, compatibility_mode=False):
                 f.write(str(generation) + "\n")
 
 
-def valid_rbd_pool_name(name):
+def valid_rbd_pool_name(name: str):
     if name == "rbd":
         return True
     if ".rgw." in name:
@@ -101,11 +116,15 @@ class VolumeSpecification:
 
     # Used for internal book-keeping, suffixing the rbd image name, and for
     # labels on partitions and/or file systems.
-    suffix: str
+    suffix: VolumeSuffix
+
+    # The ENC parameter holding this volume's size. Always `f"{suffix}_size"`,
+    # but spelled out because TypedDicts can only be indexed with literals.
+    size_key: VolumeSizeKey
 
     current_pool: Optional[str]
 
-    def __init__(self, ceph):
+    def __init__(self, ceph: "Ceph"):
         self.ceph = ceph
 
         self.name = f"{ceph.cfg['name']}.{self.suffix}"
@@ -114,7 +133,12 @@ class VolumeSpecification:
         self.ceph.volumes.setdefault(self.suffix, None)
 
         self._log = ceph.log
-        self.cmd = lambda cmdline, **args: cmd(cmdline, log=self.log, **args)
+
+    def cmd(self, cmdline: str, **args: Unpack[CmdOptions]) -> str:
+        # `self.log` is a property that re-binds itself depending on whether a
+        # volume is attached, so it has to be looked up per call. `cmd` here is
+        # the module-level helper from `..util`, not this method.
+        return cmd(cmdline, log=self.log, **args)
 
     @property
     def desired_pool(self) -> str:
@@ -126,11 +150,11 @@ class VolumeSpecification:
 
     @property
     def desired_size(self) -> int:
-        return self.ceph.cfg[f"{self.suffix}_size"]
+        return int(self.ceph.cfg[self.size_key])
 
     @desired_size.setter
     def desired_size(self, value: int):
-        self.ceph.cfg[f"{self.suffix}_size"] = value
+        self.ceph.cfg[self.size_key] = value
 
     @property
     def log(self):
@@ -142,8 +166,8 @@ class VolumeSpecification:
     def volume(self):
         return self.ceph.volumes.get(self.suffix)
 
-    def exists_in_pools(self):
-        result = []
+    def exists_in_pools(self) -> list[str]:
+        result: list[str] = []
 
         for pool, ioctx in self.ceph.ioctxs.items():
             try:
@@ -218,8 +242,10 @@ class VolumeSpecification:
 
 class RootSpec(VolumeSpecification):
     suffix = "root"
+    size_key = "root_size"
 
     def start(self):
+        assert self.volume
         self.log.info("start-root")
 
         if self.exists_in_desired_pool():
@@ -280,7 +306,10 @@ class RootSpec(VolumeSpecification):
         super().ensure()
         self.ensure_migration()
 
-    def ensure_migration(self, allow_execute=True, allow_commit=True):
+    def ensure_migration(
+        self, allow_execute: bool = True, allow_commit: bool = True
+    ):
+        assert self.volume
         migration = self.migration_status()
         if not migration:
             return
@@ -324,6 +353,7 @@ class RootSpec(VolumeSpecification):
 
     def regen_xfs_uuid(self):
         """Regenerate the UUID of the XFS filesystem on partition 1."""
+        assert self.volume
         with self.volume.mapped():
             try:
                 self.volume.wait_for_part1dev()
@@ -356,6 +386,7 @@ class RootSpec(VolumeSpecification):
 
 class TmpSpec(VolumeSpecification):
     suffix = "tmp"
+    size_key = "tmp_size"
 
     def pre_start(self):
         for pool in self.exists_in_pools():
@@ -365,6 +396,7 @@ class TmpSpec(VolumeSpecification):
 
     def start(self):
         self.log.info("start-tmp")
+        assert self.volume
         with self.volume.mapped():
             self.mkfs()
             # XXX remove when all machines can read from cidata
@@ -377,6 +409,7 @@ class TmpSpec(VolumeSpecification):
 
     def mkfs(self):
         self.log.debug("create-fs")
+        assert self.volume
         device = self.volume.device
         assert device, f"volume must be mapped first: {device}"
         self.cmd(f'sgdisk -o "{device}"')
@@ -394,6 +427,7 @@ class TmpSpec(VolumeSpecification):
 
 class CloudInitSpec(VolumeSpecification):
     suffix = "cidata"
+    size_key = "cidata_size"
 
     def pre_start(self):
         for pool in self.exists_in_pools():
@@ -405,12 +439,14 @@ class CloudInitSpec(VolumeSpecification):
 
     def start(self):
         self.log.info("start-cloud-init")
+        assert self.volume
         with self.volume.mapped():
             self.mkfs()
             self.seed(self.ceph.enc, self.ceph.cfg["binary_generation"])
 
     def mkfs(self):
         self.log.debug("create-fs")
+        assert self.volume
         device = self.volume.device
         assert device, f"volume must be mapped first: {device}"
         self.cmd(f'sgdisk -o "{device}"')
@@ -422,13 +458,14 @@ class CloudInitSpec(VolumeSpecification):
             f'mkfs.vfat {options} -n "{self.suffix}" {self.volume.part1dev}'
         )
 
-    def seed(self, enc, generation):
+    def seed(self, enc: EncDict, generation: int):
         seed_enc(self, enc, generation)
         if enc["parameters"]["environment_class_type"] == "cloudinit":
             self.seed_cloud_init(enc)
 
-    def seed_cloud_init(self, enc):
+    def seed_cloud_init(self, enc: EncDict):
         self.log.info("seed-cloud-init")
+        assert self.volume
         managed_files = [
             {
                 "path": "/etc/ssh/sshd_config.d/10-cloud-init-fc.conf",
@@ -505,11 +542,11 @@ class CloudInitSpec(VolumeSpecification):
                 )
             networkconfig_path = target / "network-config"
             networkconfig_path.touch()
-            networkconfig = {"version": 1, "config": []}
+            networkconfig: dict[str, Any] = {"version": 1, "config": []}
             for ifacename, ifaceconfig in enc["parameters"][
                 "interfaces"
             ].items():
-                cfg = {
+                cfg: dict[str, Any] = {
                     "type": "physical",
                     "name": "eth" + ifacename,
                     "mac_address": ifaceconfig["mac"],
@@ -521,42 +558,57 @@ class CloudInitSpec(VolumeSpecification):
                         continue
                     ip_network = ipaddress.ip_network(net)
                     type_ = "static" if ip_network.version == 4 else "static6"
+                    linktype = ifaceconfig.get("linktype")
+                    if not linktype:
+                        linktype = (
+                            LinkType.routed.value
+                            if ifaceconfig["routed"]
+                            else LinkType.bridged.value
+                        )
                     prefixlen = (
                         ip_network.max_prefixlen
-                        if ifaceconfig["routed"]
+                        if linktype == LinkType.routed.value
                         else ip_network.prefixlen
                     )
-                    match (ifaceconfig["routed"], ip_network.version):
-                        case (False, 4):
+                    gateway = None
+                    nameservers = []
+                    match (linktype, ip_network.version):
+                        case (LinkType.bridged.value, 4):
                             gateway = ifaceconfig["gateways"][net]
                             nameservers = ["9.9.9.9", "8.8.8.8"]
-                        case (False, 6):
+                        case (LinkType.bridged.value, 6):
                             gateway = ifaceconfig["gateways"][net]
                             nameservers = [
                                 "2620:fe::fe",
                                 "2001:4860:4860::8888",
                             ]
-                        case (True, 4):
+                        case (LinkType.routed.value, 4):
                             gateway = ROUTED_VIRTUAL_GATEWAY_V4
                             nameservers = [ROUTED_VIRTUAL_NAMESERVER_V4]
-                        case (True, 6):
+                        case (LinkType.routed.value, 6):
                             gateway = ROUTED_VIRTUAL_GATEWAY_V6
                             nameservers = (
                                 [str(ip_network[1])]
                                 if ip_network.num_addresses >= 4
                                 else []
                             )
+                        case (LinkType.dynamic.value, _):
+                            # dynamic interfaces do not have gateways
+                            # configured.
+                            pass
                         case _:
-                            continue
+                            pass
                     for address in netconfig:
-                        cfg["subnets"].append(
-                            {
-                                "type": type_,
-                                "address": f"{address}/{prefixlen}",
-                                "gateway": gateway,
-                                "dns_nameservers": nameservers,
-                            }
-                        )
+                        subnet: dict[str, Any]
+                        subnet = {
+                            "type": type_,
+                            "address": f"{address}/{prefixlen}",
+                        }
+                        if gateway:
+                            subnet["gateway"] = gateway
+                        if nameservers:
+                            subnet["dns_nameservers"] = nameservers
+                        cfg["subnets"].append(subnet)
                 networkconfig["config"].append(cfg)
             with networkconfig_path.open("w") as f:
                 yaml.safe_dump(networkconfig, f)
@@ -564,6 +616,7 @@ class CloudInitSpec(VolumeSpecification):
 
 class SwapSpec(VolumeSpecification):
     suffix = "swap"
+    size_key = "swap_size"
 
     def pre_start(self):
         for pool in self.exists_in_pools():
@@ -575,6 +628,7 @@ class SwapSpec(VolumeSpecification):
 
     def start(self):
         self.log.info("start-swap")
+        assert self.volume
         with self.volume.mapped():
             self.cmd(f'mkswap -f -L "{self.suffix}" {self.volume.device}')
 
@@ -584,7 +638,15 @@ class Ceph(object):
     # from the sysconfig module. See __init__(). The defaults are here to
     # support testing.
 
-    CREATE_VM = None
+    CREATE_VM: str = ""
+
+    # Injected from sysconfig.ceph in __init__().
+    CEPH_CLIENT: str
+    CEPH_CLUSTER: str
+    CEPH_CONF: str
+    CEPH_LOCK_HOST: str
+    MKFS_VFAT: str
+    MKFS_XFS: str
 
     # Those are two different representations of the disks/volumes we manage.
     # The can be treated from client code as well-known structures, so that
@@ -601,7 +663,7 @@ class Ceph(object):
     attach_on_enter = True
     attached = False
 
-    def __init__(self, cfg, enc) -> None:
+    def __init__(self, cfg: EncParametersDict, enc: EncDict) -> None:
         # Update configuration values from system or test config.
         self.__dict__.update(sysconfig.ceph)
         self.log = log.bind(subsystem="ceph", machine=cfg["name"])
@@ -611,7 +673,7 @@ class Ceph(object):
         # the original enc data
         self.enc = enc
 
-        self.rados = None
+        self.rados: Optional[libceph.Rados] = None
         self.ioctxs: Dict[str, libceph.Ioctx] = {}
         self.rbd = libceph.RBD()
 
@@ -637,7 +699,12 @@ class Ceph(object):
         if self.attach_on_enter:
             self.attach_volumes()
 
-    def __exit__(self, exc_value, exc_type, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ):
         for volume in self.opened_volumes:
             volume.close()
         self.volumes.clear()
@@ -649,6 +716,7 @@ class Ceph(object):
     def attach_volumes(self):
         if self.attached:
             return
+        assert self.rados is not None, "Ceph context manager is not active"
         # Keep open ioctx handles to all relevant pools.
         for pool_name in self.rados.list_pools():
             if not valid_rbd_pool_name(pool_name):
@@ -673,6 +741,7 @@ class Ceph(object):
             spec.ensure_presence()
 
             # The start phase guarantees the locks again.
+            assert spec.volume
             spec.volume.lock()
 
             self.log.debug("ensure-size", volume_spec=spec.suffix)
@@ -690,7 +759,7 @@ class Ceph(object):
         for spec in self.specs.values():
             spec.ensure()
 
-    def ensure_volume_presence(self, name, pool, size):
+    def ensure_volume_presence(self, name: str, pool: str, size: int):
         for ioctx in self.ioctxs.values():
             try:
                 libceph.Image(ioctx, name)
@@ -700,10 +769,10 @@ class Ceph(object):
                 return
         self.rbd.create(self.ioctxs[pool], name, size)
 
-    def remove_volume(self, name, pool):
+    def remove_volume(self, name: str, pool: str):
         self.rbd.remove(self.ioctxs[pool], name)
 
-    def get_volume(self, spec):
+    def get_volume(self, spec: VolumeSpecification):
         """(Re-)Attach a volume object for a spec."""
         if volume := self.volumes[spec.suffix]:
             volume.close()
@@ -725,7 +794,7 @@ class Ceph(object):
     def opened_volumes(self):
         return filter(None, self.volumes.values())
 
-    def _clean_volume(self, volume):
+    def clean_volume(self, volume: Volume):
         for key, candidate in self.volumes.items():
             if candidate is volume:
                 self.volumes[key] = None
@@ -748,26 +817,27 @@ class Ceph(object):
 
     def locked_by_me(self):
         """Returns True if CEPH_LOCK_HOST holds locks for all volumes."""
-        if not list(self.opened_volumes):
+        volumes = list(self.opened_volumes)
+        if not volumes:
             # The images do not exist -> we don't hold locks.
             return False
-        try:
-            return all(
-                v.lock_status()[1] == self.CEPH_LOCK_HOST
-                for v in self.opened_volumes
-            )
-        except TypeError:  # status[1] not accessible
-            return False
+        for volume in volumes:
+            status = volume.lock_status()
+            if status is None or status[1] != self.CEPH_LOCK_HOST:
+                return False
+        return True
 
-    def locked_by(self):
+    def locked_by(self) -> str | None:
         """Returns a hostname holding all locks or None if not locked.
 
         Raises ValueError if not all locks are held by same owner.
 
         """
-        lock_owners = set(
-            v.lock_status()[1] for v in self.opened_volumes if v.lock_status()
-        )
+        lock_owners: set[str] = set()
+        for volume in self.opened_volumes:
+            status = volume.lock_status()
+            if status:
+                lock_owners.add(status[1])
         if not lock_owners:
             return None
         if len(lock_owners) != 1:
@@ -813,6 +883,7 @@ class Ceph(object):
             # This order needs to stay stable to support the auth cookie
             # between old and new versions of fc.qemu
             vol = self.volumes[key]
+            assert vol is not None, f"volume {key} does not exist"
             status = [vol.name]
             lock = vol.lock_status()
             if lock:

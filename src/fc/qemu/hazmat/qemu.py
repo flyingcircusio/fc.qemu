@@ -8,15 +8,31 @@ import socket
 import subprocess
 from codecs import encode
 from pathlib import Path
-from typing import Any, List
+from types import TracebackType
+from typing import (
+    Any,
+    Callable,
+    Concatenate,
+    List,
+    Literal,
+    ParamSpec,
+    TypedDict,
+    TypeVar,
+)
 
 import psutil
 import yaml
 
+from fc.qemu.typing import EncParametersDict, SupportsGlobalLock
+
 from ..exc import QemuNotRunning, VMStateInconsistent
 from ..sysconfig import sysconfig
 from ..timeout import TimeOut
-from ..util import ControlledRuntimeException, log
+from ..util import (
+    ControlledRuntimeException,
+    UnicodeErrorStrategy,
+    log,
+)
 from .guestagent import ClientError, GuestAgent
 from .qmp import QEMUMonitorProtocol as Qmp
 from .qmp import QMPConnectError
@@ -32,8 +48,42 @@ from .qmp import QMPConnectError
 FREEZE_TIMEOUT = 300
 
 
+type WatchDogActions = Literal[
+    "reset",
+    "shutdown",
+    "poweroff",
+    "pause",
+    "debug",
+    "none",
+    "inject-nmi",
+]
+
+
 class InvalidMigrationStatus(Exception):
     pass
+
+
+class MigrationInfo(TypedDict):
+    # see qapi/migration.json
+    status: Literal[
+        "none",
+        "setup",
+        "cancelling",
+        "cancelled",
+        "active",
+        "postcopy-device",
+        "postcopy-active",
+        "postcopy-paused",
+        "postcopy-recover-setup",
+        "postcopy-recover",
+        "completed",
+        "failing",
+        "failed",
+        "colo",
+        "pre-switchover",
+        "device",
+        "wait-unplug",
+    ]
 
 
 def _machine_type_sort_key(name: str):
@@ -52,8 +102,10 @@ def _machine_type_sort_key(name: str):
 
 
 def detect_current_machine_type(
-    prefix: str, encoding="ascii", errors="replace"
-):
+    prefix: str,
+    encoding: str = "ascii",
+    errors: UnicodeErrorStrategy = "replace",
+) -> str:
     """Given a machine type prefix, e.g. 'pc-i440fx-' return the newest
     current machine on the available Qemu system.
 
@@ -63,7 +115,7 @@ def detect_current_machine_type(
     result = subprocess.check_output(
         [Qemu.executable, "-machine", "help"], encoding=encoding, errors=errors
     )
-    candidates = []
+    candidates: list[str] = []
     for line in result.splitlines():
         if line.startswith(prefix):
             candidates.append(line.split()[0])
@@ -73,45 +125,54 @@ def detect_current_machine_type(
     return candidates[0]
 
 
-def locked_global(f):
+P = ParamSpec("P")
+R = TypeVar("R")
+S = TypeVar("S", bound=SupportsGlobalLock)
+
+
+def locked_global(
+    f: Callable[Concatenate[S, P], R],
+) -> Callable[Concatenate[S, P], R]:
     LOCK = Path("run/fc-qemu.lock")
 
     # This is thread-safe *AS LONG* as every thread uses a separate instance
     # of the agent. Using multiple file descriptors will guarantee that the
     # lock can only be held once even within a single process.
-    def locked(self, *args, **kw):
+    def locked(self: S, *args: P.args, **kw: P.kwargs) -> R:
         lock = self.prefix / LOCK
         self.log.debug("acquire-global-lock", target=lock)
-        if not self._global_lock_fd:
+        if not self.global_lock_fd:  # pyright: ignore[reportPrivateUsage]
             if not lock.exists():
                 lock.touch()
-            self._global_lock_fd = os.open(lock, os.O_RDONLY)
+            self.global_lock_fd = os.open(lock, os.O_RDONLY)  # pyright: ignore[reportPrivateUsage]
         self.log.debug("global-lock-acquire", target=lock, result="locked")
 
-        fcntl.flock(self._global_lock_fd, fcntl.LOCK_EX)
-        self._global_lock_count += 1
+        fcntl.flock(self.global_lock_fd, fcntl.LOCK_EX)  # pyright: ignore[reportPrivateUsage]
+        self.global_lock_count += 1  # pyright: ignore[reportPrivateUsage]
         self.log.debug(
-            "global-lock-status", target=lock, count=self._global_lock_count
+            "global-lock-status",
+            target=lock,
+            count=self.global_lock_count,  # pyright: ignore[reportPrivateUsage]
         )
         try:
             return f(self, *args, **kw)
         finally:
-            self._global_lock_count -= 1
+            self.global_lock_count -= 1  # pyright: ignore[reportPrivateUsage]
             self.log.debug(
                 "global-lock-status",
                 target=lock,
-                count=self._global_lock_count,
+                count=self.global_lock_count,  # pyright: ignore[reportPrivateUsage]
             )
-            if self._global_lock_count == 0:
+            if self.global_lock_count == 0:  # pyright: ignore[reportPrivateUsage]
                 self.log.debug("global-lock-release", target=lock)
-                fcntl.flock(self._global_lock_fd, fcntl.LOCK_UN)
+                fcntl.flock(self.global_lock_fd, fcntl.LOCK_UN)
                 self.log.debug("global-lock-release", result="unlocked")
 
     return locked
 
 
 def is_qemu_proc(
-    name: str | None, cmdline: str | None, exe: str | None
+    name: str | None, cmdline: list[str] | None, exe: str | None
 ) -> bool:
     if not cmdline:
         # This is a kernel process, we ignore those completely.
@@ -148,7 +209,9 @@ def get_running_qemu_processes() -> list[psutil.Process]:
     return [
         p
         for p in procs
-        if is_qemu_proc(**p.as_dict(["name", "exe", "cmdline"], ad_value=None))
+        if is_qemu_proc(
+            name=p.info["name"], cmdline=p.info["cmdline"], exe=p.info["exe"]
+        )
     ]
 
 
@@ -160,9 +223,9 @@ class Qemu(object):
     # from the sysconfig module. See this class' __init__. The defaults
     # are here to support testing.
 
-    cfg = None
+    cfg: EncParametersDict
     require_kvm = True
-    migration_address = None
+    migration_address: str = ""
     max_downtime = 1.0  # seconds
     # 0.8 * 10 Gbit/s in bytes/s
     migration_bandwidth = int(0.8 * 10 * 10**9 / 8)
@@ -180,7 +243,7 @@ class Qemu(object):
     vm_expected_overhead = 0  # MiB: expected amount of PSS overhead per VM
 
     # The non-hosts-specific config configuration of this Qemu instance.
-    args = ()
+    args: List[str] = []
     config = ""
 
     # Host-specific qemu configuration
@@ -197,13 +260,14 @@ class Qemu(object):
     qmp_socket = Path("run/qemu.{name}.qmp.sock")
     serial_file = Path("var/log/vm/{name}.log")
 
-    _global_lock_fd = None
-    _global_lock_count = 0
-
     migration_lock_file = Path("run/qemu.migration.lock")
     _migration_lock_fd = None
 
-    def __init__(self, vm_cfg):
+    # SupportsGlobalLock protocol
+    global_lock_fd: int | None = None
+    global_lock_count: int = 0
+
+    def __init__(self, vm_cfg: EncParametersDict):
         # Update configuration values from system or test config.
         self.__dict__.update(sysconfig.qemu)
 
@@ -257,10 +321,22 @@ class Qemu(object):
                 self.__qmp = qmp
         return self.__qmp
 
+    @property
+    def _qmp(self) -> Qmp:
+        """Like `qmp`, but for call sites that require a live connection."""
+        qmp = self.qmp
+        assert qmp is not None, "QMP is not available"
+        return qmp
+
     def __enter__(self):
         pass
 
-    def __exit__(self, exc_value, exc_type, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ):
         self.guestagent.disconnect()
         if self.__qmp:
             self.__qmp.close()
@@ -366,7 +442,7 @@ class Qemu(object):
     # starting the VM. This ensures that no other process checks at the same
     # time and we end up using the free memory twice.
     @locked_global
-    def _start(self, additional_args=()):
+    def _start(self, additional_args: tuple[str, ...] = ()):
         if self.require_kvm and not Path("/dev/kvm").exists():
             self.log.error("missing-kvm-support")
             raise ControlledRuntimeException(
@@ -458,18 +534,15 @@ class Qemu(object):
             # but that would be ignored during the gratuitous thaw.
             raise
 
-    def write_file(self, path, content: bytes):
-        if not isinstance(content, bytes):
-            raise TypeError("Expected bytes, got string.")
+    def write_file(self, path: str, content: bytes):
         handle = self.guestagent.cmd("guest-file-open", path=path, mode="w")
         try:
-            self.guestagent.cmd(
-                "guest-file-write",
-                handle=handle,
-                # The ASCII armour needs to be turned into text again, because the
-                # JSON encoder doesn't handle bytes-like objects.
-                **{"buf-b64": encode(content, "base64").decode("ascii")},
-            )
+            # The ASCII armour needs to be turned into text again, because the
+            # JSON encoder doesn't handle bytes-like objects.
+            buf: dict[str, Any] = {
+                "buf-b64": encode(content, "base64").decode("ascii")
+            }
+            self.guestagent.cmd("guest-file-write", handle=handle, **buf)
         finally:
             self.guestagent.cmd("guest-file-close", handle=handle)
 
@@ -480,12 +553,14 @@ class Qemu(object):
             arg=arg,
         )
         try:
+            assert output is not None
             pid = output["pid"]
-        except KeyError:
+        except (AssertionError, KeyError):
             raise RuntimeError("Command could not be started. No PID")
         timeout = TimeOut(5, 1, raise_on_timeout=True)
         while timeout.tick():
             status = self.guestagent.cmd("guest-exec-status", pid=pid)
+            assert status is not None
             if not status["exited"]:
                 continue
             if signal := status.get("signal"):
@@ -497,42 +572,41 @@ class Qemu(object):
             break
 
     def inmigrate(self):
-        self._start([f"-incoming {self.migration_address}"])
+        self._start((f"-incoming {self.migration_address}",))
 
         timeout = TimeOut(30, 1, raise_on_timeout=True)
-        while self.qmp is None:
+        while (qmp := self.qmp) is None:
             timeout.tick()
 
-        status = self.qmp.command("query-status")
+        status = qmp.command("query-status")
         assert not status["running"], status
         assert status["status"] == "inmigrate", status
         return self.migration_address
 
-    def migrate(self, address):
+    def migrate(self, address: str):
         """Initiate actual (out-)migration"""
         self.log.debug("migrate")
-        self.qmp.command(
+        qmp = self._qmp
+        qmp.command(
             "migrate-set-capabilities",
             capabilities=[
                 {"capability": "xbzrle", "state": False},
                 {"capability": "auto-converge", "state": True},
             ],
         )
-        self.qmp.command(
-            "migrate-set-parameters",
-            **{
-                "downtime-limit": int(self.max_downtime * 1000),  # ms
-                "max-bandwidth": self.migration_bandwidth,
-                "multifd-compression": "none",
-            },
-        )
-        self.qmp.command("migrate", uri=address)
+        parameters: dict[str, Any] = {
+            "downtime-limit": int(self.max_downtime * 1000),  # ms
+            "max-bandwidth": self.migration_bandwidth,
+            "multifd-compression": "none",
+        }
+        qmp.command("migrate-set-parameters", **parameters)
+        qmp.command("migrate", uri=address)
         self.log.debug(
             "migrate-parameters",
-            **self.qmp.command("query-migrate-parameters"),
+            **qmp.command("query-migrate-parameters"),
         )
 
-    def poll_migration_status(self, timeout=30):
+    def poll_migration_status(self, timeout: float = 30):
         """Monitor ongoing migration.
 
         Every few seconds, the migration status is queried from the Qemu
@@ -540,28 +614,40 @@ class Qemu(object):
         for communicating status updates.
 
         """
-        timeout = TimeOut(timeout, 1, raise_on_timeout=True)
-        while timeout.tick():
-            if timeout.interval < 10:
-                timeout.interval *= 1.4142
-            info = self.qmp.command("query-migrate")
+        qmp = self._qmp
+        timeout_obj = TimeOut(timeout, 1, raise_on_timeout=True)
+        while timeout_obj.tick():
+            if timeout_obj.interval < 10:
+                timeout_obj.interval *= 1.4142
+            info: MigrationInfo = qmp.command("query-migrate")
             yield info
+            # XXX it's a bit weird we only check this after yielding ...
+            match info["status"]:
+                # a bit weird, but generally ok - nothing migration-related
+                # happened in the lifetime of this vm yet.
+                case "none":
+                    pass
+                # regular migration
+                case (
+                    "setup"
+                    | "active"
+                    | "device"
+                    | "pre-switchover"
+                    | "wait-unplug"
+                ):
+                    pass
+                # keep watching, cleanup is happening
+                case "cancelling" | "failing":
+                    pass
+                # completed successfully
+                case "completed":
+                    break
+                # Abort with an error - we either failed or a in a state
+                # that we do not support.
+                case _:
+                    raise InvalidMigrationStatus(info)
 
-            if info["status"] == "setup":
-                pass
-            elif info["status"] == "completed":
-                break
-            elif info["status"] == "active":
-                # This didn't work out of the box on our 2.5, so I'll leave
-                # this out for now. I think it's due to the need for the
-                # userfaultd that needs to be installed on the host.
-                # if info['ram']['transferred'] > info['ram']['total']:
-                #     self.log.info('migrate-start-postcopy')
-                #     self.qmp.command('migrate-start-postcopy')
-                pass
-            else:
-                raise InvalidMigrationStatus(info)
-            timeout.cutoff += 30
+            timeout_obj.cutoff += 30
 
     def process_exists(self):
         proc = self.proc()
@@ -575,6 +661,11 @@ class Qemu(object):
         # we have a working Qemu instance here. And a "false" must mean:
         # there is no reason to think that any remainder of a Qemu process is
         # still running
+
+        expected_process_exists = False
+        qmp_available: Qmp | None | Literal[False] = None
+        monitor_says_running = False
+        status: dict[str, Any] = {}
 
         timeout = TimeOut(10, raise_on_timeout=False)
         while timeout.tick():
@@ -594,10 +685,10 @@ class Qemu(object):
 
             if qmp_available:
                 try:
-                    status = self.qmp.command("query-status")
+                    status = qmp_available.command("query-status")
                 except (QMPConnectError, socket.error):
                     # Force a reconnect in the next iteration.
-                    self.__qmp.close()
+                    qmp_available.close()
                     self.__qmp = None
                     qmp_available = False
                     monitor_says_running = False
@@ -625,32 +716,12 @@ class Qemu(object):
             status,
         )
 
-    def rescue(self):
-        """Recover from potentially inconsistent state.
-
-        If the VM is running and we own all locks, then everything is fine.
-
-        If the VM is running and we do not own the locks, then try to acquire
-        them or bail out.
-
-        Returns True if we were able to rescue the VM.
-        Returns False if the rescue attempt failed and the VM is stopped now.
-
-        """
-        status = self.qmp.command("query-status")
-        assert status["running"]
-        for image in set(self.locks.available) - set(self.locks.held):
-            try:
-                self.acquire_lock(image)
-            except Exception:
-                self.log.debug("acquire-lock-failed", exc_info=True)
-        self.assert_locks()
-
     def graceful_shutdown(self):
-        if not self.qmp:
+        qmp = self.qmp
+        if not qmp:
             return
         if self.cfg["environment_class"].lower() == "puppet":
-            self.qmp.command(
+            qmp.command(
                 "send-key",
                 keys=[
                     {"type": "qcode", "data": "ctrl"},
@@ -659,9 +730,9 @@ class Qemu(object):
                 ],
             )
             return
-        self.qmp.command("system_powerdown")
+        qmp.command("system_powerdown")
 
-    def destroy(self, kill_supervisor=False):
+    def destroy(self, kill_supervisor: bool = False):
         # We use this destroy command in "fire-and-forget"-style because
         # sometimes the init script will complain even if we achieve what
         # we want: that the VM isn't running any longer. We check this
@@ -679,7 +750,7 @@ class Qemu(object):
         # Kill that one first so we avoid immediate restarts.
         if kill_supervisor:
             parent = p.parent()
-            if "supervised-qemu-wrapped" in parent.cmdline()[1]:
+            if parent and "supervised-qemu-wrapped" in parent.cmdline()[1]:
                 # Do not raise on timeout so we get a chance to actually kill
                 # the VM even if killing the supervisor fails.
                 timeout = TimeOut(100, interval=2, raise_on_timeout=False)
@@ -697,7 +768,7 @@ class Qemu(object):
         # Graceful destruction: ask qemu via qmp to stop
         self.log.debug("vm-destroy-vm-via-qmp")
         try:
-            self.qmp.command("quit")
+            self._qmp.command("quit")
         except Exception:
             # QMP doesn't promise to respond if the process actually quits.
             pass
@@ -720,23 +791,23 @@ class Qemu(object):
             except psutil.NoSuchProcess:
                 break
 
-    def resize_root(self, size):
-        self.qmp.command("block_resize", device="virtio0", size=size)
+    def resize_root(self, size: int):
+        self._qmp.command("block_resize", device="virtio0", size=size)
 
-    def block_info(self):
-        devices = {}
-        for device in self.qmp.command("query-block"):
+    def block_info(self) -> dict[str, dict[str, Any]]:
+        devices: dict[str, dict[str, Any]] = {}
+        for device in self._qmp.command("query-block"):
             devices[device["device"]] = device
         return devices
 
-    def block_io_throttle(self, device, **settings):
-        self.qmp.command("block_set_io_throttle", device=device, **settings)
+    def block_io_throttle(self, device: str, **settings: int):
+        self._qmp.command("block_set_io_throttle", device=device, **settings)
 
-    def watchdog_action(self, action):
-        self.qmp.command(
-            "human-monitor-command",
-            **{"command-line": "watchdog_action action={}".format(action)},
-        )
+    def watchdog_action(self, action: WatchDogActions):
+        args: dict[str, Any] = {
+            "command-line": "watchdog_action action={}".format(action)
+        }
+        self._qmp.command("human-monitor-command", **args)
 
     def existing_run_files(self):
         runfiles = list(
@@ -762,7 +833,7 @@ class Qemu(object):
         if not self.chroot.exists():
             self.chroot.mkdir(parents=True, exist_ok=True)
 
-        def format(s):
+        def format(s: str):
             # These names must stay compatible between
             # fc.qemu versions so that VMs can migrate between
             # older and newer versions freely.

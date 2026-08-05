@@ -50,8 +50,13 @@ in
     # Override some fc-qemu.conf values to match the values expected by tests
     settings = {
       qemu.binary-generation = lib.mkForce 2;
+      qemu.timeout-graceful = lib.mkForce 5;
+
+      network.underlay_loopback = lib.mkForce "172.21.64.23";
     };
   };
+
+  networking.bridges = { brfe = {}; brsrv = {}; };
 
   systemd.services.fc-qemu-scrub.wantedBy = lib.mkForce [ ];
   systemd.timers.fc-qemu-scrub.enable = false;
