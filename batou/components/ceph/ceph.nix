@@ -66,7 +66,20 @@ in
       umount /srv/ceph/osd/ceph-0
       vgremove vgjnl00 -y
       vgremove vgosd-0 -y
+      # Drop the partition tables and, more importantly, their kernel mappings
+      # while the loop devices are still attached. Detaching alone leaves
+      # /dev/loopNp1 behind as a stale nodes.
+      for backing_file in /ceph/*; do
+        # An unmatched glob leaves the pattern itself as the value.
+        [ -e "$backing_file" ] || continue
+        for dev in $(losetup -l -n -O NAME -j "$backing_file" || true); do
+          wipefs -af "$dev" || true
+          partx -d "$dev" || true
+        done
+      done
+      udevadm settle
       losetup -D
+      udevadm settle
       rm -rf /ceph
     '')
   ];
