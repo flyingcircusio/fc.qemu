@@ -1,7 +1,7 @@
 COPY ../../../../fc.qemu /home/developer/
 RUN chown developer: -R /home/developer/fc.qemu
 # Use this if you want to work with a developer checkout
-# of the fc-nixos platform. Also see environment.cfg
+# of the fc-nixos platform. Also see environment.cfg, nixos/component.py
 #COPY ~/PATH/TO/LOCAL/fc-nixos/ /home/developer/fc-nixos
 #RUN chown developer: -R /home/developer/fc-nixos
 #RUN rm -rf /home/developer/fc-nixos/channels
