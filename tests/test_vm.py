@@ -786,6 +786,8 @@ consul machine=simplevm service=<not registered>
 
 @pytest.fixture
 def cooldown():
+    # XXX: What actually needs to cooldown in the tests using that fixture? Stale watchers?
+    # This takes up considerable test time, so better replace with a conditional polling mechanism when possible.
     yield
     time.sleep(35)
 
