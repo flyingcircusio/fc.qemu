@@ -86,7 +86,7 @@ class NixOS(Component):
                 "directory_ring": 0,
                 "resource_group": "test",
                 "location": "test",
-                # Uncomment this if you want to use a developer copy.
+                # Uncomment this if you want to use a developer copy. See also environment.cfg and provision.sh
                 # "environment_url": "file:///home/developer/fc-nixos/channels",
                 "kvm_net_memory": "2000",
                 # This secret needs to be kept in sync with the

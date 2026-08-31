@@ -37,17 +37,6 @@ from .guestagent import ClientError, GuestAgent
 from .qmp import QEMUMonitorProtocol as Qmp
 from .qmp import QMPConnectError
 
-# Freeze requests may take a _long_ _long_ time and the default
-# timeout of 3 seconds will cause everything to explode when
-# the guest takes too long. We've seen 16 seconds as a regular
-# period in some busy and large machines. I'm being _very_
-# generous using a 5 minute timeout here. We've seen it get stuck longer
-# than 2 minutes and the agent is very stubborn in those cases and really
-# doesn't like if the client goes away ...
-# This is a global variable so we can instrument it during testing.
-FREEZE_TIMEOUT = 300
-
-
 type WatchDogActions = Literal[
     "reset",
     "shutdown",
@@ -233,6 +222,13 @@ class Qemu(object):
     block_throttle: dict[str, Any]  # map of pool names -> throttle settings
 
     guestagent_timeout = 3.0
+    # Freeze requests may take a _long_ _long_ time and the default timeout of 3
+    # seconds will cause everything to explode when the guest takes too long. We've
+    # seen 16 seconds as a regular period in some busy and large machines. We're
+    # being _very_ generous using a 5 minute timeout here. We've seen it get stuck
+    # longer than 2 minutes and the agent is very stubborn in those cases and
+    # really doesn't like if the client goes away ...
+    guestagent_freeze_timeout = 300
     # QMP runs in the main thread and can block. Our original 15s timeout
     # is definitely too short. Many discussions mention that 5 minutes have
     # stabilized the situation even under adverse situations.
@@ -509,7 +505,9 @@ class Qemu(object):
             # period in some busy and large machines. So we increase this
             # to a lot more and also perform a gratuitous thaw in case
             # we error out.
-            self.guestagent.cmd("guest-fsfreeze-freeze", timeout=FREEZE_TIMEOUT)
+            self.guestagent.cmd(
+                "guest-fsfreeze-freeze", timeout=self.guestagent_freeze_timeout
+            )
         except ClientError:
             self.log.debug("guest-fsfreeze-freeze-failed", exc_info=True)
             self.guestagent.cmd("guest-fsfreeze-thaw", fire_and_forget=True)

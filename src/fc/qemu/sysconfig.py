@@ -75,6 +75,12 @@ class SysConfig(object):
         self.qemu["vm_expected_overhead"] = self.cp.getint(
             "qemu", "vm-expected-overhead"
         )
+        self.qemu["guestagent_sync_timeout"] = self.cp.getint(
+            "qemu", "guest-agent-sync-timeout"
+        )
+        self.qemu["guestagent_freeze_timeout"] = self.cp.getint(
+            "qemu", "guest-agent-freeze-timeout"
+        )
 
         self.qemu["block_throttle"] = bt = {}
         for section, items in section_matches_as_dicts(

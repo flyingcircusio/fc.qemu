@@ -310,6 +310,7 @@ def ceph_live_setup():
     call("rbd map rbd.hdd/fc-21.05-dev")
     call("sgdisk /dev/rbd0 -o -a 2048 -n 1:8192:0 -c 1:ROOT -t 1:8300")
     call("partprobe")
+    call("udevadm settle")
     call("mkfs.xfs /dev/rbd0p1")
     call("rbd unmap /dev/rbd0")
     call("rbd snap create rbd.hdd/fc-21.05-dev@v1")
@@ -321,10 +322,9 @@ def ceph_live_setup():
 def ceph_mock(request, monkeypatch, tmp_path):
     is_live = request.node.get_closest_marker("live")
     if is_live is not None:
-        # This is a live test. Perform a real Ceph setup.
-        # We expect our roles and software to be installed, but
-        # no Ceph cluster bootstrapping to have been performed.
-        ceph_live_setup()
+        # This is a live test, running against the real Ceph cluster that
+        # `pytest_collection_finish` has bootstrapped. Do not mock anything.
+        # Other fixtures depend on us to order themselves after this decision.
         yield
         return
 
@@ -528,8 +528,6 @@ def named_vm(name, request, clean_environment, monkeypatch, tmpdir):
     import fc.qemu.hazmat.qemu
 
     monkeypatch.setattr(fc.qemu.hazmat.qemu.Qemu, "guestagent_timeout", 0.1)
-    monkeypatch.setattr(fc.qemu.hazmat.qemu, "FREEZE_TIMEOUT", 1)
-    monkeypatch.setattr(fc.qemu.hazmat.guestagent, "SYNC_TIMEOUT", 1)
 
     cfg = Path(__file__).parent / "fixtures" / f"{name}.yaml"
     shutil.copy(
@@ -634,7 +632,7 @@ def clean_tmpdir_with_flakefinder(tmpdir, pytestconfig):
 @pytest.fixture
 def clean_environment(request):
     logpath = Path("/var/log/vm")
-    if logpath.glob("*"):
+    if list(logpath.glob("*")):
         subprocess.run("rm /var/log/vm/*", shell=True)
     yield
     print(getoutput("free"))
@@ -858,6 +856,42 @@ def pytest_collectstart(collector):
     from fc.qemu.sysconfig import sysconfig
 
     sysconfig.load_system_config()
+
+
+def pytest_collection_finish(session):
+    """Bootstrap the live Ceph cluster before any test starts running.
+
+    This has to happen outside the per-test protocol: pytest-timeout installs
+    its timer in `pytest_runtest_protocol`, which covers setup, call and
+    teardown as a single budget. Bootstrapping a session-scoped fixture is no
+    alternative, as these run during the first requesting test's setup phase and
+    therefore charge the whole cluster setup (a minute or more) to whichever
+    test happens to run first. `pytest_collection_finish` runs after collection
+    is complete and before the first test, so no timer is active yet.
+
+    We use this hook rather than `pytest_collection_modifyitems` because `-k`
+    and `-m` deselection is itself implemented as a `modifyitems` hook, so the
+    item list is only final here.
+    """
+    if session.config.getoption("collectonly"):
+        return
+    if not any(item.get_closest_marker("live") for item in session.items):
+        # Nothing needs a real cluster, so don't build one. This keeps unit
+        # test runs working on machines without the Ceph roles installed.
+        return
+    try:
+        ceph_live_setup()
+    except subprocess.CalledProcessError as e:
+        output = e.output or e.stderr or ""
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+        raise pytest.UsageError(
+            f"Ceph fixture bootstrap failed: {e.cmd} returned {e.returncode}.\n"
+            f"{output}\n"
+            "/ceph now exists but the cluster is incomplete. Tear it down "
+            "via `cleanup-ceph` before retrying - otherwise the next run takes "
+            "the already-bootstrapped shortcut and fails in confusing ways."
+        )
 
 
 def pytest_collection_modifyitems(items):

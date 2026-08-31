@@ -51,13 +51,33 @@ TEST_BINARIES = set(
 )
 
 
+# `notfound` has to stay unresolvable: test_util.test_json_cmd_call_cmd_error
+# uses it to provoke a CalledProcessError.
+UNAVAILABLE_BINARIES = set(["notfound"])
+
+
+def missing_binaries(binaries):
+    return set(binary for binary in binaries if not shutil.which(binary))
+
+
 @pytest.mark.unit
 def test_known_binaries_reachable():
-    missing = set()
-    for binary in REQUIRED_BINARIES:
-        if not shutil.which(binary):
-            missing.add(binary)
-    assert missing == set()
+    assert missing_binaries(REQUIRED_BINARIES) == set()
+
+
+@pytest.mark.live
+def test_known_binaries_reachable_live():
+    # The live tests rely on additional tools that fc.qemu itself never calls,
+    # and are tracked as the package's nativeCheckInputs.
+    # Those only have to be reachable where live tests actually run - requiring
+    # them in the package's checkPhase, which can only run the unit tests, would
+    # mean carrying them in the closure for nothing.
+    assert (
+        missing_binaries(
+            (REQUIRED_BINARIES | TEST_BINARIES) - UNAVAILABLE_BINARIES
+        )
+        == set()
+    )
 
 
 @pytest.mark.live

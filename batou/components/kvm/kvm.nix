@@ -48,12 +48,7 @@ in
     # what the platform sets or the fc-qemu unit tests will fail.
     mkfsXfsFlags = null;
     # Override some fc-qemu.conf values to match the values expected by tests
-    settings = {
-      qemu.binary-generation = lib.mkForce 2;
-      qemu.timeout-graceful = lib.mkForce 5;
-
-      network.underlay_loopback = lib.mkForce "172.21.64.23";
-    };
+    settings = import "${testPackage.testdata}/deployment-settings-overrides.nix" { inherit lib;};
   };
 
   networking.bridges = { brfe = {}; brsrv = {}; };
