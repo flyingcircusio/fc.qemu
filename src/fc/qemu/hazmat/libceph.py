@@ -11,6 +11,7 @@ import json
 import shlex
 import subprocess
 import time
+from functools import cached_property
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -21,6 +22,8 @@ from fc.qemu.typing import SnapshotInfo
 
 
 class LockerInfo(TypedDict):
+    """{'lockers': (client_name, cookie, address)}"""
+
     lockers: list[tuple[str, str, str]]
 
 
@@ -74,6 +77,18 @@ class Rados:
             result = json.loads(result)
         return result
 
+    def rados_(self, *args: str, use_json: bool = True) -> Any:
+        shargs = shlex.join(args)
+        format_arg = "--format json" if use_json else ""
+        result = util.cmd(
+            f"rados -c {self.conffile} --name {self.name} {format_arg} {shargs}",
+            log=self.log,
+            log_error_verbose=False,
+        )
+        if use_json:
+            result = json.loads(result)
+        return result
+
     def list_pools(self):
         # This is a hot-spot, cache it globally so this helps both for
         # multiple calls on a single instances as well as for mass operations
@@ -83,6 +98,97 @@ class Rados:
             pools = self.ceph_("osd", "lspools")
             self.POOLS_CACHE.extend([p["poolname"] for p in pools])
         return self.POOLS_CACHE
+
+    # rados locks are not conveniently accessible in the real librados. As we
+    # are not doing any real context-aware I/O, I've decided to not require a
+    # fake Ioctx for our implementation of rados lock operations.
+
+    def create_obj(
+        self,
+        pool: str,
+        obj_name: str,
+        namespace: str = "",
+    ):
+        try:
+            self.rados_(
+                "-p", pool, "-N", namespace, "create", obj_name, use_json=False
+            )
+        except subprocess.CalledProcessError as e:
+            stdout = e.stdout.strip()
+            if ": (17) File exists" in stdout:
+                raise ImageExists(self.name)
+            raise
+
+    def lock_exclusive(
+        self,
+        pool: str,
+        obj_name: str,
+        lock_name: str,
+        cookie: str,
+        namespace: str = "",
+    ):
+        try:
+            self.rados_(
+                "-p", pool, "-N", namespace,
+                "lock", "get",obj_name, lock_name, "--lock-cookie", cookie,
+                "--lock-type", "exclusive",
+                use_json=False
+            )  # fmt: skip
+        except Exception:
+            for _, lock_cookie, _ in self.lock_list_by_name(
+                pool, obj_name, lock_name, namespace
+            )["lockers"]:
+                if lock_cookie == cookie:
+                    # We are already holding the lock
+                    break
+            else:
+                raise ImageBusy(errno.EBUSY, "Image is busy")
+
+    def break_lock(
+        self,
+        pool: str,
+        obj_name: str,
+        lock_name: str,
+        cookie: str,
+        locker_client_name: str,
+        namespace: str = "",
+    ):
+        """Release a lock held by `locker_client_name` with `cookie`.
+
+        This is also the way to release our own locks: rados does not
+        have a dedicated unlock operation.
+        """
+        try:
+            self.rados_(
+                "-p", pool, "-N", namespace,
+                "lock", "break", obj_name, lock_name, locker_client_name,
+                "--lock-cookie", cookie,
+                use_json=False
+            )  # fmt: skip
+        except subprocess.CalledProcessError as e:
+            stdout = e.stdout.strip()
+            if ": (2) No such file or directory" in stdout:
+                # The lock (or the object) is gone already, which is what we
+                # wanted to achieve.
+                return
+            raise
+
+    # TODO: pydantic
+    def lock_list_by_name(
+        self,
+        pool: str,
+        obj_name: str,
+        lock_name: str,
+        namespace: str = "",
+    ) -> LockerInfo:
+        lockinfo = self.rados_(
+            "-p", pool, "-N", namespace, "lock", "info", obj_name, lock_name
+        )
+        # transform into librbd format for compatibility
+        lockers: LockerInfo = {"lockers": []}
+        for lo in lockinfo["lockers"]:
+            lockers["lockers"].append((lo["name"], lo["cookie"], lo["addr"]))
+        return lockers
 
 
 class Ioctx:
@@ -140,6 +246,14 @@ class Image:
     def _info(self):
         assert not self.closed
         return self.ioctx.rados.rbd_("info", self._name)
+
+    @cached_property
+    def features(self) -> list[str]:
+        """Returns the enabled rbd features of this image.
+        First invocation extracts the data from an `rbd info` call, consecutive
+        calls are served from cache.
+        The few places modifying rbd features MUST `del features` afterwards."""
+        return self._info()["features"]
 
     def size(self):
         assert not self.closed

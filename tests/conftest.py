@@ -10,7 +10,7 @@ import time
 import traceback
 from pathlib import Path
 from subprocess import check_call, getoutput
-from typing import List
+from typing import Any, List
 from unittest.mock import Mock, patch
 
 import mock
@@ -45,7 +45,7 @@ class RadosMock(object):
         return self._ioctx[pool]
 
     def list_pools(self):
-        return ["rbd", "data", "rbd.ssd", "rbd.hdd", "rbd.rgw.foo"]
+        return ["rbd", "data", "rbd.ssd", "rbd.hdd", "rbd.rgw.foo", "fcio"]
 
 
 class IoctxMock(object):
@@ -115,6 +115,7 @@ class ImageMock(object):
         self.name = name
         self.snapname = snapname
         self.closed = False
+        self._features: list[str] = []
 
         self._name = self.name
         if self.snapname:
@@ -214,6 +215,9 @@ class ImageMock(object):
             return
         subprocess.check_output(["losetup", "-d", device]).strip()
 
+    def features(self):
+        return self._features
+
 
 def setup_loopback_device(path, size):
     with path.open("w") as f:
@@ -302,6 +306,9 @@ def ceph_live_setup():
     call("ceph osd pool create rbd.hdd 32")
     call("ceph osd pool set rbd.hdd size 1 --yes-i-really-mean-it")
     call("ceph osd pool set rbd.hdd min_size 1")
+    call("ceph osd pool create fcio 32")
+    call("ceph osd pool set fcio min_size 1")
+    call("ceph osd pool application enable fcio orchestration")
     call("ceph osd lspools")
     call("rbd pool init rbd")
     call("rbd pool init rbd.ssd")

@@ -271,6 +271,13 @@ class Volume(Image):
     def lock(self):
         self.log.info("lock")
 
+        assert self.ceph.assume_locked, (
+            "inconsistency between desired rados and rbd lock states"
+        )
+
+        if not self.ceph.use_rbd_lock:
+            return
+
         # Shortcut if we already own the lock.
         if lock_status := self.lock_status():
             if lock_status[1] == self.ceph.CEPH_LOCK_HOST:
@@ -287,8 +294,8 @@ class Volume(Image):
                 # definitely fine.
                 return
             except libceph.ImageBusy:
-                # Maybe the same client but different cookie. We're fine with
-                # different cookies - ignore this. Must be same client, though.
+                # Maybe the same lock_id but different client_id. We're fine with
+                # different client_ids - ignore this. Must be same client, though.
                 lock_status = self.lock_status()
                 if lock_status is None:
                     # Someone had the lock but released it in between.
@@ -307,7 +314,7 @@ class Volume(Image):
             "Someone seems to be racing me."
         )
 
-    def lock_status(self):
+    def lock_status(self) -> tuple[str, str] | None:
         """Return None if not locked and (client_id, lock_id) if it is."""
         try:
             lockers = self.rbdimage.list_lockers()
@@ -326,6 +333,9 @@ class Volume(Image):
         return client_id, lock_id
 
     def unlock(self, force: bool = False):
+        if not self.ceph.use_rbd_lock:
+            return
+
         locked_by = self.lock_status()
         if not locked_by:
             return

@@ -1736,8 +1736,7 @@ class Agent(object):
     @locked()
     def lock(self):
         self.log.info("assume-all-locks")
-        for vol in self.ceph.opened_volumes:
-            vol.lock()
+        self.ceph.lock()
 
     @locked()
     @running(False)

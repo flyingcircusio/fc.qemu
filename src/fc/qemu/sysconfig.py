@@ -140,6 +140,9 @@ class SysConfig(object):
         self.ceph["CREATE_VM"] = self.cp.get("ceph", "create-vm")
         self.ceph["MKFS_XFS"] = self.cp.get("ceph", "mkfs-xfs")
         self.ceph["MKFS_VFAT"] = self.cp.get("ceph", "mkfs-vfat")
+        self.ceph["orchestration_pool"] = self.cp.get(
+            "ceph", "orchestration-pool"
+        )
 
 
 sysconfig = SysConfig()
