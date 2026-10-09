@@ -325,7 +325,10 @@ class Image:
     def map(self):
         assert not self.closed
         if not self.mapped_device:
-            self.ioctx.rados.rbd_("map", self._name, use_json=False)
+            exclusive = (
+                ("--exclusive",) if "exclusive-lock" in self.features else ()
+            )
+            self.ioctx.rados.rbd_("map", *exclusive, self._name, use_json=False)
             self.mapped_device = Path("/dev/rbd") / self._name
             while not self.mapped_device.exists():
                 time.sleep(0.1)  # pragma: no cover

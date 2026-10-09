@@ -314,6 +314,8 @@ def ceph_live_setup():
     call("rbd pool init rbd.ssd")
     call("rbd pool init rbd.hdd")
     call("rbd create --size 500 rbd.hdd/fc-21.05-dev")
+    # XXX: `--exclusive` or not should not matter here, assuming this setup
+    # is run without concurrency
     call("rbd map rbd.hdd/fc-21.05-dev")
     call("sgdisk /dev/rbd0 -o -a 2048 -n 1:8192:0 -c 1:ROOT -t 1:8300")
     call("partprobe")
