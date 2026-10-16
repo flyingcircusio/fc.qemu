@@ -269,14 +269,17 @@ class Volume(Image):
         self.rbdimage.resize(size)
 
     def lock(self):
-        self.log.info("lock")
-
         assert self.ceph.assume_locked, (
             "inconsistency between desired rados and rbd lock states"
         )
 
         if not self.ceph.use_rbd_lock:
+            # Nothing to do and nothing to report: the per-VM rados lock
+            # covers this volume. Logging here would claim a lock we did not
+            # take, and `unlock` is silent in this case as well.
             return
+
+        self.log.info("lock")
 
         # Shortcut if we already own the lock.
         if lock_status := self.lock_status():
@@ -328,7 +331,9 @@ class Volume(Image):
         if not lockers:
             return None
         if not len(lockers) == 1:
-            raise NotImplementedError("I'm not prepared for shared locks")
+            raise NotImplementedError(
+                "I'm not prepared for shared locks: " + repr(lockers)
+            )
         client_id, lock_id, _addr = lockers[0]
         return client_id, lock_id
 

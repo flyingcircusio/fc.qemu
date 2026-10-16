@@ -10,7 +10,7 @@ import os
 import xmlrpc.client
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Dict, Optional, Self, Type, Unpack
+from typing import Any, Dict, Optional, Type, Unpack
 
 import yaml
 from structlog import BoundLogger
@@ -653,37 +653,25 @@ class VMLockMgr:
 
     vm_name: str
     pool: str
+    # PL-134255: `ceph` is only kept around for the lock-mechanism state that
+    # the transition needs - `use_rados_lock` and `assume_locked`. Once the rbd
+    # lock path is gone, everything we need from it is read in `__init__`,
+    # so the back-reference can go as well and this becomes constructible
+    # without a `Ceph` at all.
     ceph: "Ceph"
     rados: libceph.Rados
     log: BoundLogger
 
-    def __init__(
-        self,
-        vm_name: str,
-        ceph: "Ceph",
-        rados: libceph.Rados,
-        logger: BoundLogger,
-    ) -> None:
-        self.vm_name = vm_name
-        # a bit entangled: while `rados` also comes from `ceph`, use `ceph` for tracking
-        # state and config and the not-None `rados` for actual operations
-        self.ceph = ceph
-        self.rados = rados
-        self.log = logger
-        self.pool = ceph.orchestration_pool
-
-    # convenience-constructor. Keeping the actual constructor more modular for
-    # better testability.
-    # XXX: see whether this is actually needed in practice
-    @classmethod
-    def from_ceph(cls, ceph: "Ceph") -> Self:
+    def __init__(self, ceph: "Ceph") -> None:
         assert ceph.rados is not None, "Ceph context manager is not active"
-        return cls(
-            vm_name=ceph.cfg["name"],
-            ceph=ceph,
-            rados=ceph.rados,
-            logger=ceph.log,
-        )
+        self.ceph = ceph
+        self.vm_name = ceph.cfg["name"]
+        self.pool = ceph.orchestration_pool
+        # self.ceph.rados was allowed to be None. Having asserted it
+        # isn't, re-bind it with that more precise type and avoid
+        # checks for every call.
+        self.rados = ceph.rados
+        self.log = ceph.log
 
     def ensure(self):
         # gratuitous, idempotent
@@ -699,7 +687,11 @@ class VMLockMgr:
             self.ceph.assume_locked = True
             return
 
-        self.log.info("lock")
+        # The event names here are all prefixed `rados-`, because `Volume`
+        # emits `lock`/`unlock`/`break-lock`/`assume-lock-failed` for the rbd
+        # path too and the two would otherwise only be told apart by the
+        # presence of a `volume=` key.
+        self.log.info("rados-lock")
         # Shortcut if we already own the lock.
         if lock_status := self.lock_status():
             if lock_status[1] == self.ceph.CEPH_LOCK_HOST:
@@ -726,9 +718,9 @@ class VMLockMgr:
                 # lock is gone here. I see no point in doing this, all of these
                 # can be racy.
                 retry -= 1
-                self.log.warn("assume-lock-retry")
+                self.log.warn("rados-lock-retry")
                 continue
-        self.log.error("assume-lock-failed", competing=self.lock_status())
+        self.log.error("rados-lock-failed", competing=self.lock_status())
         raise libceph.ImageBusy(
             "Could not acquire lock - tried multiple times. "
             "Someone seems to be racing me."
@@ -747,13 +739,15 @@ class VMLockMgr:
         client_id, cookie = locked_by
 
         if cookie == self.ceph.CEPH_LOCK_HOST:
-            self.log.info("unlock")
+            self.log.info("rados-unlock")
         elif force:
-            self.log.info("break-lock")
+            self.log.info("rados-break-lock")
         else:
-            # Not sure what to do here, with rbd locks we'd silently swallow the
-            # non-force unlock of foreign locks.
-            self.log.warn("unlock-foreign-lock-ignore", locker=locked_by)
+            # Someone else holds the lock and we were not asked to break it.
+            # Stay silent, like `Volume.unlock()` does for rbd locks: this is
+            # the normal tail of an outgoing migration, where the destination
+            # has already taken the lock, so logging it would warn on every
+            # successful migration.
             return
 
         self.rados.break_lock(
@@ -799,6 +793,10 @@ class Ceph(object):
     MKFS_VFAT: str
     MKFS_XFS: str
     orchestration_pool: str
+    # PL-134255: remove together with the rbd lock path. Until the whole
+    # cluster supports rados locks this stays off, which keeps every VM whose
+    # images predate the `exclusive-lock` feature on the rbd lock path.
+    ensure_exclusive_lock: bool
 
     # Those are two different representations of the disks/volumes we manage.
     # The can be treated from client code as well-known structures, so that
@@ -854,7 +852,7 @@ class Ceph(object):
             log=self.log,
         )
 
-        self.rados_lock = VMLockMgr.from_ceph(self)
+        self.rados_lock = VMLockMgr(self)
         self.rados_lock.ensure()
         RootSpec(self)
         SwapSpec(self)
@@ -911,14 +909,44 @@ class Ceph(object):
         self.attached = True
         self._update_lock_method()
 
+    def _ensure_image_features(self) -> None:
+        """Enable the rbd features we need on all volumes of this VM.
+
+        Only call when nothing is locked: this is what moves a VM from the
+        legacy rbd locks to the per-VM rados lock, so it has to start from a
+        clean slate without stale rbd locks around. Enabling the feature on a
+        locked or watched image does work, but leaving a VM half-way between
+        both lock mechanisms does not.
+
+        PL-134255: remove together with the rbd lock path, at which point all
+        images carry `exclusive-lock` anyway.
+        """
+        if not self.ensure_exclusive_lock:
+            # Deliberately silent: this is the default during the rollout and
+            # a log line here would show up in every single start.
+            return
+        for volume in self.opened_volumes:
+            # `exclusive-lock` is feature 4. We have to match the name, as
+            # that is what `rbd info` reports and what the CLI accepts.
+            if "exclusive-lock" in volume.rbdimage.features:
+                # `rbd feature enable` is not idempotent - it fails with
+                # `(22) Invalid argument` if the feature is already enabled.
+                continue
+            volume.log.info("enable-exclusive-lock")
+            volume.rbdimage.enable_feature("exclusive-lock")
+
     def start(self):
         """Perform Ceph-related tasks before starting a VM."""
         self._update_lock_method()
+
+        # The pre-start phase guarantees that volumes are not locked and have
+        # no watchers, so that they can be deleted if needed, and so that
+        # `_ensure_image_features` below starts from a clean slate. The rados
+        # lock does not affect the ability to delete volumes, but we release it
+        # here anyway to keep both mechanisms in sync.
+        self.assume_locked = False
+        self.rados_lock.unlock()
         for spec in self.specs.values():
-            # The pre-start phase guarantees that volumes are not locked
-            # and have no watchers, so that they can be deleted if needed.
-            # For the rados lock, there is nothing to be done: the separate advisory
-            # lock does not affect the ability to delete volumes.
             if spec.volume:
                 spec.volume.unlock()
                 spec.volume.close()
@@ -928,6 +956,10 @@ class Ceph(object):
             self.log.debug("ensure-presence", volume_spec=spec.suffix)
             spec.ensure_presence()
 
+        # Has to run after all `ensure_presence` calls, so that it also catches
+        # freshly created images, and before the lock method is determined,
+        # because that decision is made from the image features.
+        self._ensure_image_features()
         self._update_lock_method()
 
         self.rados_lock.lock()
@@ -1016,6 +1048,7 @@ class Ceph(object):
         if self.use_rados_lock:
             return self.rados_lock.lock_status() is None
         else:
+            # PL-134255: remove this branch with the rbd lock path.
             assert self.use_rbd_lock
             return all(
                 not volume.lock_status() for volume in self.opened_volumes
@@ -1028,6 +1061,7 @@ class Ceph(object):
                 lstat := self.rados_lock.lock_status()
             ) is not None and lstat[1] == self.CEPH_LOCK_HOST
 
+        # PL-134255: remove the rest of this method with the rbd lock path.
         assert self.use_rbd_lock
         volumes = list(self.opened_volumes)
         if not volumes:
@@ -1049,6 +1083,7 @@ class Ceph(object):
             lstat = self.rados_lock.lock_status()
             return lstat[1] if lstat else None
 
+        # PL-134255: remove the rest of this method with the rbd lock path.
         assert self.use_rbd_lock
         lock_owners: set[str] = set()
         for volume in self.opened_volumes:
@@ -1092,8 +1127,10 @@ class Ceph(object):
         for volume in self.opened_volumes:
             volume.unlock(force=True)
         self.assume_locked = False
-        # rados unlocking is always a "break lock"
-        self.rados_lock.unlock()
+        # Breaking foreign locks is the whole point of forcing: this is what
+        # `fc-qemu force-unlock` and the inmigration rescue path rely on to
+        # make a VM startable again after a failed migration.
+        self.rados_lock.unlock(force=True)
 
     def auth_cookie(self):
         """This is a cookie that can be used to validate that a party
@@ -1108,6 +1145,8 @@ class Ceph(object):
             vol = self.volumes[key]
             assert vol is not None, f"volume {key} does not exist"
             status = [vol.name]
+            # PL-134255: collapse to `self.rados_lock.lock_status()` with the
+            # rbd lock path.
             lock = (
                 self.rados_lock.lock_status()
                 if self.use_rados_lock

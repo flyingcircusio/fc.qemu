@@ -252,8 +252,28 @@ class Image:
         """Returns the enabled rbd features of this image.
         First invocation extracts the data from an `rbd info` call, consecutive
         calls are served from cache.
-        The few places modifying rbd features MUST `del features` afterwards."""
+        The few places modifying rbd features MUST `del features` afterwards.
+
+        Note that this can contain `migrating` while the image is under
+        `rbd migration prepare`, so only ever test membership of the feature
+        you care about - never compare the whole set."""
         return self._info()["features"]
+
+    def enable_feature(self, feature: str):
+        """Enable an rbd image feature.
+
+        `feature` is a feature *name*, as that is what the rbd CLI accepts and
+        what `rbd info` reports back (e.g. "exclusive-lock", numerically 4).
+
+        This is *not* idempotent: enabling an already enabled feature fails
+        with `(22) Invalid argument`. Callers have to check `features` first.
+        """
+        assert not self.closed
+        self.ioctx.rados.rbd_(
+            "feature", "enable", self._name, feature, use_json=False
+        )
+        # The feature set just changed, so the cache is stale.
+        self.__dict__.pop("features", None)
 
     def size(self):
         assert not self.closed
