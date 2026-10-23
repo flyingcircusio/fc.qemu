@@ -274,9 +274,6 @@ class Volume(Image):
         )
 
         if not self.ceph.use_rbd_lock:
-            # Nothing to do and nothing to report: the per-VM rados lock
-            # covers this volume. Logging here would claim a lock we did not
-            # take, and `unlock` is silent in this case as well.
             return
 
         self.log.info("lock")

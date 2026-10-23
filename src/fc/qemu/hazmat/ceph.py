@@ -878,9 +878,17 @@ class Ceph(object):
 
     def _update_lock_method(self) -> None:
         """Determines the lock method to use based on volume feature.
-        Only call when all volumes are started and attached."""
-        assert self.volumes, (
-            "Volumes need to be started and attached for determining lock method"
+
+        Requires attached volumes: the decision reads `opened_volumes`, and an
+        empty set selects the rados lock via `all([])` - which is only the
+        right answer if the images genuinely do not exist, not if we simply
+        have not looked yet.
+        """
+        # Note that `self.volumes` is *not* a usable check here: the specs seed
+        # it with `None` placeholders in their constructor, so it is truthy
+        # from `Ceph.__enter__` onwards whether or not anything is attached.
+        assert self.attached, (
+            "Volumes need to be attached for determining the lock method"
         )
         self.use_rados_lock = all(
             [
@@ -916,18 +924,15 @@ class Ceph(object):
         legacy rbd locks to the per-VM rados lock, so it has to start from a
         clean slate without stale rbd locks around. Enabling the feature on a
         locked or watched image does work, but leaving a VM half-way between
-        both lock mechanisms does not.
+        both lock mechanisms is undefined behaviour potentially resulting in
+        stale locks.
 
         PL-134255: remove together with the rbd lock path, at which point all
         images carry `exclusive-lock` anyway.
         """
         if not self.ensure_exclusive_lock:
-            # Deliberately silent: this is the default during the rollout and
-            # a log line here would show up in every single start.
             return
         for volume in self.opened_volumes:
-            # `exclusive-lock` is feature 4. We have to match the name, as
-            # that is what `rbd info` reports and what the CLI accepts.
             if "exclusive-lock" in volume.rbdimage.features:
                 # `rbd feature enable` is not idempotent - it fails with
                 # `(22) Invalid argument` if the feature is already enabled.
@@ -1031,18 +1036,6 @@ class Ceph(object):
         for spec in self.specs.values():
             spec.status()
 
-    def locks(self):
-        # TODO: per-volume information can be removed after dropping rbd locks PL-134255
-        for volume in self.opened_volumes:
-            status = (
-                self.rados_lock.lock_status()
-                if self.use_rados_lock
-                else volume.lock_status()
-            )
-            if not status:
-                continue
-            yield volume.name, status[1]
-
     def is_unlocked(self):
         """Returns True if no volume is locked."""
         if self.use_rados_lock:
@@ -1096,6 +1089,10 @@ class Ceph(object):
             raise ValueError(f"Multiple lock owners: {lock_owners}")
         return lock_owners.pop()
 
+    # PL-134255: after dropping the rbd lock path, verbatim rados_lock.lock()
+    # invocations should instead pass through here. During migration of lock
+    # methods, fine-grained positioning of rados vs. volume locks is necessary
+    # in places like Ceph.start
     def lock(self):
         self.rados_lock.lock()
         for volume in self.opened_volumes:
@@ -1127,9 +1124,6 @@ class Ceph(object):
         for volume in self.opened_volumes:
             volume.unlock(force=True)
         self.assume_locked = False
-        # Breaking foreign locks is the whole point of forcing: this is what
-        # `fc-qemu force-unlock` and the inmigration rescue path rely on to
-        # make a VM startable again after a failed migration.
         self.rados_lock.unlock(force=True)
 
     def auth_cookie(self):

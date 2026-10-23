@@ -262,8 +262,7 @@ class Image:
     def enable_feature(self, feature: str):
         """Enable an rbd image feature.
 
-        `feature` is a feature *name*, as that is what the rbd CLI accepts and
-        what `rbd info` reports back (e.g. "exclusive-lock", numerically 4).
+        `feature` is a feature *name*, not its number.
 
         This is *not* idempotent: enabling an already enabled feature fails
         with `(22) Invalid argument`. Callers have to check `features` first.

@@ -23,10 +23,6 @@ from tests.ellipsis import Ellipsis
 # PL-134255: everything down to `clean_output` describes the two lock
 # mechanisms side by side, as literal expected output. Delete the `*_RBD`
 # constants and inline the `*_RADOS` ones when the rbd lock path goes away.
-#
-# These stay literal on purpose: they are the *expected* text, so deriving
-# them from `fc.qemu.logging` would mean a rendering regression could no
-# longer be caught here. The helpers below only pick a constant.
 
 #: Per-volume rbd locks, taken and released one by one.
 LOCKS_RBD = """\
@@ -42,8 +38,7 @@ unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 """
 
-#: The single advisory lock on the VM's sidecar object. `VMLockMgr` binds no
-#: `volume=` key, which is what tells these apart from the rbd lines above.
+#: The single advisory lock on the VM's sidecar object.
 LOCKS_RADOS = """\
 rados-lock machine=simplevm subsystem=ceph
 """
