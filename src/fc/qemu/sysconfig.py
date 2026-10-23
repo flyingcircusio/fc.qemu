@@ -140,6 +140,13 @@ class SysConfig(object):
         self.ceph["CREATE_VM"] = self.cp.get("ceph", "create-vm")
         self.ceph["MKFS_XFS"] = self.cp.get("ceph", "mkfs-xfs")
         self.ceph["MKFS_VFAT"] = self.cp.get("ceph", "mkfs-vfat")
+        self.ceph["orchestration_pool"] = self.cp.get(
+            "ceph", "orchestration-pool"
+        )
+        # PL-134255: remove together with the rbd lock path.
+        self.ceph["ensure_exclusive_lock"] = self.cp.getboolean(
+            "ceph", "ensure-exclusive-lock", fallback=False
+        )
 
 
 sysconfig = SysConfig()
