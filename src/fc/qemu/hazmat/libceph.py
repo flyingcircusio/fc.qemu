@@ -356,12 +356,14 @@ class Image:
         )
 
     def map(self):
+        """Note on locking: This method does not protect the mapped image against
+        concurrent writes from other mapper.
+        Callers need to ensure sufficient (advisory) locking before calling this
+        to prevent filesystem corruption.
+        This is why the flag `--exclusive` is not used."""
         assert not self.closed
         if not self.mapped_device:
-            exclusive = (
-                ("--exclusive",) if "exclusive-lock" in self.features else ()
-            )
-            self.ioctx.rados.rbd_("map", *exclusive, self._name, use_json=False)
+            self.ioctx.rados.rbd_("map", self._name, use_json=False)
             self.mapped_device = Path("/dev/rbd") / self._name
             while not self.mapped_device.exists():
                 time.sleep(0.1)  # pragma: no cover

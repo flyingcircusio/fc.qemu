@@ -895,17 +895,28 @@ class Ceph(object):
         assert self.attached, (
             "Volumes need to be attached for determining the lock method"
         )
-        self.use_rados_lock = all(
-            [
-                "exclusive-lock" in volume.rbdimage.features
+        exclusive_lock_imgs = set(
+            (
+                volume
                 for volume in self.opened_volumes
-            ]
+                if "exclusive-lock" in volume.rbdimage.features
+            )
         )
-        self.use_rbd_lock = any(
-            [
-                "exclusive-lock" not in volume.rbdimage.features
+        rbd_lock_imgs = set(
+            (
+                volume
                 for volume in self.opened_volumes
-            ]
+                if "exclusive-lock" not in volume.rbdimage.features
+            )
+        )
+        self.use_rados_lock = exclusive_lock_imgs and not rbd_lock_imgs
+        self.use_rbd_lock = bool(len(rbd_lock_imgs))
+        self.log.info(
+            "update-lock-method",
+            use_rados_lock=self.use_rados_lock,
+            use_rbd_lock=self.use_rbd_lock,
+            exclusive_lock_imgs=[img.name for img in exclusive_lock_imgs],
+            rbd_lock_imgs=[img.name for img in rbd_lock_imgs],
         )
 
     def attach_volumes(self):
