@@ -5,6 +5,7 @@ from pathlib import Path
 import mock
 import psutil
 import pytest
+from pytest_patterns.plugin import PatternsLib
 
 import fc.qemu.util as util
 from fc.qemu.agent import Agent
@@ -14,6 +15,7 @@ from fc.qemu.hazmat.qemu import (
     detect_current_machine_type,
     get_running_qemu_processes,
 )
+from tests.conftest import UPDATE_LOCK_METHOD_ANY, get_log
 
 
 def named_vm_cfg(name, monkeypatch):
@@ -147,24 +149,32 @@ def test_ensure_inconsistent_state_detected(simplevm_cfg, ceph_inst):
             a.raise_if_inconsistent()
 
 
-def test_ensure_environment_changed(simplevm_cfg, ceph_inst):
+def test_ensure_environment_changed(
+    simplevm_cfg, ceph_inst, patterns: PatternsLib
+):
     a = Agent(simplevm_cfg)
     a.ensure_ = mock.Mock(side_effect=[EnvironmentChanged(), None])
     with a:
         a.ensure()
 
-    from tests.conftest import get_log
-
-    assert (
-        get_log()
-        == """\
+    ensure = patterns.ensure
+    # `EnvironmentChanged` sends `ensure()` around its loop a second time
+    # before it settles.
+    ensure.in_order(
+        """
 check-staging-config machine=simplevm result=none
 running-ensure generation=0 machine=simplevm
 check-staging-config machine=simplevm result=none
 running-ensure generation=0 machine=simplevm
 check-staging-config machine=simplevm result=none
-changes-settled machine=simplevm"""
+changes-settled machine=simplevm
+"""
     )
+    # `attach_volumes` logs the lock mechanism on every `Agent.__enter__`:
+    # for the `ceph_inst` fixture, for `with a` and for the `__exit__`/
+    # `__enter__` dance inside `ensure()`. Not what this test is about.
+    ensure.optional(UPDATE_LOCK_METHOD_ANY)
+    assert ensure == get_log()
 
 
 @pytest.mark.live
@@ -213,7 +223,6 @@ def test_ensure_lock_contention_returns_ex_tempfail(
 
     import fc.qemu.logging
     import fc.qemu.main
-    from tests.conftest import get_log
 
     # Mock system-level functions that aren't available in test environment
     monkeypatch.setattr("fc.qemu.main.ensure_separate_cgroup", lambda: None)

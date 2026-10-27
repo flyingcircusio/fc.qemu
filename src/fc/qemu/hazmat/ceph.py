@@ -884,10 +884,10 @@ class Ceph(object):
     def _update_lock_method(self) -> None:
         """Determines the lock method to use based on volume feature.
 
-        Requires attached volumes: the decision reads `opened_volumes`, and an
-        empty set selects the rados lock via `all([])` - which is only the
-        right answer if the images genuinely do not exist, not if we simply
-        have not looked yet.
+        Requires attached volumes: the decision reads `opened_volumes`, and the
+        rados lock is the default unless volumes without the feature are found.
+        That is only the right answer if the images genuinely do not exist,
+        not if we simply have not looked yet.
         """
         # Note that `self.volumes` is *not* a usable check here: the specs seed
         # it with `None` placeholders in their constructor, so it is truthy
@@ -895,28 +895,24 @@ class Ceph(object):
         assert self.attached, (
             "Volumes need to be attached for determining the lock method"
         )
-        exclusive_lock_imgs = set(
-            (
-                volume
-                for volume in self.opened_volumes
-                if "exclusive-lock" in volume.rbdimage.features
-            )
-        )
-        rbd_lock_imgs = set(
-            (
-                volume
-                for volume in self.opened_volumes
-                if "exclusive-lock" not in volume.rbdimage.features
-            )
-        )
-        self.use_rados_lock = exclusive_lock_imgs and not rbd_lock_imgs
-        self.use_rbd_lock = bool(len(rbd_lock_imgs))
-        self.log.info(
+        exclusive_lock_imgs = [
+            volume.name
+            for volume in self.opened_volumes
+            if "exclusive-lock" in volume.rbdimage.features
+        ]
+        rbd_lock_imgs = [
+            volume.name
+            for volume in self.opened_volumes
+            if "exclusive-lock" not in volume.rbdimage.features
+        ]
+        self.use_rados_lock = not rbd_lock_imgs
+        self.use_rbd_lock = bool(rbd_lock_imgs)
+        self.log.debug(
             "update-lock-method",
             use_rados_lock=self.use_rados_lock,
             use_rbd_lock=self.use_rbd_lock,
-            exclusive_lock_imgs=[img.name for img in exclusive_lock_imgs],
-            rbd_lock_imgs=[img.name for img in rbd_lock_imgs],
+            exclusive_lock_imgs=exclusive_lock_imgs,
+            rbd_lock_imgs=rbd_lock_imgs,
         )
 
     def attach_volumes(self):

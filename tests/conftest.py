@@ -291,6 +291,17 @@ class ImageMock(object):
         assert not self.closed
         return self.ioctx.rbd_images[self._name]["features"]
 
+    #: librbd's `update_features` also enables dependencies of the requested
+    # feature:
+    #: `fast-diff` pulls in `object-map`, which pulls in
+    #: `exclusive-lock`. Modelled here because the caller's pre-check then
+    #: skips the implied features, and a real cluster shows that by *not*
+    #: logging an `enable-rbd-feature` line for them.
+    FEATURE_DEPENDENCIES = {
+        "fast-diff": "object-map",
+        "object-map": "exclusive-lock",
+    }
+
     def enable_feature(self, feature: str):
         assert not self.closed
         features = self.ioctx.rbd_images[self._name]["features"]
@@ -307,7 +318,10 @@ class ImageMock(object):
                     "(22) Invalid argument"
                 ),
             )
-        features.append(feature)
+        implied = [feature]
+        while required := self.FEATURE_DEPENDENCIES.get(implied[-1]):
+            implied.append(required)
+        features.extend(f for f in implied if f not in features)
 
 
 def setup_loopback_device(path, size):
@@ -451,6 +465,54 @@ both_lock_modes = pytest.mark.parametrize("lock_mode", ["rbd", "rados"])
 #: Pin a test to the legacy per-volume rbd locks. Everything marked with this
 #: gets deleted wholesale with PL-134255.
 rbd_lock_mode = pytest.mark.parametrize("lock_mode", ["rbd"])
+
+
+########################################################
+# `update-lock-method` expectations
+#
+# `Ceph._update_lock_method` logs its decision from three places: on every
+# `attach_volumes` (i.e. every `Agent.__enter__` that attaches), at the top of
+# `Ceph.start()`, and once more after `_ensure_image_features()`. Only the last
+# one carries a decision and reflcets the lock path that follows. That
+# is the one tests pin, while the other two are tolerated noise via the `*_ANY`
+# wildcards.
+#
+# PL-134255: the whole set goes with the rbd lock path, at which point the
+# method itself is gone.
+
+#: Before any image exists. With no volume lacking `exclusive-lock`, this
+#: settles on the rados lock regardless of the configured `lock_mode`.
+UPDATE_LOCK_METHOD_NO_IMAGES = """\
+update-lock-method exclusive_lock_imgs=[] machine=simplevm rbd_lock_imgs=[] subsystem=ceph use_rados_lock=True use_rbd_lock=False
+"""
+
+#: All four volumes present, in `Ceph.volumes` order.
+UPDATE_LOCK_METHOD_RBD = """\
+update-lock-method exclusive_lock_imgs=[] machine=simplevm rbd_lock_imgs=['simplevm.root', 'simplevm.swap', 'simplevm.tmp', 'simplevm.cidata'] subsystem=ceph use_rados_lock=False use_rbd_lock=True
+"""
+UPDATE_LOCK_METHOD_RADOS = """\
+update-lock-method exclusive_lock_imgs=['simplevm.root', 'simplevm.swap', 'simplevm.tmp', 'simplevm.cidata'] machine=simplevm rbd_lock_imgs=[] subsystem=ceph use_rados_lock=True use_rbd_lock=False
+"""
+
+#: Any of the above, for the calls that only report whichever images happen to
+#: exist at the time: nothing on a cold boot, the previous boot's feature state
+#: later on.
+UPDATE_LOCK_METHOD_ANY = """\
+update-lock-method ...
+"""
+#: The same, as rendered by `fc-qemu -v` for the subprocess tests.
+CLI_UPDATE_LOCK_METHOD_ANY = """\
+simplevm         ceph update-lock-method...
+"""
+
+
+def update_lock_method(lock_mode: LockMode) -> str:
+    """The decision `Ceph.start()` settles on for this lock mechanism."""
+    return (
+        UPDATE_LOCK_METHOD_RBD
+        if lock_mode == "rbd"
+        else UPDATE_LOCK_METHOD_RADOS
+    )
 
 
 @pytest.fixture

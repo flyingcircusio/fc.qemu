@@ -17,7 +17,13 @@ from fc.qemu import util
 from fc.qemu.agent import Agent, InvalidCommand, swap_size, tmp_size
 from fc.qemu.typing import RouteDict
 from fc.qemu.util import GiB, MiB
-from tests.conftest import both_lock_modes, get_log
+from tests.conftest import (
+    CLI_UPDATE_LOCK_METHOD_ANY,
+    UPDATE_LOCK_METHOD_ANY,
+    both_lock_modes,
+    get_log,
+    update_lock_method,
+)
 from tests.ellipsis import Ellipsis
 
 # PL-134255: everything down to `clean_output` describes the two lock
@@ -49,11 +55,19 @@ rados-unlock machine=simplevm subsystem=ceph
 #: Emitted once per volume by `Ceph._ensure_image_features`, on the first cold
 #: boot that moves a VM onto the rados lock. Later starts find the feature
 #: already enabled and stay silent.
+#:
+#: Two lines per volume although `exclusive_lock_required_features` asks for
+#: three: ceph enables `object-map` along with `fast-diff`, so the pre-check
+#: finds it already set and skips it.
 ENABLE_FEATURES_RADOS = """\
-enable-exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-enable-exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-enable-exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-enable-exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 """
 
 #: `fc-qemu status` lock reporting. With no volumes present at all,
@@ -204,6 +218,7 @@ simplevm              acquire-remote-migration-lock  result='success
 TEST_FIRST_START_VARIATION_RBD = """\
 acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
 acquire-lock count=1 machine=simplevm result=locked target=/run/qemu.simplevm.lock
+update-lock-method exclusive_lock_imgs=[] machine=simplevm rbd_lock_imgs=[] subsystem=ceph use_rados_lock=True use_rbd_lock=False
 pre-start machine=simplevm subsystem=ceph volume_spec=root
 ensure-presence machine=simplevm subsystem=ceph volume_spec=root
 create-vm machine=simplevm subsystem=ceph volume=simplevm.root
@@ -249,6 +264,7 @@ xfs_db> Clearing log and setting UUID
 xfs_db> writing all SBs
 xfs_db> new UUID = 117c71ff-ab7e-4573-8f98-d9e1b3bc6abb
 xfs_db machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+update-lock-method exclusive_lock_imgs=[] machine=simplevm rbd_lock_imgs=['simplevm.root', 'simplevm.swap', 'simplevm.tmp', 'simplevm.cidata'] subsystem=ceph use_rados_lock=False use_rbd_lock=True
 lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 ensure-size machine=simplevm subsystem=ceph volume_spec=root
 start machine=simplevm subsystem=ceph volume_spec=root
@@ -363,6 +379,7 @@ release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
 TEST_FIRST_START_VARIATION_RADOS = """\
 acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
 acquire-lock count=1 machine=simplevm result=locked target=/run/qemu.simplevm.lock
+update-lock-method exclusive_lock_imgs=[] machine=simplevm rbd_lock_imgs=[] subsystem=ceph use_rados_lock=True use_rbd_lock=False
 pre-start machine=simplevm subsystem=ceph volume_spec=root
 ensure-presence machine=simplevm subsystem=ceph volume_spec=root
 create-vm machine=simplevm subsystem=ceph volume=simplevm.root
@@ -420,10 +437,15 @@ pre-start machine=simplevm subsystem=ceph volume_spec=tmp
 ensure-presence machine=simplevm subsystem=ceph volume_spec=tmp
 pre-start machine=simplevm subsystem=ceph volume_spec=cidata
 ensure-presence machine=simplevm subsystem=ceph volume_spec=cidata
-enable-exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-enable-exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-enable-exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-enable-exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+update-lock-method exclusive_lock_imgs=['simplevm.root', 'simplevm.swap', 'simplevm.tmp', 'simplevm.cidata'] machine=simplevm rbd_lock_imgs=[] subsystem=ceph use_rados_lock=True use_rbd_lock=False
 rados-lock machine=simplevm subsystem=ceph
 ensure-size machine=simplevm subsystem=ceph volume_spec=root
 start machine=simplevm subsystem=ceph volume_spec=root
@@ -754,12 +776,16 @@ ensure-presence machine=simplevm subsystem=ceph volume_spec=cidata
 """
     )
     # PL-134255: whichever mechanism is active, the other one must stay
-    # completely silent.
-    start.in_order(locks(lock_mode))
-    start.refused(locks("rados" if lock_mode == "rbd" else "rbd"))
+    # completely silent. The decision is logged right before the locks are
+    # taken, which is the only `update-lock-method` call worth pinning - see
+    # `UPDATE_LOCK_METHOD_ANY` below for the other ones.
+    other_mode = "rados" if lock_mode == "rbd" else "rbd"
+    start.in_order(update_lock_method(lock_mode) + locks(lock_mode))
+    start.refused(update_lock_method(other_mode) + locks(other_mode))
 
     start.optional(
-        """
+        UPDATE_LOCK_METHOD_ANY
+        + """
 ip ...
 ip> ...
 sgdisk> Creating new GPT entries in memory.
@@ -1792,7 +1818,8 @@ simplevm              release-lock                   result='unlocked' target='/
     # There are a couple of steps in the migration process that may repeat due to
     # timings,so this may or may not appear more often:
     outmigrate.optional(
-        """
+        CLI_UPDATE_LOCK_METHOD_ANY
+        + """
 simplevm         qemu vm-destroy-kill-supervisor     attempt=...
 simplevm              multiple-services-found        action='trying newest first' service='vm-inmigrate-simplevm'
 simplevm              waiting                        interval=3 remaining=...
@@ -2534,7 +2561,8 @@ simplevm              release-lock                   result='unlocked' target='/
 """.replace("{locks}", cli_locks(lock_mode))
     )
     inmigrate_pattern.optional(
-        f"""
+        CLI_UPDATE_LOCK_METHOD_ANY
+        + f"""
 simplevm>{" "}
 simplevm>
 simplevm              received-ping                  timeout=60

@@ -1,4 +1,5 @@
 import subprocess
+import textwrap
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -7,7 +8,13 @@ import yaml
 
 from fc.qemu.hazmat import libceph
 from fc.qemu.hazmat.libceph import Image as RealImage
-from tests.conftest import both_lock_modes, get_log, rbd_lock_mode
+from tests.conftest import (
+    UPDATE_LOCK_METHOD_NO_IMAGES,
+    both_lock_modes,
+    get_log,
+    rbd_lock_mode,
+    update_lock_method,
+)
 from tests.ellipsis import Ellipsis
 
 
@@ -37,12 +44,18 @@ rados-lock machine=simplevm subsystem=ceph
 
 #: `_ensure_image_features` runs after every volume is present. Root is still
 #: in the source pool at that point, the others have been recreated in the
-#: destination pool by `pre_start`.
+#: destination pool by `pre_start`. Two lines per volume rather than three,
+#: because ceph enables `object-map` along with `fast-diff` and the pre-check
+#: then skips it.
 MIGRATION_ENABLE_FEATURES_RADOS = """\
-enable-exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-enable-exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-enable-exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
-enable-exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
 """
 
 #: Root is mid-migration and therefore unlocked; the others are held.
@@ -91,7 +104,7 @@ MIGRATION_ROOT_UNLOCK_RBD = (
 MIGRATION_ROOT_UNLOCK_RADOS = ""
 
 
-def migration_status(lock_mode, text):
+def migration_status(lock_mode, text: str) -> str:
     """Fill the mechanism-dependent slots in a pattern body.
 
     `.replace` rather than `.format`, because the bodies carry literal JSON
@@ -571,18 +584,26 @@ def test_exclusive_lock_gets_enabled_when_configured(
 
     ceph._ensure_image_features()
 
-    assert get_log() == (
-        "enable-exclusive-lock machine=simplevm subsystem=ceph"
-        " volume=rbd.hdd/simplevm.root\n"
-        "enable-exclusive-lock machine=simplevm subsystem=ceph"
-        " volume=rbd.hdd/simplevm.swap\n"
-        "enable-exclusive-lock machine=simplevm subsystem=ceph"
-        " volume=rbd.hdd/simplevm.tmp\n"
-        "enable-exclusive-lock machine=simplevm subsystem=ceph"
-        " volume=rbd.hdd/simplevm.cidata"
+    # Two lines per volume, not three: enabling `fast-diff` makes ceph pull in
+    # `object-map` as well, so the pre-check skips it.
+    assert (
+        get_log()
+        == textwrap.dedent("""\
+    enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
+    enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
+    enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+    enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+    enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+    enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+    enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
+    enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata""")
     )
+    # Which features ended up on the image, regardless of how `rbd info`
+    # happens to order them.
     for volume in ceph.opened_volumes:
-        assert volume.rbdimage.features == ["layering", "exclusive-lock"]
+        assert set(ceph.exclusive_lock_required_features) <= set(
+            volume.rbdimage.features
+        )
 
     # The decision has to flip within the same start().
     ceph._update_lock_method()
@@ -961,13 +982,18 @@ root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progres
         )
     )
 
+    first_start.in_order(UPDATE_LOCK_METHOD_NO_IMAGES * 2)
     first_start.in_order(MIGRATION_PHASE_PRESENCE)
     # PL-134255: whichever mechanism is active, the other must stay silent.
+    rbd = lock_mode == "rbd"
+    other_mode = "rados" if rbd else "rbd"
     first_start.in_order(
-        MIGRATION_LOCKS_RBD if lock_mode == "rbd" else MIGRATION_LOCKS_RADOS
+        update_lock_method(lock_mode)
+        + (MIGRATION_LOCKS_RBD if rbd else MIGRATION_LOCKS_RADOS)
     )
     first_start.refused(
-        MIGRATION_LOCKS_RADOS if lock_mode == "rbd" else MIGRATION_LOCKS_RBD
+        update_lock_method(other_mode)
+        + (MIGRATION_LOCKS_RADOS if rbd else MIGRATION_LOCKS_RBD)
     )
     if lock_mode != "rbd":
         first_start.in_order(MIGRATION_ENABLE_FEATURES_RADOS)

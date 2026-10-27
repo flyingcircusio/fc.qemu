@@ -315,6 +315,7 @@ def test_snapshot_offline_vm(vm):
         """\
 start-consul-events count=1
 handle-key key=snapshot/7468743
+update-lock-method exclusive_lock_imgs=[] machine=simplevm rbd_lock_imgs=['simplevm.root'] subsystem=ceph use_rados_lock=False use_rbd_lock=True
 snapshot machine=simplevm snapshot=backy-1234
 acquire-lock machine=simplevm target=...run/qemu.simplevm.lock
 acquire-lock count=1 machine=simplevm result=locked target=...run/qemu.simplevm.lock
