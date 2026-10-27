@@ -797,6 +797,11 @@ class Ceph(object):
     # cluster supports rados locks this stays off, which keeps every VM whose
     # images predate the `exclusive-lock` feature on the rbd lock path.
     ensure_exclusive_lock: bool
+    exclusive_lock_required_features: list[str] = [
+        "exclusive-lock",
+        "fast-diff",
+        "object-map",
+    ]
 
     # Those are two different representations of the disks/volumes we manage.
     # The can be treated from client code as well-known structures, so that
@@ -933,12 +938,14 @@ class Ceph(object):
         if not self.ensure_exclusive_lock:
             return
         for volume in self.opened_volumes:
-            if "exclusive-lock" in volume.rbdimage.features:
-                # `rbd feature enable` is not idempotent - it fails with
-                # `(22) Invalid argument` if the feature is already enabled.
-                continue
-            volume.log.info("enable-exclusive-lock")
-            volume.rbdimage.enable_feature("exclusive-lock")
+            for feature in self.exclusive_lock_required_features:
+                if feature in volume.rbdimage.features:
+                    # `rbd feature enable` is not idempotent - it
+                    # fails with `(22) Invalid argument` if the
+                    # feature is already enabled.
+                    continue
+                volume.log.info("enable-rbd-feature", feature=feature)
+                volume.rbdimage.enable_feature(feature)
 
     def start(self):
         """Perform Ceph-related tasks before starting a VM."""
