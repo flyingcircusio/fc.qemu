@@ -15,6 +15,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, TypedDict
 
+from pydantic import BaseModel
 from structlog import BoundLogger
 
 from fc.qemu import util
@@ -37,6 +38,19 @@ class ImageBusy(Exception):
 
 class ImageExists(Exception):
     pass
+
+
+class RadosLocker(BaseModel):
+    name: str
+    cookie: str
+    addr: str
+
+
+class RadosLockInfo(BaseModel):
+    name: str
+    type: str
+    tag: str
+    lockers: list[RadosLocker]
 
 
 class Rados:
@@ -173,7 +187,6 @@ class Rados:
                 return
             raise
 
-    # TODO: pydantic
     def lock_list_by_name(
         self,
         pool: str,
@@ -181,13 +194,14 @@ class Rados:
         lock_name: str,
         namespace: str = "",
     ) -> LockerInfo:
-        lockinfo = self.rados_(
+        data = self.rados_(
             "-p", pool, "-N", namespace, "lock", "info", obj_name, lock_name
         )
+        lockinfo = RadosLockInfo.model_validate(data)
         # transform into librbd format for compatibility
         lockers: LockerInfo = {"lockers": []}
-        for lo in lockinfo["lockers"]:
-            lockers["lockers"].append((lo["name"], lo["cookie"], lo["addr"]))
+        for lo in lockinfo.lockers:
+            lockers["lockers"].append((lo.name, lo.cookie, lo.addr))
         return lockers
 
 
