@@ -55,19 +55,15 @@ rados-unlock machine=simplevm subsystem=ceph
 #: Emitted once per volume by `Ceph._ensure_image_features`, on the first cold
 #: boot that moves a VM onto the rados lock. Later starts find the feature
 #: already enabled and stay silent.
-#:
-#: Two lines per volume although `exclusive_lock_required_features` asks for
-#: three: ceph enables `object-map` along with `fast-diff`, so the pre-check
-#: finds it already set and skips it.
 ENABLE_FEATURES_RADOS = """\
-enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
-enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 """
 
 #: `fc-qemu status` lock reporting. With no volumes present at all,
@@ -437,14 +433,14 @@ pre-start machine=simplevm subsystem=ceph volume_spec=tmp
 ensure-presence machine=simplevm subsystem=ceph volume_spec=tmp
 pre-start machine=simplevm subsystem=ceph volume_spec=cidata
 ensure-presence machine=simplevm subsystem=ceph volume_spec=cidata
-enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
-enable-rbd-feature feature=fast-diff machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 update-lock-method exclusive_lock_imgs=['simplevm.root', 'simplevm.swap', 'simplevm.tmp', 'simplevm.cidata'] machine=simplevm rbd_lock_imgs=[] subsystem=ceph use_rados_lock=True use_rbd_lock=False
 rados-lock machine=simplevm subsystem=ceph
 ensure-size machine=simplevm subsystem=ceph volume_spec=root

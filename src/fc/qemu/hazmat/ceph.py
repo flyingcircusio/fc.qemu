@@ -797,11 +797,16 @@ class Ceph(object):
     # cluster supports rados locks this stays off, which keeps every VM whose
     # images predate the `exclusive-lock` feature on the rbd lock path.
     ensure_exclusive_lock: bool
-    exclusive_lock_required_features: list[str] = [
-        "exclusive-lock",
-        "fast-diff",
-        "object-map",
-    ]
+    # the order of this sequence is significant, as some rbd image
+    # features require other features to be enabled first as
+    # prerequisites. the image features we require thus need to be
+    # enabled in reverse dependency order. additionally, the
+    # object-map and fast-diff features in ceph are special cased so
+    # that enabling one implicitly enables the other at the same time.
+    exclusive_lock_required_features: tuple[tuple[str, ...], ...] = (
+        ("exclusive-lock",),
+        ("object-map", "fast-diff"),
+    )
 
     # Those are two different representations of the disks/volumes we manage.
     # The can be treated from client code as well-known structures, so that
@@ -945,13 +950,14 @@ class Ceph(object):
         if not self.ensure_exclusive_lock:
             return
         for volume in self.opened_volumes:
-            for feature in self.exclusive_lock_required_features:
+            for feature_set in self.exclusive_lock_required_features:
+                feature = feature_set[0]
                 if feature in volume.rbdimage.features:
                     # `rbd feature enable` is not idempotent - it
                     # fails with `(22) Invalid argument` if the
                     # feature is already enabled.
                     continue
-                volume.log.info("enable-rbd-feature", feature=feature)
+                volume.log.info("enable-rbd-features", features=feature_set)
                 volume.rbdimage.enable_feature(feature)
 
     def start(self):

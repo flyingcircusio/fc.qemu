@@ -292,14 +292,12 @@ class ImageMock(object):
         return self.ioctx.rbd_images[self._name]["features"]
 
     #: librbd's `update_features` also enables dependencies of the requested
-    # feature:
-    #: `fast-diff` pulls in `object-map`, which pulls in
-    #: `exclusive-lock`. Modelled here because the caller's pre-check then
-    #: skips the implied features, and a real cluster shows that by *not*
-    #: logging an `enable-rbd-feature` line for them.
-    FEATURE_DEPENDENCIES = {
-        "fast-diff": "object-map",
-        "object-map": "exclusive-lock",
+    #: feature: fast-diff pulls in object-map, which pulls in exclusive-lock.
+    #: however, fast-diff and object-map are interlocked in ceph so that
+    #: enabling one implicitly enables the other.
+    FEATURE_DEPENDENCIES: dict[str, set[str]] = {
+        "fast-diff": set(("object-map", "exclusive-lock")),
+        "object-map": set(("fast-diff", "exclusive-lock")),
     }
 
     def enable_feature(self, feature: str):
@@ -318,9 +316,16 @@ class ImageMock(object):
                     "(22) Invalid argument"
                 ),
             )
-        implied = [feature]
-        while required := self.FEATURE_DEPENDENCIES.get(implied[-1]):
-            implied.append(required)
+        deps = [feature]
+        implied = []
+        while deps:
+            feat = deps.pop(0)
+            implied.append(feat)
+            if nextdeps := self.FEATURE_DEPENDENCIES.get(feat):
+                deps.extend(
+                    f for f in nextdeps if f not in implied and f not in deps
+                )
+
         features.extend(f for f in implied if f not in features)
 
 
@@ -473,7 +478,7 @@ rbd_lock_mode = pytest.mark.parametrize("lock_mode", ["rbd"])
 # `Ceph._update_lock_method` logs its decision from three places: on every
 # `attach_volumes` (i.e. every `Agent.__enter__` that attaches), at the top of
 # `Ceph.start()`, and once more after `_ensure_image_features()`. Only the last
-# one carries a decision and reflcets the lock path that follows. That
+# one carries a decision and reflects the lock path that follows. That
 # is the one tests pin, while the other two are tolerated noise via the `*_ANY`
 # wildcards.
 #
