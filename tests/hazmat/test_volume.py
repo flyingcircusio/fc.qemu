@@ -5,7 +5,9 @@ import time
 import pytest
 
 from fc.qemu.hazmat import libceph
+from fc.qemu.hazmat.ceph import LockMode
 from fc.qemu.timeout import TimeOut
+from tests.conftest import rbd_lock_mode
 
 
 @pytest.fixture
@@ -105,8 +107,19 @@ def test_volume_size(tmp_spec):
     assert volume.size == 2048
 
 
-def test_volume_locking(tmp_spec):
+# --- PL-134255: rbd lock path, remove the next two tests with it ----------
+
+
+@rbd_lock_mode
+def test_volume_locking(ceph_inst, tmp_spec):
     tmp_spec.ensure_presence()
+    # The image is layering-only, so this settles on the rbd path. `Volume`
+    # is driven directly here, so stand in for `Ceph.lock()` and declare the
+    # VM-level lock taken.
+    ceph_inst._update_lock_method()
+    assert ceph_inst.lock_mode == LockMode.RBD
+    ceph_inst.assume_locked = True
+
     volume = tmp_spec.volume
     assert volume.lock_status() is None
     volume.lock()
@@ -130,13 +143,17 @@ def test_volume_locking(tmp_spec):
     assert volume.lock_status()[1] == "someotherhost"
 
 
-def test_force_unlock(tmp_spec):
+@rbd_lock_mode
+def test_force_unlock(ceph_inst, tmp_spec):
     tmp_spec.ensure_presence()
-    volume = tmp_spec.volume
+    ceph_inst._update_lock_method()
     volume = tmp_spec.volume
     volume.rbdimage.lock_exclusive("someotherhost")
     volume.unlock(force=True)
     assert volume.lock_status() is None
+
+
+# --- end of the rbd-only section ------------------------------------------
 
 
 def test_volume_mkswap(ceph_inst):

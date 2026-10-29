@@ -16,9 +16,12 @@ from fc.qemu.typing import SnapshotInfo
 
 from ..timeout import TimeOut
 from ..util import cmd, remove_empty_dirs
+from .locking import LockMode
 
 if TYPE_CHECKING:
-    # Only for annotations: ceph imports libceph which imports this module.
+    # Only for annotations: `ceph` imports this module, so we cannot import
+    # it at runtime. Anything needed outside annotations - `LockMode` - lives
+    # in `locking` instead.
     from fc.qemu.hazmat.ceph import Ceph
 
 
@@ -269,6 +272,13 @@ class Volume(Image):
         self.rbdimage.resize(size)
 
     def lock(self):
+        assert self.ceph.assume_locked, (
+            "inconsistency between desired rados and rbd lock states"
+        )
+
+        if self.ceph.lock_mode != LockMode.RBD:
+            return
+
         self.log.info("lock")
 
         # Shortcut if we already own the lock.
@@ -287,8 +297,8 @@ class Volume(Image):
                 # definitely fine.
                 return
             except libceph.ImageBusy:
-                # Maybe the same client but different cookie. We're fine with
-                # different cookies - ignore this. Must be same client, though.
+                # Maybe the same lock_id but different client_id. We're fine with
+                # different client_ids - ignore this. Must be same client, though.
                 lock_status = self.lock_status()
                 if lock_status is None:
                     # Someone had the lock but released it in between.
@@ -307,7 +317,7 @@ class Volume(Image):
             "Someone seems to be racing me."
         )
 
-    def lock_status(self):
+    def lock_status(self) -> tuple[str, str] | None:
         """Return None if not locked and (client_id, lock_id) if it is."""
         try:
             lockers = self.rbdimage.list_lockers()
@@ -321,11 +331,16 @@ class Volume(Image):
         if not lockers:
             return None
         if not len(lockers) == 1:
-            raise NotImplementedError("I'm not prepared for shared locks")
+            raise NotImplementedError(
+                "I'm not prepared for shared locks: " + repr(lockers)
+            )
         client_id, lock_id, _addr = lockers[0]
         return client_id, lock_id
 
     def unlock(self, force: bool = False):
+        if self.ceph.lock_mode != LockMode.RBD:
+            return
+
         locked_by = self.lock_status()
         if not locked_by:
             return
