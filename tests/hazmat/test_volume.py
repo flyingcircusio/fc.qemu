@@ -5,6 +5,7 @@ import time
 import pytest
 
 from fc.qemu.hazmat import libceph
+from fc.qemu.hazmat.ceph import LockMode
 from fc.qemu.timeout import TimeOut
 from tests.conftest import rbd_lock_mode
 
@@ -116,7 +117,7 @@ def test_volume_locking(ceph_inst, tmp_spec):
     # is driven directly here, so stand in for `Ceph.lock()` and declare the
     # VM-level lock taken.
     ceph_inst._update_lock_method()
-    assert ceph_inst.use_rbd_lock
+    assert ceph_inst.lock_mode == LockMode.RBD
     ceph_inst.assume_locked = True
 
     volume = tmp_spec.volume

@@ -16,9 +16,12 @@ from fc.qemu.typing import SnapshotInfo
 
 from ..timeout import TimeOut
 from ..util import cmd, remove_empty_dirs
+from .locking import LockMode
 
 if TYPE_CHECKING:
-    # Only for annotations: ceph imports libceph which imports this module.
+    # Only for annotations: `ceph` imports this module, so we cannot import
+    # it at runtime. Anything needed outside annotations - `LockMode` - lives
+    # in `locking` instead.
     from fc.qemu.hazmat.ceph import Ceph
 
 
@@ -273,7 +276,7 @@ class Volume(Image):
             "inconsistency between desired rados and rbd lock states"
         )
 
-        if not self.ceph.use_rbd_lock:
+        if self.ceph.lock_mode != LockMode.RBD:
             return
 
         self.log.info("lock")
@@ -335,7 +338,7 @@ class Volume(Image):
         return client_id, lock_id
 
     def unlock(self, force: bool = False):
-        if not self.ceph.use_rbd_lock:
+        if self.ceph.lock_mode != LockMode.RBD:
             return
 
         locked_by = self.lock_status()

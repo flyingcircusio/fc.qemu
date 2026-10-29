@@ -444,10 +444,12 @@ def ceph_live_setup():
 
 # PL-134255: the whole lock_mode axis goes away with the rbd lock path, at
 # which point every test runs what is now `lock_mode="rados"`.
-LockMode = Literal["rbd", "rados", "mixed"]
+TestEnvironmentImageFeatures = Literal["rbd", "rados"]
 
 
-#: Which lock mechanism a test exercises. Images are always born without
+#: Which lock mechanism a test exercises. The test environment's image features
+# are set up such that the locking code is supposed to detect and use the
+# corresponding lock methods. Images are always born without
 #: `exclusive-lock` (as on a real cluster), so the mechanism follows purely
 #: from whether fc.qemu is configured to enable that feature at cold boot:
 #:
@@ -457,10 +459,8 @@ LockMode = Literal["rbd", "rados", "mixed"]
 #:
 #: This is the shipped default configuration vs. the state after the rollout.
 #: Override per test with `@both_lock_modes` or an explicit `parametrize`.
-#: "mixed" (both mechanisms live) is not reachable through this fixture, see
-#: the targeted tests in tests/hazmat/test_ceph.py.
 @pytest.fixture
-def lock_mode() -> LockMode:
+def lock_mode() -> TestEnvironmentImageFeatures:
     return "rados"
 
 
@@ -488,15 +488,15 @@ rbd_lock_mode = pytest.mark.parametrize("lock_mode", ["rbd"])
 #: Before any image exists. With no volume lacking `exclusive-lock`, this
 #: settles on the rados lock regardless of the configured `lock_mode`.
 UPDATE_LOCK_METHOD_NO_IMAGES = """\
-update-lock-method exclusive_lock_imgs=[] machine=simplevm rbd_lock_imgs=[] subsystem=ceph use_rados_lock=True use_rbd_lock=False
+update-lock-method exclusive_lock_imgs=[] lock_mode=LockMode.RADOS machine=simplevm rbd_lock_imgs=[] subsystem=ceph
 """
 
 #: All four volumes present, in `Ceph.volumes` order.
 UPDATE_LOCK_METHOD_RBD = """\
-update-lock-method exclusive_lock_imgs=[] machine=simplevm rbd_lock_imgs=['simplevm.root', 'simplevm.swap', 'simplevm.tmp', 'simplevm.cidata'] subsystem=ceph use_rados_lock=False use_rbd_lock=True
+update-lock-method exclusive_lock_imgs=[] lock_mode=LockMode.RBD machine=simplevm rbd_lock_imgs=['simplevm.root', 'simplevm.swap', 'simplevm.tmp', 'simplevm.cidata'] subsystem=ceph
 """
 UPDATE_LOCK_METHOD_RADOS = """\
-update-lock-method exclusive_lock_imgs=['simplevm.root', 'simplevm.swap', 'simplevm.tmp', 'simplevm.cidata'] machine=simplevm rbd_lock_imgs=[] subsystem=ceph use_rados_lock=True use_rbd_lock=False
+update-lock-method exclusive_lock_imgs=['simplevm.root', 'simplevm.swap', 'simplevm.tmp', 'simplevm.cidata'] lock_mode=LockMode.RADOS machine=simplevm rbd_lock_imgs=[] subsystem=ceph
 """
 
 #: Any of the above, for the calls that only report whichever images happen to
@@ -511,7 +511,7 @@ simplevm         ceph update-lock-method...
 """
 
 
-def update_lock_method(lock_mode: LockMode) -> str:
+def update_lock_method(lock_mode: TestEnvironmentImageFeatures) -> str:
     """The decision `Ceph.start()` settles on for this lock mechanism."""
     return (
         UPDATE_LOCK_METHOD_RBD

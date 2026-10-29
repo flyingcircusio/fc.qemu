@@ -7,6 +7,7 @@ import pytest
 import yaml
 
 from fc.qemu.hazmat import libceph
+from fc.qemu.hazmat.ceph import LockMode
 from fc.qemu.hazmat.libceph import Image as RealImage
 from tests.conftest import (
     UPDATE_LOCK_METHOD_NO_IMAGES,
@@ -185,7 +186,7 @@ def test_ceph_stop_remove_only_own_locks(ceph_with_volumes):
 
 def test_ceph_stop_should_release_the_rados_lock(ceph_with_volumes):
     ceph = ceph_with_volumes
-    assert ceph.use_rados_lock
+    assert ceph.lock_mode == LockMode.RADOS
     assert ceph.rados_lock.lock_status()[1] == ceph.CEPH_LOCK_HOST
     # No volume carries a lock of its own anymore.
     for volume in ceph.opened_volumes:
@@ -389,8 +390,7 @@ def test_rados_lock_refuses_shared_locks(ceph_inst, monkeypatch):
 
 def test_rados_lock_status_is_not_queried_on_the_rbd_path(ceph_inst):
     """Callers have to dispatch; this guards against silent cross-talk."""
-    ceph_inst.use_rados_lock = False
-    ceph_inst.use_rbd_lock = True
+    ceph_inst.lock_mode = LockMode.RBD
     with pytest.raises(AssertionError):
         ceph_inst.rados_lock.lock_status()
 
@@ -406,7 +406,7 @@ def test_rados_lock_contention_against_real_rados(ceph_inst):
     lock = ceph_inst.rados_lock
     # No volumes exist yet, which settles on the rados path either way.
     ceph_inst._update_lock_method()
-    assert ceph_inst.use_rados_lock
+    assert ceph_inst.lock_mode == LockMode.RADOS
 
     lock.lock()
     assert lock.lock_status()[1] == ceph_inst.CEPH_LOCK_HOST
@@ -454,8 +454,7 @@ def test_lock_method_rados_when_all_volumes_have_the_feature(
 
     ceph._update_lock_method()
 
-    assert ceph.use_rados_lock is True
-    assert ceph.use_rbd_lock is False
+    assert ceph.lock_mode == LockMode.RADOS
 
 
 def test_lock_method_rbd_when_no_volume_has_the_feature(
@@ -467,8 +466,7 @@ def test_lock_method_rbd_when_no_volume_has_the_feature(
 
     ceph._update_lock_method()
 
-    assert ceph.use_rados_lock is False
-    assert ceph.use_rbd_lock is True
+    assert ceph.lock_mode == LockMode.RBD
 
 
 def test_lock_method_mixed_falls_back_to_rbd_locks(ceph_with_present_volumes):
@@ -480,21 +478,21 @@ def test_lock_method_mixed_falls_back_to_rbd_locks(ceph_with_present_volumes):
     puts the whole VM on the rbd path.
     """
     ceph = ceph_with_present_volumes
+    # set up a mixed set of features on different volumes
     set_features(
         ceph,
         root=["layering"],
         swap=["layering", "exclusive-lock"],
-        tmp=["layering", "exclusive-lock"],
-        cidata=["layering", "exclusive-lock"],
+        tmp=["layering", "exclusive-lock", "fast-diff", "object-map"],
+        cidata=["layering", "exclusive-lock", "fast-diff", "object_map"],
     )
 
     ceph._update_lock_method()
 
-    assert ceph.use_rados_lock is False
-    assert ceph.use_rbd_lock is True
+    assert ceph.lock_mode == LockMode.RBD
 
-    # Only the rbd locks get taken: `use_rados_lock` is `all(...)`, so a
-    # single volume without the feature puts the whole VM back on the rbd
+    # Only the rbd locks get taken:
+    # A single volume without the feature puts the whole VM back on the rbd
     # path. That is the conservative choice - an older fc.qemu looks at
     # exactly those locks - and it means `rados_lock` stays untouched, down to
     # `lock_status()` refusing to answer at all.
@@ -515,16 +513,14 @@ def test_lock_method_ignores_the_migrating_feature(ceph_with_present_volumes):
 
     ceph._update_lock_method()
 
-    assert ceph.use_rados_lock is True
-    assert ceph.use_rbd_lock is False
+    assert ceph.lock_mode == LockMode.RADOS
 
     for suffix in ceph.volumes:
         set_features(ceph, **{suffix: ["layering", "migrating"]})
 
     ceph._update_lock_method()
 
-    assert ceph.use_rados_lock is False
-    assert ceph.use_rbd_lock is True
+    assert ceph.lock_mode == LockMode.RBD
 
 
 def test_lock_method_without_volumes_selects_rados(ceph_inst):
@@ -544,9 +540,8 @@ def test_lock_method_without_volumes_selects_rados(ceph_inst):
 
     ceph_inst._update_lock_method()
 
-    assert ceph_inst.use_rados_lock is True
-    assert ceph_inst.use_rbd_lock is False
-    # Must not trip the `assert self.use_rbd_lock` in the legacy branch.
+    assert ceph_inst.lock_mode == LockMode.RADOS
+    # Must not trip the `assert self.lock_mode == LockMode.RBD` in the legacy branch.
     assert ceph_inst.is_unlocked() is True
     assert ceph_inst.locked_by_me() is False
     assert ceph_inst.locked_by() is None
@@ -571,7 +566,7 @@ def test_exclusive_lock_is_not_enabled_by_default(ceph_with_present_volumes):
         assert volume.rbdimage.features == ["layering"]
 
     ceph._update_lock_method()
-    assert ceph.use_rbd_lock is True
+    assert ceph.lock_mode == LockMode.RBD
 
 
 def test_exclusive_lock_gets_enabled_when_configured(
@@ -606,8 +601,7 @@ def test_exclusive_lock_gets_enabled_when_configured(
 
     # The decision has to flip within the same start().
     ceph._update_lock_method()
-    assert ceph.use_rados_lock is True
-    assert ceph.use_rbd_lock is False
+    assert ceph.lock_mode == LockMode.RADOS
 
 
 def test_exclusive_lock_is_only_enabled_once(ceph_with_present_volumes):

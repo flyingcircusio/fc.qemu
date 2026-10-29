@@ -34,6 +34,7 @@ from fc.qemu.util import (
 from ..sysconfig import sysconfig
 from ..timeout import TimeoutError
 from ..util import cmd, log, parse_export_format
+from .locking import LockMode
 from .volume import Volume
 
 # These values need to be kept in sync with the KVM role in fc-nixos
@@ -219,7 +220,10 @@ class VolumeSpecification:
         pass
 
     def status(self):
-        if self.volume and self.ceph.use_rbd_lock:
+        if self.volume and self.ceph.lock_mode in (
+            LockMode.RBD,
+            LockMode.UNKNOWN,
+        ):
             locker = self.volume.lock_status()
             self.log.info(
                 "rbd-status", volume=self.volume.fullname, locker=locker
@@ -683,7 +687,7 @@ class VMLockMgr:
             pass
 
     def lock(self) -> None:
-        if not self.ceph.use_rados_lock:
+        if self.ceph.lock_mode != LockMode.RADOS:
             self.ceph.assume_locked = True
             return
 
@@ -728,7 +732,7 @@ class VMLockMgr:
 
     def unlock(self, force: bool = False) -> None:
         assert not self.ceph.assume_locked
-        if not self.ceph.use_rados_lock:
+        if self.ceph.lock_mode != LockMode.RADOS:
             return
 
         locked_by = self.lock_status()
@@ -764,7 +768,7 @@ class VMLockMgr:
         client_id is the `name` attribute of the rados lockinfo.
         lock_id is the lock cookie, denominating the KVM lock host."""
         # dispatching which lock implementation to use needs to be done at caller side
-        assert self.ceph.use_rados_lock, (
+        assert self.ceph.lock_mode == LockMode.RADOS, (
             "asked to query rados locks while legacy rbd locks are still in use"
         )
         lockinfo = self.rados.lock_list_by_name(
@@ -848,8 +852,8 @@ class Ceph(object):
         self.volumes = {}
         self.assume_locked = False
         # We cannot check for exclusive-lock feature until volumes specs are
-        # `start`ed, so start out with using both variants in parallel
-        self.use_rbd_lock = self.use_rados_lock = True
+        # `start`ed, so start out with a special value
+        self.lock_mode: LockMode = LockMode.UNKNOWN
 
     def __enter__(self):
         # Not sure whether it makes sense that we configure the client ID
@@ -910,12 +914,10 @@ class Ceph(object):
             for volume in self.opened_volumes
             if "exclusive-lock" not in volume.rbdimage.features
         ]
-        self.use_rados_lock = not rbd_lock_imgs
-        self.use_rbd_lock = bool(rbd_lock_imgs)
+        self.lock_mode = LockMode.RBD if rbd_lock_imgs else LockMode.RADOS
         self.log.debug(
             "update-lock-method",
-            use_rados_lock=self.use_rados_lock,
-            use_rbd_lock=self.use_rbd_lock,
+            lock_mode=self.lock_mode,
             exclusive_lock_imgs=exclusive_lock_imgs,
             rbd_lock_imgs=rbd_lock_imgs,
         )
@@ -1050,7 +1052,7 @@ class Ceph(object):
 
     def status(self):
         # Report status for CLI usage
-        if self.use_rados_lock:
+        if self.lock_mode == LockMode.RADOS:
             locker = self.rados_lock.lock_status()
             self.log.info("rados-lock-status", locker=locker)
         for spec in self.specs.values():
@@ -1058,24 +1060,22 @@ class Ceph(object):
 
     def is_unlocked(self):
         """Returns True if no volume is locked."""
-        if self.use_rados_lock:
+        if self.lock_mode == LockMode.RADOS:
             return self.rados_lock.lock_status() is None
         else:
             # PL-134255: remove this branch with the rbd lock path.
-            assert self.use_rbd_lock
             return all(
                 not volume.lock_status() for volume in self.opened_volumes
             )
 
     def locked_by_me(self):
         """Returns True if CEPH_LOCK_HOST holds locks for all volumes."""
-        if self.use_rados_lock:
+        if self.lock_mode == LockMode.RADOS:
             return (
                 lstat := self.rados_lock.lock_status()
             ) is not None and lstat[1] == self.CEPH_LOCK_HOST
 
         # PL-134255: remove the rest of this method with the rbd lock path.
-        assert self.use_rbd_lock
         volumes = list(self.opened_volumes)
         if not volumes:
             # The images do not exist -> we don't hold locks.
@@ -1092,12 +1092,11 @@ class Ceph(object):
         Raises ValueError if not all locks are held by same owner.
 
         """
-        if self.use_rados_lock:
+        if self.lock_mode == LockMode.RADOS:
             lstat = self.rados_lock.lock_status()
             return lstat[1] if lstat else None
 
         # PL-134255: remove the rest of this method with the rbd lock path.
-        assert self.use_rbd_lock
         lock_owners: set[str] = set()
         for volume in self.opened_volumes:
             status = volume.lock_status()
@@ -1163,7 +1162,7 @@ class Ceph(object):
             # rbd lock path.
             lock = (
                 self.rados_lock.lock_status()
-                if self.use_rados_lock
+                if self.lock_mode == LockMode.RADOS
                 else vol.lock_status()
             )
             if lock:

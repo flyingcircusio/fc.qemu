@@ -214,7 +214,7 @@ simplevm              acquire-remote-migration-lock  result='success
 TEST_FIRST_START_VARIATION_RBD = """\
 acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
 acquire-lock count=1 machine=simplevm result=locked target=/run/qemu.simplevm.lock
-update-lock-method exclusive_lock_imgs=[] machine=simplevm rbd_lock_imgs=[] subsystem=ceph use_rados_lock=True use_rbd_lock=False
+update-lock-method exclusive_lock_imgs=[] lock_mode=LockMode.RADOS machine=simplevm rbd_lock_imgs=[]
 pre-start machine=simplevm subsystem=ceph volume_spec=root
 ensure-presence machine=simplevm subsystem=ceph volume_spec=root
 create-vm machine=simplevm subsystem=ceph volume=simplevm.root
@@ -260,7 +260,7 @@ xfs_db> Clearing log and setting UUID
 xfs_db> writing all SBs
 xfs_db> new UUID = 117c71ff-ab7e-4573-8f98-d9e1b3bc6abb
 xfs_db machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
-update-lock-method exclusive_lock_imgs=[] machine=simplevm rbd_lock_imgs=['simplevm.root', 'simplevm.swap', 'simplevm.tmp', 'simplevm.cidata'] subsystem=ceph use_rados_lock=False use_rbd_lock=True
+update-lock-method exclusive_lock_imgs=[] lock_mode=LockMode.RBD machine=simplevm rbd_lock_imgs=['simplevm.root', 'simplevm.swap', 'simplevm.tmp', 'simplevm.cidata'] subsystem=ceph
 lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 ensure-size machine=simplevm subsystem=ceph volume_spec=root
 start machine=simplevm subsystem=ceph volume_spec=root
@@ -375,7 +375,7 @@ release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
 TEST_FIRST_START_VARIATION_RADOS = """\
 acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
 acquire-lock count=1 machine=simplevm result=locked target=/run/qemu.simplevm.lock
-update-lock-method exclusive_lock_imgs=[] machine=simplevm rbd_lock_imgs=[] subsystem=ceph use_rados_lock=True use_rbd_lock=False
+update-lock-method exclusive_lock_imgs=[] lock_mode=LockMode.RADOS machine=simplevm rbd_lock_imgs=[] subsystem=ceph
 pre-start machine=simplevm subsystem=ceph volume_spec=root
 ensure-presence machine=simplevm subsystem=ceph volume_spec=root
 create-vm machine=simplevm subsystem=ceph volume=simplevm.root
@@ -441,7 +441,7 @@ enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph
 enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
-update-lock-method exclusive_lock_imgs=['simplevm.root', 'simplevm.swap', 'simplevm.tmp', 'simplevm.cidata'] machine=simplevm rbd_lock_imgs=[] subsystem=ceph use_rados_lock=True use_rbd_lock=False
+update-lock-method exclusive_lock_imgs=['simplevm.root', 'simplevm.swap', 'simplevm.tmp', 'simplevm.cidata'] lock_mode=LockMode.RADOS machine=simplevm rbd_lock_imgs=[] subsystem=ceph
 rados-lock machine=simplevm subsystem=ceph
 ensure-size machine=simplevm subsystem=ceph volume_spec=root
 start machine=simplevm subsystem=ceph volume_spec=root
