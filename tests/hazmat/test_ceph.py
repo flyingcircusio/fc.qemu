@@ -484,7 +484,7 @@ def test_lock_method_mixed_falls_back_to_rbd_locks(ceph_with_present_volumes):
         root=["layering"],
         swap=["layering", "exclusive-lock"],
         tmp=["layering", "exclusive-lock", "fast-diff", "object-map"],
-        cidata=["layering", "exclusive-lock", "fast-diff", "object_map"],
+        cidata=["layering", "exclusive-lock", "fast-diff", "object-map"],
     )
 
     ceph._update_lock_method()
