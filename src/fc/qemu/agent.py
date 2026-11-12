@@ -12,16 +12,14 @@ import subprocess
 import sys
 import time
 import typing
+from collections.abc import Callable
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from types import TracebackType
 from typing import (
     Any,
-    Callable,
     Concatenate,
-    Optional,
     ParamSpec,
-    Type,
     TypeVar,
     cast,
 )
@@ -116,18 +114,18 @@ def iops_settings(**kw: int):
     Creates a dict that contains all possible entries with 0 as the default and
     overrides known values from **kw and ignores unknown values from **kw.
     """
-    settings = dict(
-        iops=0,
-        iops_rd=0,
-        iops_wr=0,
-        iops_rd_max=0,
-        iops_rd_max_length=0,
-        iops_wr_max=0,
-        iops_wr_max_length=0,
-        bps=0,
-        bps_wr=0,
-        bps_rd=0,
-    )
+    settings = {
+        "iops": 0,
+        "iops_rd": 0,
+        "iops_wr": 0,
+        "iops_rd_max": 0,
+        "iops_rd_max_length": 0,
+        "iops_wr_max": 0,
+        "iops_wr_max_length": 0,
+        "bps": 0,
+        "bps_wr": 0,
+        "bps_rd": 0,
+    }
     for k, v in kw.items():
         if k in settings:
             settings[k] = v
@@ -154,7 +152,7 @@ def nonzero(d: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-class ConsulEventHandler(object):
+class ConsulEventHandler:
     """This is a wrapper that processes various consul events and multiplexes
     them into individual method handlers.
 
@@ -170,7 +168,7 @@ class ConsulEventHandler(object):
                 log.debug("ignore-key", key=event["Key"], reason="empty value")
                 return
             getattr(self, prefix)(event)
-        except BaseException:
+        except BaseException:  # noqa: BLE001
             # This must be a bare-except as it protects threads and the main
             # loop from dying. It could be that I'm wrong, but I'm leaving this
             # in for good measure.
@@ -291,7 +289,7 @@ def locked(blocking: bool = True):
             mode = fcntl.LOCK_EX | (fcntl.LOCK_NB if not blocking else 0)
             try:
                 fcntl.flock(self.lock_file_fd, mode)
-            except IOError:
+            except OSError:
                 # This happens in nonblocking mode and we just give up as
                 # that's what's expected to speed up things.
                 self.log.info(
@@ -366,7 +364,7 @@ class DummyAgent:
         pass
 
 
-class Agent(object):
+class Agent:
     """The agent to control a single VM."""
 
     # Attributes on this class can be overriden (in a controlled fashion
@@ -460,7 +458,7 @@ class Agent(object):
         try:
             with self.config_file.open() as f:
                 return yaml.safe_load(f)
-        except IOError:
+        except OSError:
             if self.config_file_staging.exists():
                 # The VM has been freshly created. Set up a boilerplate
                 # configuration and let the actual config be established
@@ -468,9 +466,7 @@ class Agent(object):
                 return None
             else:
                 self.log.error("unknown-vm")
-                raise VMConfigNotFound(
-                    "Could not load {}".format(self.config_file)
-                )
+                raise VMConfigNotFound(f"Could not load {self.config_file}")
 
     def _load_users(self):
         with self.users_file.open() as f:
@@ -543,8 +539,8 @@ class Agent(object):
                         machine=vm.name,
                         cores=vm.cfg["cores"],
                         memory_booked="{:,.0f}".format(vm.cfg["memory"]),
-                        memory_pss="{:,.0f}".format(vm_mem.pss / MiB),
-                        memory_swap="{:,.0f}".format(vm_mem.swap / MiB),
+                        memory_pss=f"{vm_mem.pss / MiB:,.0f}",
+                        memory_swap=f"{vm_mem.swap / MiB:,.0f}",
                     )
                 else:
                     log.info("offline", machine=vm.name)
@@ -555,7 +551,7 @@ class Agent(object):
         # just querying the inventory instead of running through config files...
         for candidate in (cls.prefix / Path("etc/qemu/vm")).glob("*.cfg"):
             with candidate.open() as f:
-                cfg = yaml.safe_load(f)
+                cfg = cast(EncDict, yaml.safe_load(f))
                 if str(cfg["parameters"]["id"]) == id:
                     print(cfg["parameters"]["name"])
                     return 0
@@ -573,7 +569,10 @@ class Agent(object):
             )
         except subprocess.CalledProcessError:
             log.debug("creating maintenance volume")
-            subprocess.run(["rbd", "create", "--size", "1", MAINTENANCE_VOLUME])
+            subprocess.run(
+                ["rbd", "create", "--size", "1", MAINTENANCE_VOLUME],
+                check=False,
+            )
 
     @classmethod
     def _get_maintenance_lock_info(cls):
@@ -729,9 +728,7 @@ class Agent(object):
                 choice = input(
                     colorama.Style.BRIGHT
                     + colorama.Fore.RED
-                    + "[DANGER] Are you really sure to shut down all {} VMs? (yes/no)\n".format(
-                        len(vms)
-                    )
+                    + f"[DANGER] Are you really sure to shut down all {len(vms)} VMs? (yes/no)\n"
                     + colorama.Style.RESET_ALL
                 )
                 if choice == "yes":
@@ -828,12 +825,10 @@ class Agent(object):
         else:
             output.insert(0, "UNKNOWN")
 
-        output.insert(1, "{} VMs".format(len(vms)))
+        output.insert(1, f"{len(vms)} VMs")
+        output.insert(2, f"{total_guest_and_overhead / MiB:,.0f} MiB used")
         output.insert(
-            2, "{:,.0f} MiB used".format(total_guest_and_overhead / MiB)
-        )
-        output.insert(
-            3, "{:,.0f} MiB expected".format(expected_guest_and_overhead / MiB)
+            3, f"{expected_guest_and_overhead / MiB:,.0f} MiB expected"
         )
 
         print(" - ".join(output))
@@ -865,7 +860,9 @@ class Agent(object):
             # Verify generation of config to protect against lost updates.
             with self.config_file_staging.open("r") as current_staging:
                 try:
-                    current_staging_config = yaml.safe_load(current_staging)
+                    current_staging_config = cast(
+                        dict[str, Any], yaml.safe_load(current_staging)
+                    )
                     current_staging_generation = current_staging_config[
                         "consul-generation"
                     ]
@@ -891,7 +888,9 @@ class Agent(object):
             activate_staging_config = False
             try:
                 with self.config_file.open("r") as current_active:
-                    current_active_config = yaml.safe_load(current_active)
+                    current_active_config = cast(
+                        dict[str, Any], yaml.safe_load(current_active)
+                    )
                 current_active_generation = current_active_config[
                     "consul-generation"
                 ]
@@ -1094,7 +1093,7 @@ class Agent(object):
 
     def __exit__(
         self,
-        exc_type: Type[BaseException] | None,
+        exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ):
@@ -1102,7 +1101,7 @@ class Agent(object):
             try:
                 c.__exit__(exc_type, exc_val, exc_tb)
             except Exception:
-                self.log.exception("leave-subsystems", exc_info=True)
+                self.log.exception("leave-subsystems")
 
     def ensure(self):
         # Run the config activation code at least once, but then only if there
@@ -1176,9 +1175,7 @@ class Agent(object):
                 # Last-resort seat-belt to verify that we ended up in a
                 # consistent state. Inconsistent states result in the VM being
                 # forcefully terminated.
-                self.log.error(
-                    "inconsistent-state", action="destroy", exc_info=True
-                )
+                self.log.exception("inconsistent-state", action="destroy")
                 self.destroy()
 
     def cleanup_offline(self):
@@ -1436,12 +1433,8 @@ class Agent(object):
                 )
                 self.log.info(
                     "ensure-throttle-params",
-                    **dict(
-                        (f"target_{k}", v) for k, v in nonzero(target).items()
-                    ),
-                    **dict(
-                        (f"current_{k}", v) for k, v in nonzero(current).items()
-                    ),
+                    **{f"target_{k}": v for k, v in nonzero(target).items()},
+                    **{f"current_{k}": v for k, v in nonzero(current).items()},
                 )
                 self.qemu.block_io_throttle(device["device"], **target)
             else:
@@ -1452,9 +1445,7 @@ class Agent(object):
                 )
                 self.log.info(
                     "ensure-throttle-params",
-                    **dict(
-                        (f"current_{k}", v) for k, v in nonzero(current).items()
-                    ),
+                    **{f"current_{k}": v for k, v in nonzero(current).items()},
                 )
 
     def ensure_watchdog(self, action: WatchDogActions = "none"):
@@ -1465,7 +1456,7 @@ class Agent(object):
     @property
     def svc_name(self):
         """Consul service name."""
-        return "qemu-{}".format(self.name)
+        return f"qemu-{self.name}"
 
     def consul_register(self):
         """Register running VM with Consul."""
@@ -1478,9 +1469,7 @@ class Agent(object):
                 args=[
                     "/bin/sh",
                     "-c",
-                    "test -e /proc/$(< /run/qemu.{}.pid )/mem || exit 2".format(
-                        self.name
-                    ),
+                    f"test -e /proc/$(< /run/qemu.{self.name}.pid )/mem || exit 2",
                 ],
                 interval="5s",
             ),
@@ -1496,7 +1485,7 @@ class Agent(object):
         except requests.exceptions.ConnectionError:
             pass
         except Exception:
-            self.log.exception("consul-deregister-failed", exc_info=True)
+            self.log.exception("consul-deregister-failed")
 
     @locked()
     @running(False)
@@ -1627,7 +1616,8 @@ class Agent(object):
     def telnet(self):
         """Open telnet connection to the VM monitor."""
         self.log.info("connect-via-telnet")
-        assert (telnet := shutil.which("telnet")) is not None
+        telnet = shutil.which("telnet")
+        assert telnet is not None
         os.execv(telnet, ("telnet", "localhost", str(self.qemu.monitor_port)))
 
     @locked()
@@ -1637,7 +1627,7 @@ class Agent(object):
         self.log.info("graceful-shutdown")
         try:
             self.qemu.graceful_shutdown()
-        except (socket.error, RuntimeError):
+        except (OSError, RuntimeError):
             pass
         while timeout.tick():
             self.log.debug("checking-offline", remaining=timeout.remaining)
@@ -1650,7 +1640,7 @@ class Agent(object):
                 self.log.info("graceful-shutdown-completed")
                 break
         else:
-            self.log.warn("graceful-shutdown-failed", reason="timeout")
+            self.log.warning("graceful-shutdown-failed", reason="timeout")
             self.kill()
 
     @locked()
@@ -1664,7 +1654,7 @@ class Agent(object):
     def kill(self):
         self.destroy(kill_supervisor=True)
 
-    def requires_inmigrate_from(self) -> Optional[str]:
+    def requires_inmigrate_from(self) -> str | None:
         """Check whether an inmigration makes sense.
 
         This makes sense if the VM isn't running locally and (Consul knows
@@ -1714,7 +1704,7 @@ class Agent(object):
         server = IncomingServer(self)
         exitcode = server.run()
         if not exitcode:
-            self.consul_register()
+            self.ensure_online_local()
         self.log.info("inmigrate-finished", exitcode=exitcode)
         return exitcode
 
@@ -1727,9 +1717,7 @@ class Agent(object):
         client = Outgoing(self)
         exitcode = client()
         if not exitcode:
-            # XXX I think this can lead to inconsistent behaviour
-            # if the local VM is destroyed during migration?
-            self.consul_deregister()
+            self.cleanup_offline()
         self.log.info("outmigrate-finished", exitcode=exitcode)
         return exitcode
 
@@ -1822,9 +1810,7 @@ class Agent(object):
         with self.vm_config_template.open() as f:
             tpl = f.read()
         accelerator = (
-            '  accel = "{}"'.format(self.accelerator)
-            if self.accelerator
-            else ""
+            f'  accel = "{self.accelerator}"' if self.accelerator else ""
         )
         machine_type = detect_current_machine_type(self.machine_type)
         self.qemu.config = tpl.format(

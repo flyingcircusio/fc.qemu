@@ -31,7 +31,7 @@ def section_matches_as_dicts(
     return result
 
 
-class SysConfig(object):
+class SysConfig:
     """A global config state registry.
 
     This is used to manage system-specific configuration overrides
@@ -142,10 +142,6 @@ class SysConfig(object):
         self.ceph["MKFS_VFAT"] = self.cp.get("ceph", "mkfs-vfat")
         self.ceph["orchestration_pool"] = self.cp.get(
             "ceph", "orchestration-pool"
-        )
-        # PL-134255: remove together with the rbd lock path.
-        self.ceph["ensure_exclusive_lock"] = self.cp.getboolean(
-            "ceph", "ensure-exclusive-lock", fallback=False
         )
 
 

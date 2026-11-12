@@ -8,15 +8,15 @@ base class for both volumes and snapshots.
 import contextlib
 import subprocess
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING
 
-import fc.qemu.hazmat.libceph as libceph
+from fc.qemu.hazmat import libceph
 from fc.qemu.typing import SnapshotInfo
 
 from ..timeout import TimeOut
 from ..util import cmd, remove_empty_dirs
-from .locking import LockMode
 
 if TYPE_CHECKING:
     # Only for annotations: `ceph` imports this module, so we cannot import
@@ -28,11 +28,11 @@ if TYPE_CHECKING:
 class Image(ABC):
     """Abstract base class for all images (volumes and snapshots)."""
 
-    device: Optional[Path] = None
-    mountpoint: Optional[Path] = None
-    part1dev: Optional[Path] = None
+    device: Path | None = None
+    mountpoint: Path | None = None
+    part1dev: Path | None = None
 
-    _image: Optional[libceph.Image] = None
+    _image: libceph.Image | None = None
 
     def __init__(self, ceph: "Ceph", ioctx: libceph.Ioctx, name: str):
         self.ceph = ceph
@@ -157,7 +157,7 @@ class Image(ABC):
                 self.unmap()
 
 
-class Snapshots(object):
+class Snapshots:
     """Container for all snapshots of a Volume."""
 
     def __init__(self, volume: "Volume"):
@@ -207,7 +207,7 @@ class Snapshot(Image):
     """Single snapshot of a Volume."""
 
     def __init__(self, volume: "Volume", snapname: str, id: str, snapsize: int):
-        super(Snapshot, self).__init__(volume.ceph, volume.ioctx, volume.name)
+        super().__init__(volume.ceph, volume.ioctx, volume.name)
         self.vol = volume
         self.snapname = snapname
         self.id = id
@@ -233,11 +233,8 @@ class Snapshot(Image):
 class Volume(Image):
     """RBD volume interface."""
 
-    # ENC parameters which should be seeded at boot-time into the VM
-    ENC_SEED_PARAMETERS = ["cpu_model", "rbd_pool"]
-
     def __init__(self, ceph: "Ceph", ioctx: libceph.Ioctx, name: str):
-        super(Volume, self).__init__(ceph, ioctx, name)
+        super().__init__(ceph, ioctx, name)
         self.log = ceph.log.bind(volume=self.fullname)
         self.snapshots = Snapshots(self)
         self.locked_by_me = False
@@ -260,8 +257,12 @@ class Volume(Image):
 
     @property
     def size(self):
-        """Image size in Bytes."""
-        return self.rbdimage.size()
+        """Image size in bytes."""
+        return self.rbdimage.info.size
+
+    @property
+    def features(self):
+        return self.rbdimage.info.features
 
     def ensure_size(self, size: int):
         # The existing size must be considered as a minimum, because we can't
@@ -272,19 +273,15 @@ class Volume(Image):
         self.rbdimage.resize(size)
 
     def lock(self):
-        assert self.ceph.assume_locked, (
-            "inconsistency between desired rados and rbd lock states"
-        )
-
-        if self.ceph.lock_mode != LockMode.RBD:
+        if "exclusive-lock" in self.features:
             return
 
         self.log.info("lock")
 
         # Shortcut if we already own the lock.
-        if lock_status := self.lock_status():
-            if lock_status[1] == self.ceph.CEPH_LOCK_HOST:
-                return
+        lock_status = self.lock_status()
+        if lock_status and lock_status.locker == self.ceph.CEPH_LOCK_HOST:
+            return
 
         retry = 3
         while retry:
@@ -305,7 +302,7 @@ class Volume(Image):
                     # Lets try again
                     retry -= 1
                     continue
-                if lock_status[1] == self.ceph.CEPH_LOCK_HOST:
+                if lock_status.locker == self.ceph.CEPH_LOCK_HOST:
                     # That's locked for us already. We just re-use
                     # the existing lock.
                     return
@@ -317,45 +314,38 @@ class Volume(Image):
             "Someone seems to be racing me."
         )
 
-    def lock_status(self) -> tuple[str, str] | None:
-        """Return None if not locked and (client_id, lock_id) if it is."""
+    def lock_status(self) -> libceph.RbdLockInfo | None:
+        """Return RbdLockInfo if locked, otherwise return None."""
         try:
             lockers = self.rbdimage.list_lockers()
         except libceph.ImageNotFound:
             return None
         if not lockers:
             return None
-        # For some reasons list_lockers may just return an empty list instead
-        # of a dict. Say what?
-        lockers = lockers["lockers"]
-        if not lockers:
-            return None
         if not len(lockers) == 1:
             raise NotImplementedError(
                 "I'm not prepared for shared locks: " + repr(lockers)
             )
-        client_id, lock_id, _addr = lockers[0]
-        return client_id, lock_id
+        return lockers[0]
 
     def unlock(self, force: bool = False):
-        if self.ceph.lock_mode != LockMode.RBD:
+        if "exclusive-lock" in self.rbdimage.info.features:
             return
 
-        locked_by = self.lock_status()
-        if not locked_by:
+        lock = self.lock_status()
+        if not lock:
             return
-        client_id, lock_id = locked_by
 
-        if client_id == "client.?":
-            self.log.warn("buggy-lock", action="continuing")
+        if lock.locker == "client.?":
+            self.log.warning("buggy-lock", action="continuing")
 
-        if self.locked_by_me or lock_id == self.ceph.CEPH_LOCK_HOST:
+        if self.locked_by_me or lock.id == self.ceph.CEPH_LOCK_HOST:
             self.log.info("unlock")
-            self.rbdimage.unlock(lock_id)
+            self.rbdimage.unlock(lock.id)
             self.locked_by_me = False
             return
 
         # We do not own this lock: need to explicitly ask for breaking.
         elif force:
             self.log.info("break-lock")
-            self.rbdimage.unlock(lock_id)
+            self.rbdimage.unlock(lock.id)

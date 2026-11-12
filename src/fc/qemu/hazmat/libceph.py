@@ -1,8 +1,12 @@
 """
-A reimplementation of the Ceph librados/librbd bindings to avoid having to
+A re-implementation of the Ceph librados/librbd bindings to avoid having to
 compile against them.
 
-This helps us to be more version-neutral.
+This helps us to be more version-neutral, reduces low-level (C) linking and combinatorial
+compatibility issues between multiple Ceph and Python versions.
+
+This is - over time - allowed to stray from the librados/librbd structure as we move
+towards the CLI structure.
 
 """
 
@@ -13,19 +17,13 @@ import subprocess
 import time
 from functools import cached_property
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, ClassVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 from structlog import BoundLogger
 
 from fc.qemu import util
 from fc.qemu.typing import SnapshotInfo
-
-
-class LockerInfo(TypedDict):
-    """{'lockers': (client_name, cookie, address)}"""
-
-    lockers: list[tuple[str, str, str]]
 
 
 class ImageNotFound(Exception):
@@ -53,8 +51,19 @@ class RadosLockInfo(BaseModel):
     lockers: list[RadosLocker]
 
 
+class RbdInfo(BaseModel):
+    size: int
+    features: set[str]
+
+
+class RbdLockInfo(BaseModel):
+    id: str
+    locker: str
+    address: str
+
+
 class Rados:
-    POOLS_CACHE: list[str] = []  # mutable on purpose as a global cache.
+    POOLS_CACHE: ClassVar[list[str]] = []  # global cache
 
     def __init__(self, conffile: str, name: str, log: BoundLogger):
         self.conffile = conffile
@@ -144,16 +153,15 @@ class Rados:
         try:
             self.rados_(
                 "-p", pool, "-N", namespace,
-                "lock", "get",obj_name, lock_name, "--lock-cookie", cookie,
+                "lock", "get", obj_name, lock_name, "--lock-cookie", cookie,
                 "--lock-type", "exclusive",
                 use_json=False
             )  # fmt: skip
         except Exception:
-            for _, lock_cookie, _ in self.lock_list_by_name(
+            for locker in self.lock_info(
                 pool, obj_name, lock_name, namespace
-            )["lockers"]:
-                if lock_cookie == cookie:
-                    # We are already holding the lock
+            ).lockers:
+                if locker.cookie == cookie:
                     break
             else:
                 raise ImageBusy(errno.EBUSY, "Image is busy")
@@ -187,22 +195,17 @@ class Rados:
                 return
             raise
 
-    def lock_list_by_name(
+    def lock_info(
         self,
         pool: str,
         obj_name: str,
         lock_name: str,
         namespace: str = "",
-    ) -> LockerInfo:
+    ) -> RadosLockInfo:
         data = self.rados_(
             "-p", pool, "-N", namespace, "lock", "info", obj_name, lock_name
         )
-        lockinfo = RadosLockInfo.model_validate(data)
-        # transform into librbd format for compatibility
-        lockers: LockerInfo = {"lockers": []}
-        for lo in lockinfo.lockers:
-            lockers["lockers"].append((lo.name, lo.cookie, lo.addr))
-        return lockers
+        return RadosLockInfo.model_validate(data)
 
 
 class Ioctx:
@@ -257,46 +260,49 @@ class Image:
                 raise ImageNotFound(self.name)
             raise
 
-    def _info(self):
-        assert not self.closed
-        return self.ioctx.rados.rbd_("info", self._name)
-
     @cached_property
-    def features(self) -> list[str]:
-        """Returns the enabled rbd features of this image.
-        First invocation extracts the data from an `rbd info` call, consecutive
-        calls are served from cache.
-        The few places modifying rbd features MUST `del features` afterwards.
+    def info(self) -> RbdInfo:
+        assert not self.closed
+        return RbdInfo.model_validate(self.ioctx.rados.rbd_("info", self._name))
 
-        Note that this can contain `migrating` while the image is under
-        `rbd migration prepare`, so only ever test membership of the feature
-        you care about - never compare the whole set."""
-        return self._info()["features"]
+    def refresh(self) -> None:
+        """Drop the cached `rbd info`.
 
-    def enable_feature(self, feature: str):
-        """Enable an rbd image feature.
+        Needed whenever the image changed behind our back - notably a resize
+        that went through qemu instead of through us.
+
+        """
+        try:
+            del self.info
+        except AttributeError:
+            pass
+
+    def ensure_feature(self, feature: str):
+        """Ensure an RBD image feature is enabled.
 
         `feature` is a feature *name*, not its number.
 
         This is *not* idempotent: enabling an already enabled feature fails
         with `(22) Invalid argument`. Callers have to check `features` first.
+
         """
         assert not self.closed
+        if feature in self.info.features:
+            return
+        # Slight race condition that may lead to an exception here,
+        # if the feature has been enabled since the check,
+        # but we'll run with it for now.
         self.ioctx.rados.rbd_(
             "feature", "enable", self._name, feature, use_json=False
         )
-        # The feature set just changed, so the cache is stale.
-        self.__dict__.pop("features", None)
-
-    def size(self):
-        assert not self.closed
-        return self._info()["size"]
+        del self.info
 
     def resize(self, size: int):
         assert not self.closed
         self.ioctx.rados.rbd_(
             "resize", self._name, "--size", f"{size}B", use_json=False
         )
+        del self.info
 
     def lock_exclusive(self, cookie: str):
         assert not self.closed
@@ -304,7 +310,7 @@ class Image:
             self.ioctx.rados.rbd_(
                 "lock", "add", self._name, cookie, use_json=False
             )
-        except Exception:
+        except subprocess.SubprocessError:
             for lock in self.ioctx.rados.rbd_("lock", "list", self._name):
                 if lock["id"] == cookie:
                     # XXX slight issue here - can't identify whether it's an
@@ -313,15 +319,12 @@ class Image:
             else:
                 raise ImageBusy(errno.EBUSY, "Image is busy")
 
-    def list_lockers(self) -> LockerInfo:
+    def list_lockers(self) -> list[RbdLockInfo]:
         assert not self.closed
-        # Emulate the librbd format
-        lockers: LockerInfo = {"lockers": []}
-        for locker in self.ioctx.rados.rbd_("lock", "list", self._name):
-            lockers["lockers"].append(
-                (locker["locker"], locker["id"], locker["address"])
-            )
-        return lockers
+        adapter = TypeAdapter(list[RbdLockInfo])
+        return adapter.validate_python(
+            self.ioctx.rados.rbd_("lock", "list", self._name)
+        )
 
     def list_snaps(self) -> list[SnapshotInfo]:
         assert not self.closed

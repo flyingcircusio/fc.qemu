@@ -10,10 +10,10 @@ import time
 import traceback
 from pathlib import Path
 from subprocess import check_call, getoutput
-from typing import List, Literal
+from typing import Literal
+from unittest import mock
 from unittest.mock import Mock, patch
 
-import mock
 import pytest
 import structlog
 from structlog.typing import WrappedLogger
@@ -37,7 +37,7 @@ from fc.qemu.util import GiB, cmd
 # ceph fixtures
 
 
-class RadosMock(object):
+class RadosMock:
     tmp_path: Path
     # The feature set images are born with, mirroring the cluster's
     # `rbd_default_features`. fc-nixos pins this to 1 (layering only), so
@@ -108,7 +108,7 @@ class RadosMock(object):
         return {"lockers": [] if locker is None else [locker]}
 
 
-class IoctxMock(object):
+class IoctxMock:
     """Mock access to a pool."""
 
     def __init__(
@@ -168,7 +168,7 @@ class IoctxMock(object):
         pass
 
 
-class RBDMock(object):
+class RBDMock:
     def list(self, ioctx):
         return list(ioctx.rbd_images.keys())
 
@@ -179,7 +179,7 @@ class RBDMock(object):
         ioctx._rbd_remove(name)
 
 
-class ImageMock(object):
+class ImageMock:
     def __init__(self, ioctx, name, snapname=None):
         self.ioctx = ioctx
         self.name = name
@@ -525,10 +525,6 @@ def ceph_mock(request, monkeypatch, tmp_path, lock_mode):
     # PL-134255: `Ceph.__init__` copies `sysconfig.ceph` into its instance
     # dict, so this one lever reaches both the directly constructed `Ceph` in
     # the hazmat tests and the one `Agent` builds internally.
-    monkeypatch.setitem(
-        sysconfig.ceph, "ensure_exclusive_lock", lock_mode != "rbd"
-    )
-
     is_live = request.node.get_closest_marker("live")
     if is_live is not None:
         # This is a live test, running against the real Ceph cluster that
@@ -629,7 +625,7 @@ def clean_rbd_pools(request, kill_vms, ceph_mock):
     if not is_live:
         return
 
-    def images_to_clean() -> List[str]:
+    def images_to_clean() -> list[str]:
         images = []
         for pool in ["rbd.hdd", "rbd.ssd"]:
             print2(f"rbd ls {pool}")
@@ -950,7 +946,7 @@ def setup_structlog():
             if event_name:
                 result_.append(event_name)
             for key in sorted(event):
-                result_.append("{}={}".format(key, str(event[key]).strip()))
+                result_.append(f"{key}={str(event[key]).strip()}")
             result = " ".join(result_)
 
         # Ensure we get something to read on stdout in case we have errors.
