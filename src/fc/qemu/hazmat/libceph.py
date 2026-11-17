@@ -54,6 +54,7 @@ class RadosLockInfo(BaseModel):
 class RbdInfo(BaseModel):
     size: int
     features: set[str]
+    flags: set[str]
 
 
 class RbdLockInfo(BaseModel):
@@ -234,6 +235,8 @@ class RBD:
 
 
 class Image:
+    OBJECT_MAP_TIMEOUT = 10
+
     def __init__(self, ioctx: Ioctx, name: str, snapname: str | None = None):
         self.ioctx = ioctx
         self.rbd = RBD()
@@ -295,14 +298,55 @@ class Image:
         self.ioctx.rados.rbd_(
             "feature", "enable", self._name, feature, use_json=False
         )
-        del self.info
+        self.refresh()
+
+    def ensure_object_map(self) -> bool:
+        """Rebuild the object-map for the imagespec, if it is reported
+        as invalid.
+        Rebuild happens in the background, so we can just trigger the rebuild and
+        exit after timeout.
+
+        Returns whether a rebuild was started for the particular imagespec."""
+        if "object map invalid" not in self.info.flags:
+            return False
+        log = self.ioctx.rados.log
+        # directly use subcommand instead of rbd runner, because we need a
+        # timeout but no special failure and encoding handling
+        args = (
+            "rbd", "-c", self.ioctx.rados.conffile, "--name", self.ioctx.rados.name,
+            "object-map", "rebuild", self._name,
+        )  # fmt: skip
+        log.debug(args[0], args=" ".join(args[1:]))
+        try:
+            subprocess.run(
+                args,
+                check=True,
+                timeout=self.OBJECT_MAP_TIMEOUT,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.TimeoutExpired:
+            # If qemu has the lock on that image, the map rebuild request is forwarded
+            # to it as the lock holder and will continue there even if we kill this
+            # rbd process.
+            pass
+        except subprocess.CalledProcessError as e:
+            log.error(
+                args[0], stdout=e.stdout, stderr=e.stderr, code=e.returncode
+            )
+        # We just invalidated what `info` says about the flags. Without this
+        # the cached "object map invalid" sticks around for the lifetime of
+        # this object and every later `ensure()` in the same process kicks off
+        # the rebuild again.
+        self.refresh()
+        return True
 
     def resize(self, size: int):
         assert not self.closed
         self.ioctx.rados.rbd_(
             "resize", self._name, "--size", f"{size}B", use_json=False
         )
-        del self.info
+        self.refresh()
 
     def lock_exclusive(self, cookie: str):
         assert not self.closed

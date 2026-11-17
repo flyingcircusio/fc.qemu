@@ -666,6 +666,76 @@ def test_enable_feature_invalidates_the_feature_cache():
     assert len(info_calls) == 2
 
 
+########################################################
+# rebuilding the object map
+#
+# These drive the mock's flag state directly: the subject is the traversal in
+# `VolumeSpecification.ensure_object_map` - which images it looks at, and how
+# many per run - while what `rbd object-map rebuild` itself does is covered in
+# `tests/hazmat/test_libceph.py`.
+
+
+OBJECT_MAP_INVALID = "object map invalid"
+
+
+def object_map_flags(volume, snapname=None) -> list[str]:
+    name = volume.name if snapname is None else f"{volume.name}@{snapname}"
+    return volume.ioctx.rbd_images[name]["flags"]
+
+
+def set_object_map(volume, snapname=None, *, valid: bool):
+    flags = object_map_flags(volume, snapname)
+    if valid and OBJECT_MAP_INVALID in flags:
+        flags.remove(OBJECT_MAP_INVALID)
+    elif not valid and OBJECT_MAP_INVALID not in flags:
+        flags.append(OBJECT_MAP_INVALID)
+
+
+@pytest.fixture
+def root_spec(ceph_with_volumes):
+    """The root spec, with the object map enabling left it with settled.
+
+    A real cluster rebuilds in the background once asked, so a converged VM is
+    the normal state and the interesting cases are set up from here.
+    """
+    spec = ceph_with_volumes.specs["root"]
+    set_object_map(spec.volume, valid=True)
+    return spec
+
+
+def test_enabling_object_map_invalidates_it(ceph_inst):
+    """Why `ensure_object_map` exists at all.
+
+    Enabling object-map on an image that already holds data leaves the map
+    unbuilt until someone rebuilds it. Read through `info` so this says the
+    same thing against a real cluster.
+    """
+    spec = ceph_inst.specs["root"]
+    spec.ensure_presence()
+    assert OBJECT_MAP_INVALID not in spec.volume.rbdimage.info.flags
+
+    spec.ensure_features(online=False)
+
+    assert OBJECT_MAP_INVALID in spec.volume.rbdimage.info.flags
+
+
+def test_object_map_rebuild_of_the_head_image(root_spec):
+    set_object_map(root_spec.volume, valid=False)
+
+    root_spec.ensure_object_map()
+
+    assert object_map_flags(root_spec.volume) == []
+
+
+def test_object_map_rebuild_is_skipped_when_settled(root_spec):
+    set_object_map(root_spec.volume, valid=True)
+    get_log()
+
+    root_spec.ensure_object_map()
+
+    assert get_log() == ""
+
+
 def test_fc_seed(ceph_with_volumes_ci):
     ceph = ceph_with_volumes_ci
     cidata_spec = ceph.specs["cidata"]

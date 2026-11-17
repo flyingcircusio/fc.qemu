@@ -1271,6 +1271,8 @@ class Agent:
         self.ensure_online_disk_size()
         self.ensure_online_disk_throttle()
         self.ensure_watchdog()
+        # XXX
+        assert self.qemu.is_running()
         self.ceph.ensure()
         # Be aggressive/opportunistic about re-acquiring locks in case
         # they were taken away.

@@ -240,6 +240,9 @@ class VolumeSpecification(ABC):
 
     def ensure(self):
         self.ensure_features(online=True)
+        # XXX: for this to run in the background, qemu needs to be running and
+        # hold the lock. At time of implementation this is always the case here
+        self.ensure_object_map()
 
     def ensure_presence(self):
         self.ceph.ensure_volume_presence(
@@ -255,6 +258,15 @@ class VolumeSpecification(ABC):
             self.volume.rbdimage.ensure_feature(feature)
             if feature == "exclusive-lock":
                 self.volume.unlock()
+
+    def ensure_object_map(self):
+        """Enabling the object-map feature on existing images requires the map
+        to be (re-)built initially. This is indicated by `"flags":["object map invalid"]`.
+        """
+        assert self.volume
+        self.volume.rbdimage.ensure_object_map()
+        # snapshots need to be considered as well, but we handle this separately
+        # PL-135885
 
 
 class RootSpec(VolumeSpecification):
