@@ -10,13 +10,13 @@ import os
 import xmlrpc.client
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Dict, Optional, Type, Unpack
+from typing import Any, Unpack
 
 import yaml
 
 import fc.qemu.directory
-import fc.qemu.hazmat.libceph as libceph
 from fc.qemu.config import LinkType
+from fc.qemu.hazmat import libceph
 from fc.qemu.typing import (
     EncDict,
     EncParametersDict,
@@ -122,7 +122,7 @@ class VolumeSpecification:
     # but spelled out because TypedDicts can only be indexed with literals.
     size_key: VolumeSizeKey
 
-    current_pool: Optional[str]
+    current_pool: str | None
 
     def __init__(self, ceph: "Ceph"):
         self.ceph = ceph
@@ -358,7 +358,7 @@ class RootSpec(VolumeSpecification):
             try:
                 self.volume.wait_for_part1dev()
             except TimeoutError:
-                self.log.warn(
+                self.log.warning(
                     "regenerate-xfs-uuid",
                     status="skipped",
                     reason="no partition found",
@@ -419,7 +419,7 @@ class TmpSpec(VolumeSpecification):
         )
         # XXX remove when all machines can read from cidata
         self.volume.wait_for_part1dev()
-        options = getattr(self.ceph, "MKFS_XFS")
+        options = self.ceph.MKFS_XFS
         self.cmd(
             f'mkfs.xfs {options} -L "{self.suffix}" {self.volume.part1dev}'
         )
@@ -453,7 +453,7 @@ class CloudInitSpec(VolumeSpecification):
         self.cmd(f'sgdisk -n 1:: -c "1:{self.suffix}" -t 1:8300 "{device}"')
 
         self.volume.wait_for_part1dev()
-        options = getattr(self.ceph, "MKFS_VFAT")
+        options = self.ceph.MKFS_VFAT
         self.cmd(
             f'mkfs.vfat {options} -n "{self.suffix}" {self.volume.part1dev}'
         )
@@ -485,7 +485,7 @@ class CloudInitSpec(VolumeSpecification):
                     conditional_update(
                         f"/etc/qemu/users/{rg}.json", users, 0o640
                     )
-                except (IOError, OSError):
+                except OSError:
                     inplace_update(f"/etc/qemu/users/{rg}.json", users)
             except (Exception, xmlrpc.client.Fault):
                 self.log.warning("retrieve-all-rg-users-failed", exc_info=True)
@@ -497,7 +497,7 @@ class CloudInitSpec(VolumeSpecification):
                 ssh_authorized_keys_content = generate_cloudinit_ssh_keyfile(
                     users, rg
                 )
-        except IOError:
+        except OSError:
             self.log.error("users-file-not-existing")
         managed_files.append(
             {
@@ -633,7 +633,7 @@ class SwapSpec(VolumeSpecification):
             self.cmd(f'mkswap -f -L "{self.suffix}" {self.volume.device}')
 
 
-class Ceph(object):
+class Ceph:
     # Attributes on this class can be overriden in a controlled fashion
     # from the sysconfig module. See __init__(). The defaults are here to
     # support testing.
@@ -657,8 +657,8 @@ class Ceph(object):
     # Otherwise, this code takes care that the volume
     # objects are available to client code as long as a real Ceph volume does
     # exist.
-    specs: Dict[str, VolumeSpecification]
-    volumes: Dict[str, Optional[Volume]]
+    specs: dict[str, VolumeSpecification]
+    volumes: dict[str, Volume | None]
 
     attach_on_enter = True
     attached = False
@@ -673,8 +673,8 @@ class Ceph(object):
         # the original enc data
         self.enc = enc
 
-        self.rados: Optional[libceph.Rados] = None
-        self.ioctxs: Dict[str, libceph.Ioctx] = {}
+        self.rados: libceph.Rados | None = None
+        self.ioctxs: dict[str, libceph.Ioctx] = {}
         self.rbd = libceph.RBD()
 
         self.specs = {}
@@ -701,7 +701,7 @@ class Ceph(object):
 
     def __exit__(
         self,
-        exc_type: Type[BaseException] | None,
+        exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ):
@@ -816,16 +816,14 @@ class Ceph(object):
         return all(not volume.lock_status() for volume in self.opened_volumes)
 
     def locked_by_me(self):
-        """Returns True if CEPH_LOCK_HOST holds locks for all volumes."""
-        volumes = list(self.opened_volumes)
-        if not volumes:
-            # The images do not exist -> we don't hold locks.
-            return False
-        for volume in volumes:
-            status = volume.lock_status()
-            if status is None or status[1] != self.CEPH_LOCK_HOST:
-                return False
-        return True
+        """Returns True if CEPH_LOCK_HOST holds locks for all locked volumes.
+
+        - If all volumes are unlocked, then it's not locked by us
+        - If some volumes are unlocked but the others are consistently
+          locked by us, then it's fine.
+
+        """
+        return self.locked_by() == self.CEPH_LOCK_HOST
 
     def locked_by(self) -> str | None:
         """Returns a hostname holding all locks or None if not locked.
