@@ -116,7 +116,9 @@ class VolumeSpecification(ABC):
     suffix: VolumeSuffix
 
     # specify in order to ensure dependencies and a flag whether it can be
-    # ensured online
+    # ensured online.
+    #
+    # The order is significant and models dependencies.
     expected_features: tuple[tuple[str, bool], ...] = (
         ("exclusive-lock", True),
         ("object-map", True),
@@ -228,7 +230,7 @@ class VolumeSpecification(ABC):
             self.log.info(
                 "rbd-status",
                 volume=self.volume.fullname,
-                locker=locker,
+                locker=locker.host if locker else None,
                 present=True,
             )
         else:
@@ -255,9 +257,20 @@ class VolumeSpecification(ABC):
         for feature, allowed_online in self.expected_features:
             if online and not allowed_online:
                 continue
-            self.volume.rbdimage.ensure_feature(feature)
+            if feature in self.volume.features:
+                # necessary pre-check because some features also implicitly
+                # pull in and enable another feature. And `ensure_feature` is not idempotent.
+                continue
+            self.log.info("enable-rbd-feature", feature=feature)
             if feature == "exclusive-lock":
+                # Release the advisory rbd lock *before* enabling the feature:
+                # once it is enabled, `Volume.unlock()` returns early and the
+                # lock - ours, or the one a pre-upgrade fc.qemu placed - would
+                # stay on the image forever. Callers have to hold the per-VM
+                # rados lock at this point, which is what protects the volume
+                # from here on.
                 self.volume.unlock()
+            self.volume.rbdimage.ensure_feature(feature)
 
     def ensure_object_map(self):
         """Enabling the object-map feature on existing images requires the map
@@ -802,17 +815,6 @@ class Ceph:
     MKFS_XFS: str
     orchestration_pool: str
 
-    # the order of this sequence is significant, as some rbd image
-    # features require other features to be enabled first as
-    # prerequisites. the image features we require thus need to be
-    # enabled in reverse dependency order. additionally, the
-    # object-map and fast-diff features in ceph are special cased so
-    # that enabling one implicitly enables the other at the same time.
-    exclusive_lock_required_features: tuple[tuple[str, ...], ...] = (
-        ("exclusive-lock",),
-        ("object-map", "fast-diff"),
-    )
-
     # Those are two different representations of the disks/volumes we manage.
     # The can be treated from client code as well-known structures, so that
     # when the context manager is active then the keys 'root', 'tmp','swp'
@@ -900,11 +902,11 @@ class Ceph:
         self.vm_lock.lock()
 
         for spec in self.specs.values():
-            # The pre-start phase guarantees that volumes are not locked and have
-            # no watchers, so that they can be deleted if needed, and so that
-            # `_ensure_image_features` below starts from a clean slate. The rados
-            # lock does not affect the ability to delete volumes, but we release it
-            # here anyway to keep both mechanisms in sync.
+            # The pre-start phase guarantees that volumes are not locked and
+            # have no watchers, so that they can be deleted if needed, and so
+            # that `ensure_features` below starts from a clean slate. The rados
+            # lock does not affect the ability to delete volumes, which is why
+            # we only drop the per-volume locks here.
             if spec.volume:
                 spec.volume.unlock()
                 spec.volume.close()
@@ -978,7 +980,7 @@ class Ceph:
     def status(self):
         # Report status for CLI usage
         locker = self.vm_lock.locker()
-        self.log.info("vm-lock-status", locker=locker)
+        self.log.info("vm-lock-status", locker=locker.host if locker else None)
         for spec in self.specs.values():
             spec.status()
 
@@ -1052,7 +1054,7 @@ class Ceph:
         # we now only accept migrations between up-to-date hosts.
         vm_locker = self.vm_lock.locker()
         if vm_locker:
-            c.update(b"vm-lock\0{vm_locker.addr)}")
+            c.update(f"vm-lock\0{vm_locker.addr}\0".encode())
         else:
             # BBB this is deprecated but needed for the upgrade path and
             # can be retired at some point.

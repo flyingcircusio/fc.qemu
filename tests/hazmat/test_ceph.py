@@ -1,85 +1,45 @@
 import subprocess
-import textwrap
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 import yaml
 
 from fc.qemu.hazmat import libceph
-from fc.qemu.hazmat.ceph import LockMode
 from fc.qemu.hazmat.libceph import Image as RealImage
 from tests.conftest import (
-    UPDATE_LOCK_METHOD_NO_IMAGES,
-    both_lock_modes,
+    EXCLUSIVE_LOCK_VOLUMES,
+    RBD_LOCK_VOLUMES,
     get_log,
-    rbd_lock_mode,
-    update_lock_method,
 )
 from tests.ellipsis import Ellipsis
 
-
-def settle_lock_method(ceph_inst):
-    """Apply the configured feature state and re-decide the lock mechanism.
-
-    `Ceph.start()` does this between `ensure_presence` and taking any lock.
-    Fixtures and tests that drive the volumes directly have to do it
-    themselves, otherwise `lock_mode` has no effect and everything stays on
-    the rbd path. PL-134255: goes away with the rbd lock path.
-    """
-    ceph_inst._ensure_image_features()
-    ceph_inst._update_lock_method()
-
-
-# PL-134255: literal expectations for both lock mechanisms, so the two can be
-# read side by side. Delete the `*_RBD` constants with the rbd lock path.
-MIGRATION_LOCKS_RBD = """\
-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+#: `Ceph.start()` takes the per-VM rados lock and, because cidata stays
+#: layering-only, one advisory rbd lock. root/swap/tmp carry `exclusive-lock`
+#: and are covered by the rados lock alone.
+MIGRATION_LOCKS = """\
+rados-lock machine=simplevm subsystem=ceph
 lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
 """
-MIGRATION_LOCKS_RADOS = """\
-rados-lock machine=simplevm subsystem=ceph
+
+#: `ensure_features` runs once every volume is present. Root is still in the
+#: source pool at that point, the others have been recreated in the
+#: destination pool by `pre_start`. `object-map` pulls `fast-diff` in with it,
+#: so there are two lines per volume and none at all for cidata. The `rbd
+#: feature enable` calls themselves log under `subsystem=libceph`, which
+#: `reset_structlog` hides.
+MIGRATION_ENABLE_FEATURES = """\
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-feature feature=object-map machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+enable-rbd-feature feature=object-map machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+enable-rbd-feature feature=object-map machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
 """
 
-#: `_ensure_image_features` runs after every volume is present. Root is still
-#: in the source pool at that point, the others have been recreated in the
-#: destination pool by `pre_start`. rbd image features should be enabled in
-#: an order which avoids dependent features being enabled implicitly.
-MIGRATION_ENABLE_FEATURES_RADOS = """\
-enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
-enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
-enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
-enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
-"""
-
-#: Root is mid-migration and therefore unlocked; the others are held.
-#: `Ceph.status()` emits `rados-lock-status` once, ahead of every volume.
-MIGRATION_STATUS_ROOT_RBD = """\
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root"""
-MIGRATION_STATUS_ROOT_RADOS = """\
-rados-lock-status locker=('client...', '...') machine=simplevm subsystem=ceph
-rbd-status machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.root"""
-
-MIGRATION_STATUS_TAIL_RBD = """\
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata"""
-MIGRATION_STATUS_TAIL_RADOS = """\
-rbd-status machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.swap
-rbd-status machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.tmp
-rbd-status machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.cidata"""
-
-
-#: `Ceph.start()` pre-starts and ensures presence for *every* volume before it
-#: settles the image features and takes any lock. Checked as its own
-#: `in_order` op, so the per-volume sizing/starting work is not additionally
-#: pinned to how these two phases interleave with it.
+#: `Ceph.start()` pre-starts, ensures presence and settles the features for
+#: *every* volume before it locks, sizes and starts any of them. Checked as its
+#: own `in_order` op, so the per-volume work is not additionally pinned to how
+#: these phases interleave with it.
 MIGRATION_PHASE_PRESENCE = """\
 pre-start machine=simplevm subsystem=ceph volume_spec=root
 ensure-presence machine=simplevm subsystem=ceph volume_spec=root
@@ -95,44 +55,16 @@ ensure-presence machine=simplevm subsystem=ceph volume_spec=cidata
 """
 
 
-#: `RootSpec.pool_migration` releases the source volume before
-#: `rbd migration prepare`. On the rados path `Volume.unlock` returns without
-#: logging, because the VM-level lock covers the volume.
-MIGRATION_ROOT_UNLOCK_RBD = (
-    "unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root"
-)
-MIGRATION_ROOT_UNLOCK_RADOS = ""
-
-
-def migration_status(lock_mode, text: str) -> str:
-    """Fill the mechanism-dependent slots in a pattern body.
-
-    `.replace` rather than `.format`, because the bodies carry literal JSON
-    braces from `rbd --format json` output. A slot may expand to nothing,
-    which just leaves a blank line - `pattern_lines` filters those out.
-    """
-    rbd = lock_mode == "rbd"
-    return (
-        text.replace(
-            "{root_unlock}",
-            MIGRATION_ROOT_UNLOCK_RBD if rbd else MIGRATION_ROOT_UNLOCK_RADOS,
-        )
-        .replace(
-            "{status_root}",
-            MIGRATION_STATUS_ROOT_RBD if rbd else MIGRATION_STATUS_ROOT_RADOS,
-        )
-        .replace(
-            "{status_tail}",
-            MIGRATION_STATUS_TAIL_RBD if rbd else MIGRATION_STATUS_TAIL_RADOS,
-        )
-    )
-
-
 @pytest.fixture
 def ceph_with_volumes(ceph_inst):
-    for vol in ceph_inst.specs.values():
-        vol.ensure_presence()
-    settle_lock_method(ceph_inst)
+    """All four volumes present, features settled, locks held.
+
+    Mirrors what `Ceph.start()` does before it sizes and starts the volumes,
+    minus the filesystem work.
+    """
+    for spec in ceph_inst.specs.values():
+        spec.ensure_presence()
+        spec.ensure_features(online=False)
     ceph_inst.lock()
     yield ceph_inst
     ceph_inst.force_unlock()
@@ -145,9 +77,9 @@ def ceph_with_volumes(ceph_inst):
 @pytest.fixture
 def ceph_with_volumes_ci(ceph_inst_cloudinit_enc):
     ceph_inst = ceph_inst_cloudinit_enc
-    for vol in ceph_inst.specs.values():
-        vol.ensure_presence()
-    settle_lock_method(ceph_inst)
+    for spec in ceph_inst.specs.values():
+        spec.ensure_presence()
+        spec.ensure_features(online=False)
     ceph_inst.lock()
     yield ceph_inst
     ceph_inst.force_unlock()
@@ -157,66 +89,176 @@ def ceph_with_volumes_ci(ceph_inst_cloudinit_enc):
         libceph.RBD().remove(volume.ioctx, volume.name)
 
 
-# --- PL-134255: rbd lock path, remove this section with it ----------------
+########################################################
+# which lock ends up on which volume
 
 
-@rbd_lock_mode
-def test_ceph_stop_should_unlock_all_volumes(ceph_with_volumes):
-    for volume in ceph_with_volumes.opened_volumes:
-        assert volume.lock_status()
-    ceph_with_volumes.stop()
-    for volume in ceph_with_volumes.opened_volumes:
+def test_locks_are_split_between_cidata_and_the_rest(ceph_with_volumes):
+    """The invariant the whole PL-134255 rollout rests on.
+
+    root/swap/tmp get `exclusive-lock` - so qemu arbitrates access to them and
+    the per-VM rados lock expresses the assignment - while cidata deliberately
+    stays layering-only and keeps a plain advisory rbd lock. That lock is what
+    a host running a pre-PL-134255 fc.qemu looks at, and it is the only thing
+    stopping such a host from taking a VM that lives here.
+    """
+    ceph = ceph_with_volumes
+
+    assert ceph.vm_lock.locker().host == ceph.CEPH_LOCK_HOST
+
+    for suffix in EXCLUSIVE_LOCK_VOLUMES:
+        volume = ceph.volumes[suffix]
+        assert volume.features >= {"exclusive-lock", "object-map", "fast-diff"}
+        assert volume.lock_status() is None, (
+            f"{volume.fullname} must not carry an rbd lock"
+        )
+
+    for suffix in RBD_LOCK_VOLUMES:
+        volume = ceph.volumes[suffix]
+        assert "exclusive-lock" not in volume.features
+        assert volume.lock_status().host == ceph.CEPH_LOCK_HOST
+
+
+def upgrade_features(ceph, *, online=True):
+    """The feature half of `Ceph.ensure()`, for every volume.
+
+    Driven per spec rather than through `Ceph.ensure()`, which also chases the
+    root pool migration and would shell out to a real `rbd status`.
+    """
+    for spec in ceph.specs.values():
+        spec.ensure_features(online=online)
+
+
+def test_online_upgrade_releases_the_legacy_rbd_locks(legacy_images):
+    """Upgrading fc.qemu moves a *running* VM over, via `Ceph.ensure()`.
+
+    The images arrive layering-only and rbd-locked, which is all a
+    pre-PL-134255 host leaves behind. Enabling `exclusive-lock` makes
+    `Volume.unlock()` a no-op, so unless the lock is dropped first it would
+    stay on the image forever - and `Ceph.is_unlocked()` consults the volume
+    locks, so it would never report an unlocked VM again.
+    """
+    ceph = legacy_images
+    # Taking the rados lock first is what `Agent.ensure_online_local` does,
+    # so that the volumes are never left without any advisory lock.
+    ceph.lock()
+
+    upgrade_features(ceph)
+
+    for suffix in EXCLUSIVE_LOCK_VOLUMES:
+        volume = ceph.volumes[suffix]
+        assert volume.features >= {"exclusive-lock", "object-map", "fast-diff"}
+        assert volume.lock_status() is None, (
+            f"{volume.fullname} kept its pre-upgrade rbd lock"
+        )
+    # cidata is the fence for old hosts, so it keeps the rbd lock - but it is
+    # ours now, not the old host's.
+    cidata = ceph.volumes["cidata"]
+    assert "exclusive-lock" not in cidata.features
+    assert cidata.lock_status().host == ceph.CEPH_LOCK_HOST
+
+    assert ceph.locked_by_me() is True
+
+
+def test_online_upgrade_announces_what_it_changes(legacy_images):
+    """Enabling features on a running VM is worth seeing in its log.
+
+    The `unlock` has to come first: that is the pre-upgrade lock going away,
+    and the ordering is what makes it possible at all. `object-map` pulls
+    `fast-diff` in with it, so there are two lines per volume rather than
+    three, and none for cidata.
+    """
+    ceph = legacy_images
+    ceph.lock()
+    get_log()
+
+    upgrade_features(ceph)
+
+    assert (
+        get_log()
+        == """\
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
+unlock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
+enable-rbd-feature feature=object-map machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+unlock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+enable-rbd-feature feature=object-map machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+unlock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+enable-rbd-feature feature=object-map machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp"""
+    )
+
+
+def test_online_upgrade_is_idempotent(legacy_images):
+    """The second pass has nothing left to do and stays silent."""
+    ceph = legacy_images
+    ceph.lock()
+    upgrade_features(ceph)
+    get_log()
+
+    upgrade_features(ceph)
+
+    assert get_log() == ""
+
+
+# --- the per-volume rbd lock, as it survives on cidata --------------------
+
+
+def test_ceph_stop_releases_the_cidata_lock(ceph_with_volumes):
+    ceph = ceph_with_volumes
+    assert ceph.volumes["cidata"].lock_status()
+
+    ceph.stop()
+
+    for volume in ceph.opened_volumes:
         assert volume.lock_status() is None
+    assert ceph.vm_lock.locker() is None
 
 
-@rbd_lock_mode
-def test_ceph_stop_remove_only_own_locks(ceph_with_volumes):
+def test_ceph_stop_removes_only_own_locks(ceph_with_volumes):
     """Test case where failed migrations leave inconsistent locking."""
-    ceph_with_volumes.volumes["root"].unlock()
-    ceph_with_volumes.volumes["root"].rbdimage.lock_exclusive("someotherhost")
+    ceph = ceph_with_volumes
+    cidata = ceph.volumes["cidata"]
+    cidata.unlock()
+    cidata.rbdimage.lock_exclusive("someotherhost")
+
     # It unlocks what it can.
-    ceph_with_volumes.stop()
-    assert ceph_with_volumes.volumes["root"].lock_status()
-    assert ceph_with_volumes.volumes["swap"].lock_status() is None
-    assert ceph_with_volumes.volumes["tmp"].lock_status() is None
+    ceph.stop()
 
-
-# --- end of the rbd-only section ------------------------------------------
+    assert cidata.lock_status().host == "someotherhost"
+    assert ceph.vm_lock.locker() is None
 
 
 def test_ceph_stop_should_release_the_rados_lock(ceph_with_volumes):
     ceph = ceph_with_volumes
-    assert ceph.lock_mode == LockMode.RADOS
-    assert ceph.rados_lock.lock_status()[1] == ceph.CEPH_LOCK_HOST
-    # No volume carries a lock of its own anymore.
-    for volume in ceph.opened_volumes:
-        assert volume.lock_status() is None
+    assert ceph.vm_lock.locker().host == ceph.CEPH_LOCK_HOST
+
     ceph.stop()
-    assert ceph.rados_lock.lock_status() is None
+
+    assert ceph.vm_lock.locker() is None
 
 
 def test_ceph_stop_leaves_a_foreign_rados_lock_alone(ceph_with_volumes):
     """A failed migration can leave the lock with the other host."""
     ceph = ceph_with_volumes
-    ceph.assume_locked = False
-    ceph.rados_lock.unlock()
+    ceph.vm_lock.unlock()
     ceph.rados.lock_exclusive(
         ceph.orchestration_pool,
         "simplevm",
-        ceph.rados_lock.LOCK_NAME,
+        ceph.vm_lock.LOCK_NAME,
         "someotherhost",
-        namespace=ceph.rados_lock.NAMESPACE,
+        namespace=ceph.vm_lock.NAMESPACE,
     )
 
     ceph.stop()
     # Not ours, so we keep our hands off it.
-    assert ceph.rados_lock.lock_status()[1] == "someotherhost"
+    assert ceph.vm_lock.locker().host == "someotherhost"
     assert ceph.locked_by() == "someotherhost"
     assert ceph.locked_by_me() is False
 
     # ... but force_unlock breaks it.
     ceph.force_unlock()
-    assert ceph.rados_lock.lock_status() is None
+    assert ceph.vm_lock.locker() is None
 
 
 @pytest.mark.live
@@ -232,16 +274,24 @@ def test_ceph_exclusive_lock_can_be_taken_twice_with_same_cookie(ceph_inst):
         img.lock_exclusive("cookie-2")
 
 
-@both_lock_modes
 def test_is_unlocked(ceph_with_volumes):
     assert ceph_with_volumes.is_unlocked() is False
     ceph_with_volumes.unlock()
     assert ceph_with_volumes.is_unlocked() is True
 
 
-@both_lock_modes
+def test_is_unlocked_sees_a_leftover_volume_lock(ceph_with_volumes):
+    """Both mechanisms count: the rados lock *and* any volume lock."""
+    ceph = ceph_with_volumes
+    ceph.unlock()
+    assert ceph.is_unlocked() is True
+
+    ceph.volumes["cidata"].rbdimage.lock_exclusive("someotherhost")
+
+    assert ceph.is_unlocked() is False
+
+
 def test_lock_roundtrip_reports_ownership(ceph_with_volumes):
-    """Whichever mechanism is active, the observable API is the same."""
     ceph = ceph_with_volumes
     assert ceph.locked_by_me() is True
     assert ceph.locked_by() == ceph.CEPH_LOCK_HOST
@@ -254,20 +304,12 @@ def test_lock_roundtrip_reports_ownership(ceph_with_volumes):
     assert ceph.is_unlocked() is True
 
 
-@both_lock_modes
 def test_lock_is_idempotent(ceph_with_volumes):
     """Locking again while we hold the lock must not raise."""
     ceph = ceph_with_volumes
     ceph.lock()
     ceph.lock()
     assert ceph.locked_by_me() is True
-
-
-@both_lock_modes
-def test_auth_cookie_changes_with_lock_state(ceph_with_volumes):
-    locked = ceph_with_volumes.auth_cookie()
-    ceph_with_volumes.unlock()
-    assert ceph_with_volumes.auth_cookie() != locked
 
 
 def test_multiple_images_raises_error(ceph_inst):
@@ -280,12 +322,57 @@ def test_multiple_images_raises_error(ceph_inst):
 
 
 ########################################################
+# the migration auth cookie
+
+
+def test_auth_cookie_changes_with_lock_state(ceph_with_volumes):
+    locked = ceph_with_volumes.auth_cookie()
+    ceph_with_volumes.unlock()
+    assert ceph_with_volumes.auth_cookie() != locked
+
+
+def test_auth_cookie_distinguishes_lock_holders(ceph_with_volumes):
+    """The cookie has to identify *who* holds the lock.
+
+    It authenticates migration requests, so a cookie that is the same for
+    every locked VM on every host would authenticate nothing.
+    """
+    ceph = ceph_with_volumes
+    ours = ceph.auth_cookie()
+
+    ceph.vm_lock.unlock()
+    foreign_lock(ceph)
+
+    assert ceph.auth_cookie() != ours
+
+
+def test_auth_cookie_falls_back_to_rbd_locks(legacy_images):
+    """Inmigrating from a host that only knows rbd locks.
+
+    Without a rados lock the cookie is derived from the root/swap/tmp rbd
+    locks, in that fixed order - which is what lets an old fc.qemu and a new
+    one agree on a cookie for the same VM. Deprecated, but load-bearing for
+    the rollout.
+    """
+    ceph = legacy_images
+    assert ceph.vm_lock.locker() is None
+
+    legacy = ceph.auth_cookie()
+
+    # Stable as long as the locks are.
+    assert ceph.auth_cookie() == legacy
+    # ... and sensitive to them.
+    ceph.volumes["swap"].unlock(force=True)
+    assert ceph.auth_cookie() != legacy
+
+
+########################################################
 # the per-VM rados lock
 
 
 def foreign_lock(ceph_inst, cookie="someotherhost"):
     """Take the VM's rados lock on behalf of another host."""
-    lock = ceph_inst.rados_lock
+    lock = ceph_inst.vm_lock
     ceph_inst.rados.lock_exclusive(
         lock.pool,
         lock.vm_name,
@@ -295,26 +382,24 @@ def foreign_lock(ceph_inst, cookie="someotherhost"):
     )
 
 
-def test_rados_lock_ensure_is_idempotent(ceph_inst):
-    # `Ceph.__enter__` already created the sidecar object, so this is the
-    # second and third call.
-    ceph_inst.rados_lock.ensure()
-    ceph_inst.rados_lock.ensure()
-    assert ceph_inst.rados_lock.lock_status() is None
+def test_rados_lock_object_creation_is_idempotent(ceph_inst):
+    """`locker()` creates the sidecar object gratuitously, every time."""
+    assert ceph_inst.vm_lock.locker() is None
+    assert ceph_inst.vm_lock.locker() is None
+    assert ceph_inst.vm_lock.locker() is None
 
 
 def test_rados_lock_acquire_and_report(ceph_inst):
-    lock = ceph_inst.rados_lock
-    assert lock.lock_status() is None
+    lock = ceph_inst.vm_lock
+    assert lock.locker() is None
 
     lock.lock()
 
-    assert lock.lock_status()[1] == ceph_inst.CEPH_LOCK_HOST
-    assert ceph_inst.assume_locked is True
+    assert lock.locker().host == ceph_inst.CEPH_LOCK_HOST
 
 
 def test_rados_lock_shortcuts_when_we_already_hold_it(ceph_inst):
-    lock = ceph_inst.rados_lock
+    lock = ceph_inst.vm_lock
     lock.lock()
     get_log()
 
@@ -329,7 +414,7 @@ def test_rados_lock_gives_up_on_a_foreign_lock(ceph_inst):
     get_log()
 
     with pytest.raises(libceph.ImageBusy):
-        ceph_inst.rados_lock.lock()
+        ceph_inst.vm_lock.lock()
 
     assert get_log() == Ellipsis(
         """\
@@ -337,18 +422,17 @@ rados-lock machine=simplevm subsystem=ceph
 rados-lock-retry machine=simplevm subsystem=ceph
 rados-lock-retry machine=simplevm subsystem=ceph
 rados-lock-retry machine=simplevm subsystem=ceph
-rados-lock-failed competing=('...', 'someotherhost') machine=simplevm subsystem=ceph"""
+rados-lock-failed competing=...cookie='someotherhost'... machine=simplevm subsystem=ceph"""
     )
-    assert ceph_inst.assume_locked is False
 
 
 def test_rados_unlock_leaves_foreign_locks_alone(ceph_inst):
     foreign_lock(ceph_inst)
     get_log()
 
-    ceph_inst.rados_lock.unlock()
+    ceph_inst.vm_lock.unlock()
 
-    assert ceph_inst.rados_lock.lock_status()[1] == "someotherhost"
+    assert ceph_inst.vm_lock.locker().host == "someotherhost"
     # Deliberately silent, mirroring `Volume.unlock()`: this is what the tail
     # of every outgoing migration looks like once the destination has taken
     # the lock.
@@ -359,15 +443,15 @@ def test_rados_unlock_breaks_foreign_locks_when_forced(ceph_inst):
     foreign_lock(ceph_inst)
     get_log()
 
-    ceph_inst.rados_lock.unlock(force=True)
+    ceph_inst.vm_lock.unlock(force=True)
 
-    assert ceph_inst.rados_lock.lock_status() is None
+    assert ceph_inst.vm_lock.locker() is None
     assert get_log() == "rados-break-lock machine=simplevm subsystem=ceph"
 
 
 def test_rados_unlock_of_a_missing_lock_is_a_noop(ceph_inst):
     get_log()
-    ceph_inst.rados_lock.unlock()
+    ceph_inst.vm_lock.unlock()
     assert get_log() == ""
 
 
@@ -375,43 +459,39 @@ def test_rados_lock_refuses_shared_locks(ceph_inst, monkeypatch):
     # Only a shared lock would ever report two lockers, which we do not use.
     monkeypatch.setattr(
         ceph_inst.rados,
-        "lock_list_by_name",
-        lambda *a, **kw: {
-            "lockers": [
-                ("client.a", "host1", "127.0.0.1:0/1"),
-                ("client.b", "host2", "127.0.0.1:0/2"),
-            ]
-        },
+        "lock_info",
+        lambda *a, **kw: libceph.RadosLockInfo(
+            name="kvm",
+            type="shared",
+            tag="",
+            lockers=[
+                libceph.RadosLocker(
+                    name="client.a", cookie="host1", addr="127.0.0.1:0/1"
+                ),
+                libceph.RadosLocker(
+                    name="client.b", cookie="host2", addr="127.0.0.1:0/2"
+                ),
+            ],
+        ),
     )
 
     with pytest.raises(NotImplementedError):
-        ceph_inst.rados_lock.lock_status()
-
-
-def test_rados_lock_status_is_not_queried_on_the_rbd_path(ceph_inst):
-    """Callers have to dispatch; this guards against silent cross-talk."""
-    ceph_inst.lock_mode = LockMode.RBD
-    with pytest.raises(AssertionError):
-        ceph_inst.rados_lock.lock_status()
+        ceph_inst.vm_lock.locker()
 
 
 @pytest.mark.live
 def test_rados_lock_contention_against_real_rados(ceph_inst):
-    """`VMLockMgr` against the real `rados` CLI.
+    """`VMLockManager` against the real `rados` CLI.
 
-    Test contention and protection of foreign rados lock against a live cluster.
-    This protects against error code drift and other behaviour changes, in
-    cases only happening under multi-host lock contention.
+    Test contention and protection of foreign rados lock against a live
+    cluster. This protects against error code drift and other behaviour
+    changes, in cases only happening under multi-host lock contention.
     """
-    lock = ceph_inst.rados_lock
-    # No volumes exist yet, which settles on the rados path either way.
-    ceph_inst._update_lock_method()
-    assert ceph_inst.lock_mode == LockMode.RADOS
+    lock = ceph_inst.vm_lock
 
     lock.lock()
-    assert lock.lock_status()[1] == ceph_inst.CEPH_LOCK_HOST
+    assert lock.locker().host == ceph_inst.CEPH_LOCK_HOST
 
-    ceph_inst.assume_locked = False
     lock.unlock()
     foreign_lock(ceph_inst)
 
@@ -419,223 +499,50 @@ def test_rados_lock_contention_against_real_rados(ceph_inst):
     # the retry loop would read a refusal as success.
     with pytest.raises(libceph.ImageBusy):
         lock.lock()
-    assert lock.lock_status()[1] == "someotherhost"
+    assert lock.locker().host == "someotherhost"
 
     lock.unlock()
-    assert lock.lock_status()[1] == "someotherhost"
+    assert lock.locker().host == "someotherhost"
     lock.unlock(force=True)
-    assert lock.lock_status() is None
+    assert lock.locker() is None
 
 
 ########################################################
-# choosing between the two lock mechanisms
+# enabling the expected rbd image features
 
 
-def set_features(ceph_inst, **features_by_suffix):
-    for suffix, features in features_by_suffix.items():
-        volume = ceph_inst.volumes[suffix]
-        volume.ioctx.rbd_images[volume.name]["features"] = list(features)
-
-
-@pytest.fixture
-def ceph_with_present_volumes(ceph_inst):
-    """Volumes exist, but nothing has settled the lock method yet."""
+def test_features_are_only_enabled_once(ceph_inst):
+    """`rbd feature enable` fails with (22) if the feature is already on, so
+    the pre-check in `Image.ensure_feature` is load-bearing rather than
+    cosmetic."""
     for spec in ceph_inst.specs.values():
         spec.ensure_presence()
-    return ceph_inst
-
-
-def test_lock_method_rados_when_all_volumes_have_the_feature(
-    ceph_with_present_volumes,
-):
-    ceph = ceph_with_present_volumes
-    for suffix in ceph.volumes:
-        set_features(ceph, **{suffix: ["layering", "exclusive-lock"]})
-
-    ceph._update_lock_method()
-
-    assert ceph.lock_mode == LockMode.RADOS
-
-
-def test_lock_method_rbd_when_no_volume_has_the_feature(
-    ceph_with_present_volumes,
-):
-    ceph = ceph_with_present_volumes
-    for suffix in ceph.volumes:
-        set_features(ceph, **{suffix: ["layering"]})
-
-    ceph._update_lock_method()
-
-    assert ceph.lock_mode == LockMode.RBD
-
-
-def test_lock_method_mixed_falls_back_to_rbd_locks(ceph_with_present_volumes):
-    """The transient state while the cluster raises rbd_default_features.
-
-    `pre_start` recreates swap/tmp/cidata with the feature while an older root
-    clone still lacks it. The two flags are strict complements, so this does
-    *not* run both mechanisms in parallel: a single volume without the feature
-    puts the whole VM on the rbd path.
-    """
-    ceph = ceph_with_present_volumes
-    # set up a mixed set of features on different volumes
-    set_features(
-        ceph,
-        root=["layering"],
-        swap=["layering", "exclusive-lock"],
-        tmp=["layering", "exclusive-lock", "fast-diff", "object-map"],
-        cidata=["layering", "exclusive-lock", "fast-diff", "object-map"],
-    )
-
-    ceph._update_lock_method()
-
-    assert ceph.lock_mode == LockMode.RBD
-
-    # Only the rbd locks get taken:
-    # A single volume without the feature puts the whole VM back on the rbd
-    # path. That is the conservative choice - an older fc.qemu looks at
-    # exactly those locks - and it means `rados_lock` stays untouched, down to
-    # `lock_status()` refusing to answer at all.
-    ceph.lock()
-    assert ceph.volumes["root"].lock_status()[1] == ceph.CEPH_LOCK_HOST
-    ceph.unlock()
-    assert ceph.volumes["root"].lock_status() is None
-
-
-def test_lock_method_ignores_the_migrating_feature(ceph_with_present_volumes):
-    """`rbd migration prepare` adds `migrating` to the feature list."""
-    ceph = ceph_with_present_volumes
-    for suffix in ceph.volumes:
-        set_features(
-            ceph,
-            **{suffix: ["layering", "exclusive-lock", "migrating"]},
-        )
-
-    ceph._update_lock_method()
-
-    assert ceph.lock_mode == LockMode.RADOS
-
-    for suffix in ceph.volumes:
-        set_features(ceph, **{suffix: ["layering", "migrating"]})
-
-    ceph._update_lock_method()
-
-    assert ceph.lock_mode == LockMode.RBD
-
-
-def test_lock_method_without_volumes_selects_rados(ceph_inst):
-    """A VM whose images do not exist yet: `all([])`/`any([])` pick rados.
-
-    Not the state `Agent.ensure` sees - every branch of `Agent.ensure_` that
-    consults a lock attaches the volumes first, so `require_inmigrate` and
-    friends always decide from real image features. Unattached, this method is
-    not called at all and the flags stay at their `Ceph.__init__` default.
-
-    Reachable in production: a VM whose images do not exist yet. The spec
-    placeholders keep `self.volumes` truthy, so `_update_lock_method`'s
-    `assert self.volumes` passes while `opened_volumes` is empty - that assert
-    does not imply attachment.
-    """
-    assert list(ceph_inst.opened_volumes) == []
-
-    ceph_inst._update_lock_method()
-
-    assert ceph_inst.lock_mode == LockMode.RADOS
-    # Must not trip the `assert self.lock_mode == LockMode.RBD` in the legacy branch.
-    assert ceph_inst.is_unlocked() is True
-    assert ceph_inst.locked_by_me() is False
-    assert ceph_inst.locked_by() is None
-
-
-########################################################
-# enabling the exclusive-lock feature at cold boot
-# PL-134255: this whole section goes away with the rbd lock path.
-
-
-@rbd_lock_mode
-def test_exclusive_lock_is_not_enabled_by_default(ceph_with_present_volumes):
-    """The shipped configuration must not change any VM's behaviour."""
-    ceph = ceph_with_present_volumes
-    assert ceph.ensure_exclusive_lock is False
+        spec.ensure_features(online=False)
     get_log()
 
-    ceph._ensure_image_features()
-
-    assert get_log() == ""
-    for volume in ceph.opened_volumes:
-        assert volume.rbdimage.features == ["layering"]
-
-    ceph._update_lock_method()
-    assert ceph.lock_mode == LockMode.RBD
-
-
-def test_exclusive_lock_gets_enabled_when_configured(
-    ceph_with_present_volumes,
-):
-    ceph = ceph_with_present_volumes
-    ceph.ensure_exclusive_lock = True
-    get_log()
-
-    ceph._ensure_image_features()
-
-    # Two lines per volume, not three: enabling `fast-diff` makes ceph pull in
-    # `object-map` as well, so the pre-check skips it.
-    assert (
-        get_log()
-        == textwrap.dedent("""\
-    enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-    enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
-    enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-    enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
-    enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
-    enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
-    enable-rbd-features features=('exclusive-lock',) machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
-    enable-rbd-features features=('object-map', 'fast-diff') machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata""")
-    )
-    # Which features ended up on the image, regardless of how `rbd info`
-    # happens to order them.
-    for volume in ceph.opened_volumes:
-        assert {
-            f for fs in ceph.exclusive_lock_required_features for f in fs
-        } <= set(volume.rbdimage.features)
-
-    # The decision has to flip within the same start().
-    ceph._update_lock_method()
-    assert ceph.lock_mode == LockMode.RADOS
-
-
-def test_exclusive_lock_is_only_enabled_once(ceph_with_present_volumes):
-    """`rbd feature enable` fails with (22) if the feature is already on, so
-    the pre-check is load-bearing rather than cosmetic."""
-    ceph = ceph_with_present_volumes
-    ceph.ensure_exclusive_lock = True
-    ceph._ensure_image_features()
-    get_log()
-
-    # A second cold boot of an already upgraded VM.
-    ceph._ensure_image_features()
+    # A second start of an already upgraded VM.
+    for spec in ceph_inst.specs.values():
+        spec.ensure_features(online=False)
 
     assert get_log() == ""
 
 
-def test_enable_feature_is_not_idempotent(ceph_with_present_volumes):
-    """Pins the behaviour the pre-check exists for, as measured on Pacific."""
-    image = ceph_with_present_volumes.volumes["root"].rbdimage
-    image.enable_feature("exclusive-lock")
+def test_cidata_keeps_the_legacy_feature_set(ceph_inst):
+    """cidata must stay readable - and lockable - for old hosts."""
+    spec = ceph_inst.specs["cidata"]
+    spec.ensure_presence()
+    spec.ensure_features(online=False)
 
-    with pytest.raises(subprocess.CalledProcessError) as e:
-        image.enable_feature("exclusive-lock")
-
-    assert e.value.returncode == 22
-    assert "already enabled" in e.value.output
+    assert spec.volume.features == {"layering"}
 
 
-def test_enable_feature_invalidates_the_feature_cache():
-    """`_update_lock_method` reads `features` right after the enable, so a
-    stale cache would make the mechanism choice lag a whole start behind.
+def test_ensure_feature_invalidates_the_info_cache():
+    """`ensure_features` enables several features in a row, so a stale cache
+    would make the second one see the pre-enable feature set and try to enable
+    something ceph already turned on implicitly.
 
-    Exercises the real `libceph.Image`, because that is where the cache lives
-    - `ImageMock.features` reads live state and could never catch this.
+    Exercises the real `libceph.Image`, because that is where the cache lives -
+    `ImageMock.info` reads live state and could never catch this.
     """
     features = ["layering"]
     info_calls = []
@@ -645,7 +552,7 @@ def test_enable_feature_invalidates_the_feature_cache():
             features.append(args[3])
             return ""
         info_calls.append(args)
-        return {"features": list(features)}
+        return {"size": 1024, "features": list(features), "flags": []}
 
     # `RealImage` is bound at import time, before `ceph_mock` swaps
     # `libceph.Image` out for `ImageMock`.
@@ -655,14 +562,14 @@ def test_enable_feature_invalidates_the_feature_cache():
     image.ioctx = Mock()
     image.ioctx.rados.rbd_ = rbd_
 
-    assert image.features == ["layering"]
+    assert image.info.features == {"layering"}
     # Second read is served from the cache, not from another `rbd info`.
-    assert image.features == ["layering"]
+    assert image.info.features == {"layering"}
     assert len(info_calls) == 1
 
-    image.enable_feature("exclusive-lock")
+    image.ensure_feature("exclusive-lock")
 
-    assert image.features == ["layering", "exclusive-lock"]
+    assert image.info.features == {"layering", "exclusive-lock"}
     assert len(info_calls) == 2
 
 
@@ -911,8 +818,7 @@ def test_cloud_init_seed_routed_pub(ceph_inst_cloudinit_enc):
 
 
 @pytest.mark.live
-@both_lock_modes
-def test_rbd_pool_migration(ceph_inst, patterns, lock_mode) -> None:
+def test_rbd_pool_migration(ceph_inst, patterns) -> None:
     ceph_inst.cfg["tmp_size"] = 500 * 1024 * 1024
     ceph_inst.cfg["swap_size"] = 50 * 1024 * 1024
     ceph_inst.cfg["root_size"] = 50 * 1024 * 1024
@@ -962,9 +868,7 @@ blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/...
 """
     )
     first_start.in_order(
-        migration_status(
-            lock_mode,
-            """
+        """
 ensure-size machine=simplevm subsystem=ceph volume_spec=root
 start machine=simplevm subsystem=ceph volume_spec=root
 start-root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
@@ -974,7 +878,6 @@ rbd>    {"watchers":[]}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 
 migrate-vm-root-disk action=start machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd subsystem=ceph volume=rbd.ssd/simplevm.root
-{root_unlock}
 rbd args=migration prepare rbd.ssd/simplevm.root rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=simplevm.root
 rbd machine=simplevm returncode=0 subsystem=ceph volume=simplevm.root
 
@@ -1035,31 +938,31 @@ mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidat
 guest-properties machine=simplevm properties={'binary_generation': 2} subsystem=ceph volume=rbd.hdd/simplevm.cidata
 umount args="/mnt/rbd/rbd.hdd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.cidata
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.cidata
-{status_root}
+vm-lock-status locker=host1 machine=simplevm subsystem=ceph
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd>    {"watchers":[],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"prepared","state_description":""}}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progress= status=prepared subsystem=ceph volume=rbd.hdd/simplevm.root
-{status_tail}
-""",
-        )
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.swap
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.tmp
+rbd-status locker=host1 machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.cidata
+"""
     )
 
-    first_start.in_order(UPDATE_LOCK_METHOD_NO_IMAGES * 2)
     first_start.in_order(MIGRATION_PHASE_PRESENCE)
-    # PL-134255: whichever mechanism is active, the other must stay silent.
-    rbd = lock_mode == "rbd"
-    other_mode = "rados" if rbd else "rbd"
-    first_start.in_order(
-        update_lock_method(lock_mode)
-        + (MIGRATION_LOCKS_RBD if rbd else MIGRATION_LOCKS_RADOS)
-    )
+    first_start.in_order(MIGRATION_LOCKS)
+    first_start.in_order(MIGRATION_ENABLE_FEATURES)
+    # root/swap/tmp are covered by the VM-level rados lock, so they must never
+    # be rbd-locked - and the pre-upgrade lock has to be gone, not just
+    # unused.
     first_start.refused(
-        update_lock_method(other_mode)
-        + (MIGRATION_LOCKS_RADOS if rbd else MIGRATION_LOCKS_RBD)
+        """
+lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.swap
+lock machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.tmp
+"""
     )
-    if lock_mode != "rbd":
-        first_start.in_order(MIGRATION_ENABLE_FEATURES_RADOS)
 
     assert get_log() == first_start
 
@@ -1068,14 +971,24 @@ root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progres
     assert ceph_inst.specs["tmp"].exists_in_pool() == "rbd.hdd"
     assert ceph_inst.specs["cidata"].exists_in_pool() == "rbd.hdd"
 
+    # Against a real cluster, not just the mock: the images that moved pools
+    # came out the other side with the expected feature set, and the lock
+    # split is the one `test_locks_are_split_between_cidata_and_the_rest`
+    # describes.
+    for suffix in EXCLUSIVE_LOCK_VOLUMES:
+        volume = ceph_inst.volumes[suffix]
+        assert volume.features >= {"exclusive-lock", "object-map", "fast-diff"}
+        assert volume.lock_status() is None
+    cidata = ceph_inst.volumes["cidata"]
+    assert "exclusive-lock" not in cidata.features
+    assert cidata.lock_status().host == ceph_inst.CEPH_LOCK_HOST
+
     ceph_inst.ensure()
     ceph_inst.status()
 
     first_ensure = patterns.first_ensure
     first_ensure.in_order(
-        migration_status(
-            lock_mode,
-            """
+        """
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd>    {"watchers":[],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"prepared","state_description":""}}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
@@ -1083,25 +996,27 @@ root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progres
 
 root-migration-execute machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 ceph args=rbd task add migration execute rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root"""
-            +
-            # XXX: Excecuting a Nautilus ceph-client on a Pacific cluster results in the following bug:
-            # `ceph rbd task add migration execute` output does not show the source image name in the "message", resulting in
-            # "Migrating image rbd.ssd/ to rbd.ssd/simplevm.root"
-            # FIXME: permitting this mismatch for now, need to verify in dev cluster that migrations are not broken and this is just a display error
-            # XXX: The destination pool is an ellipsis because due to a ceph bug it is displayed incorrectly. We only patch it from Pacific on.
-            """
+        +
+        # XXX: Excecuting a Nautilus ceph-client on a Pacific cluster results in the following bug:
+        # `ceph rbd task add migration execute` output does not show the source image name in the "message", resulting in
+        # "Migrating image rbd.ssd/ to rbd.ssd/simplevm.root"
+        # FIXME: permitting this mismatch for now, need to verify in dev cluster that migrations are not broken and this is just a display error
+        # XXX: The destination pool is an ellipsis because due to a ceph bug it is displayed incorrectly. We only patch it from Pacific on.
+        """
 ceph>   {"sequence": ..., "id": "...-...-...-...-...", "message": "Migrating image rbd.ssd/... to rbd.../simplevm.root", "refs": {"action": "migrate execute", "pool_name": "rbd.hdd", "pool_namespace": "", "image_name": "simplevm.root", "image_id": "..."}}
 ceph machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 
-{status_root}
+vm-lock-status locker=host1 machine=simplevm subsystem=ceph
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd>    {"watchers":...,"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"...","state_description":...}}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progress=...status=... subsystem=ceph volume=rbd.hdd/simplevm.root
 
-{status_tail}
-""",
-        )
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.swap
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.tmp
+rbd-status locker=host1 machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.cidata
+"""
     )
 
     assert get_log() == first_ensure
@@ -1114,9 +1029,7 @@ root-migration-status machine=simplevm pool_from=rbd.ssd pool_to=rbd.hdd progres
 
     commit_ensure = patterns.commit_ensure
     commit_ensure.in_order(
-        migration_status(
-            lock_mode,
-            """
+        """
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd>    {"watchers":[],"migration":{"source_pool_name":"rbd.ssd","source_pool_namespace":"","source_image_name":"simplevm.root","source_image_id":"...","dest_pool_name":"rbd.hdd","dest_pool_namespace":"","dest_image_name":"simplevm.root","dest_image_id":"...","state":"executed","state_description":""}}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
@@ -1126,14 +1039,16 @@ root-migration-commit machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.ro
 rbd args=--no-progress migration commit rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 
-{status_root}
+vm-lock-status locker=host1 machine=simplevm subsystem=ceph
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd args=status --format json rbd.hdd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.hdd/simplevm.root
 rbd>    {"watchers":[]}
 rbd machine=simplevm returncode=0 subsystem=ceph volume=rbd.hdd/simplevm.root
 
-{status_tail}
-""",
-        )
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.swap
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.tmp
+rbd-status locker=host1 machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.cidata
+"""
     )
 
     assert get_log() == commit_ensure

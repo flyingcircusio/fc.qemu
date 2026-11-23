@@ -15,7 +15,7 @@ from fc.qemu.hazmat.qemu import (
     detect_current_machine_type,
     get_running_qemu_processes,
 )
-from tests.conftest import UPDATE_LOCK_METHOD_ANY, get_log
+from tests.conftest import get_log
 
 
 def named_vm_cfg(name, monkeypatch):
@@ -170,10 +170,6 @@ check-staging-config machine=simplevm result=none
 changes-settled machine=simplevm
 """
     )
-    # `attach_volumes` logs the lock mechanism on every `Agent.__enter__`:
-    # for the `ceph_inst` fixture, for `with a` and for the `__exit__`/
-    # `__enter__` dance inside `ensure()`. Not what this test is about.
-    ensure.optional(UPDATE_LOCK_METHOD_ANY)
     assert ensure == get_log()
 
 

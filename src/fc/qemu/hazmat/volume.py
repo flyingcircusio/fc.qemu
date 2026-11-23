@@ -20,8 +20,7 @@ from ..util import cmd, remove_empty_dirs
 
 if TYPE_CHECKING:
     # Only for annotations: `ceph` imports this module, so we cannot import
-    # it at runtime. Anything needed outside annotations - `LockMode` - lives
-    # in `locking` instead.
+    # it at runtime.
     from fc.qemu.hazmat.ceph import Ceph
 
 
@@ -278,9 +277,11 @@ class Volume(Image):
 
         self.log.info("lock")
 
-        # Shortcut if we already own the lock.
+        # Shortcut if we already own the lock. `host` is the cookie we locked
+        # with, not the `client.NNN` that happens to hold it - a lock left
+        # behind by an earlier process on this host is still ours.
         lock_status = self.lock_status()
-        if lock_status and lock_status.locker == self.ceph.CEPH_LOCK_HOST:
+        if lock_status and lock_status.host == self.ceph.CEPH_LOCK_HOST:
             return
 
         retry = 3
@@ -302,7 +303,7 @@ class Volume(Image):
                     # Lets try again
                     retry -= 1
                     continue
-                if lock_status.locker == self.ceph.CEPH_LOCK_HOST:
+                if lock_status.host == self.ceph.CEPH_LOCK_HOST:
                     # That's locked for us already. We just re-use
                     # the existing lock.
                     return

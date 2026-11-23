@@ -43,6 +43,17 @@ class RadosLocker(BaseModel):
     cookie: str
     addr: str
 
+    @property
+    def host(self) -> str:
+        """The host holding this lock.
+
+        We always lock with `Ceph.CEPH_LOCK_HOST` as the cookie, so the cookie
+        identifies the host. The `name`/`addr` are per-connection and change on
+        every reconnect, which makes them useless for identification (but
+        valuable when reporting contention).
+        """
+        return self.cookie
+
 
 class RadosLockInfo(BaseModel):
     name: str
@@ -61,6 +72,11 @@ class RbdLockInfo(BaseModel):
     id: str
     locker: str
     address: str
+
+    @property
+    def host(self) -> str:
+        """The host holding this lock. See `RadosLocker.host`."""
+        return self.id
 
 
 class Rados:
@@ -334,10 +350,7 @@ class Image:
             log.error(
                 args[0], stdout=e.stdout, stderr=e.stderr, code=e.returncode
             )
-        # We just invalidated what `info` says about the flags. Without this
-        # the cached "object map invalid" sticks around for the lifetime of
-        # this object and every later `ensure()` in the same process kicks off
-        # the rebuild again.
+        # .info is cached, `flags` need to be invalidated
         self.refresh()
         return True
 

@@ -1273,10 +1273,11 @@ class Agent:
         self.ensure_watchdog()
         # XXX
         assert self.qemu.is_running()
-        self.ceph.ensure()
         # Be aggressive/opportunistic about re-acquiring locks in case
-        # they were taken away.
+        # they were taken away. This has to happen before `ensure()` to guard
+        # the lock transition phase subsumed there.
         self.ceph.lock()
+        self.ceph.ensure()
         if agent_likely_ready:
             # This requires guest agent interaction and we should only
             # perform this when we haven't recently booted the machine to
@@ -1394,6 +1395,9 @@ class Agent:
             action="resize",
         )
         self.qemu.resize_root(target_size)
+        # The resize went through qemu, so nothing invalidated our cached
+        # `rbd info` and `root.size` would keep reporting the old size.
+        root.rbdimage.refresh()
 
     def ensure_online_disk_throttle(self):
         """Ensure throttling settings."""
