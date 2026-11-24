@@ -82,7 +82,7 @@ class NixOS(Component):
             "name": self.host._name,
             "parameters": {
                 "directory_password": "password-for-fake-directory",
-                "directory_url": "http://localhost:82",
+                "directory_url": "http://localhost:80",
                 "directory_ring": 0,
                 "resource_group": "test",
                 "location": "test",

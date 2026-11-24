@@ -1,6 +1,7 @@
 import os
 import shutil
 from pathlib import Path
+from unittest.mock import MagicMock, Mock, call
 
 import mock
 import psutil
@@ -8,8 +9,9 @@ import pytest
 from pytest_patterns.plugin import PatternsLib
 
 import fc.qemu.util as util
-from fc.qemu.agent import Agent
+from fc.qemu.agent import Agent, HostSupportedVMFeatureFlags
 from fc.qemu.exc import EnvironmentChanged, VMStateInconsistent
+from fc.qemu.hazmat.ceph import Ceph
 from fc.qemu.hazmat.qemu import (
     Qemu,
     detect_current_machine_type,
@@ -310,3 +312,89 @@ def test_id_to_name(capsys, simplevm_cfg, simplepubvm_cfg):
     e = capsys.readouterr()
     assert e.out.strip() == ""
     assert e.err.strip() == "No VM with id 9999 known."
+
+
+@pytest.fixture
+def directory_mock(monkeypatch):
+    """Register a MagicMock that records all directory calls.
+    Returns the ServerProxy used for all `connect`s."""
+    directory = Mock()
+    connectedProxy = MagicMock()
+    directory.connect = Mock(return_value=connectedProxy)
+
+    monkeypatch.setattr("fc.qemu.agent.directory", directory)
+    return connectedProxy
+
+
+def test_report_cpu_models(directory_mock, patterns: PatternsLib):
+    Agent.report_supported_cpu_models()
+    assert directory_mock.report_supported_cpu_models.called
+
+    patterns.cpu_models.in_order("""
+test-cpu architecture=... description=... id=...
+supported-cpu-model architecture=... description=... id=...
+""")
+    # scan_cpus emits multiple variants of these log lines. Consume them.
+    patterns.cpu_models.optional("""
+test-cpu architecture=... description=... id=...
+supported-cpu-model architecture=... description=... id=...
+""")
+    full = patterns.full
+    full.merge("feature_flags", "cpu_models")
+    assert full == get_log()
+
+
+def host_flag_cache() -> Path:
+    # `Agent.prefix` points at the synthetic root during tests.
+    return HostSupportedVMFeatureFlags.cache_path(Agent.prefix)
+
+
+def test_host_reports_supported_vm_feature_flags_on_cold_cache(
+    directory_mock, patterns: PatternsLib
+):
+    assert not host_flag_cache().exists()
+
+    Agent.report_supported_vm_feature_flags()
+
+    assert directory_mock.report_supported_vm_feature_flags.call_args_list == [
+        call(["lockv2"])
+    ]
+    # The successful report is cached for the next run.
+    assert host_flag_cache().read_text() == '["lockv2"]'
+
+    patterns.feature_flags.continuous("""
+supported-vm-feature-flags flags=['lockv2']
+""")
+    assert patterns.feature_flags == get_log()
+
+
+def test_host_reports_supported_vm_feature_flags_on_cache_mismatch(
+    directory_mock, patterns: PatternsLib
+):
+    host_flag_cache().write_text('["somethingelse"]')
+
+    Agent.report_supported_vm_feature_flags()
+
+    assert directory_mock.report_supported_vm_feature_flags.call_args_list == [
+        call(["lockv2"])
+    ]
+    assert host_flag_cache().read_text() == '["lockv2"]'
+
+    patterns.feature_flags.continuous("""
+supported-vm-feature-flags flags=['lockv2']
+""")
+    assert patterns.feature_flags == get_log()
+
+
+def test_host_does_not_report_supported_vm_feature_flags_on_cache_match(
+    directory_mock,
+):
+    HostSupportedVMFeatureFlags(
+        Agent.SUPPORTED_VM_FEATURE_FLAGS
+    ).save_to_host_cache(Agent.prefix)
+
+    Agent.report_supported_vm_feature_flags()
+
+    # No RPC at all, not just no flag report.
+    assert not directory_mock.method_calls
+    assert get_log() == ""

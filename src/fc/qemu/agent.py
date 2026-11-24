@@ -13,22 +13,27 @@ import sys
 import time
 import typing
 from collections.abc import Callable
+from enum import StrEnum
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from types import TracebackType
 from typing import (
     Any,
+    ClassVar,
     Concatenate,
     ParamSpec,
+    Self,
     TypeVar,
     cast,
 )
+from xmlrpc.client import ServerProxy
 
 import colorama
 import consulate
 import consulate.models.agent
 import requests
 import yaml
+from pydantic import RootModel, ValidationError
 from structlog import BoundLogger
 
 from . import directory, util
@@ -364,8 +369,45 @@ class DummyAgent:
         pass
 
 
+class VMFeatureFlags(StrEnum):
+    LOCK_V2 = "lockv2"
+
+
+class HostSupportedVMFeatureFlags(RootModel[frozenset[VMFeatureFlags]]):
+    """Local cache for the host-supported features last reported to the directory,
+    so we only need to call the directory on changes.
+    """
+
+    CACHE_FILE: ClassVar[Path] = Path("run/qemu.host.flags")
+
+    def as_strings(self) -> list[str]:
+        # xmlrpc cannot marshal sets or str subclasses (i.e. StrEnum members).
+        return sorted(str(flag) for flag in self.root)
+
+    @classmethod
+    def cache_path(cls, prefix: Path) -> Path:
+        return prefix / cls.CACHE_FILE
+
+    @classmethod
+    def from_host_cache(cls, prefix: Path) -> Self | None:
+        try:
+            return cls.model_validate_json(cls.cache_path(prefix).read_text())
+        except (FileNotFoundError, ValidationError):
+            return None
+
+    def save_to_host_cache(self, prefix: Path) -> None:
+        self.cache_path(prefix).write_text(self.model_dump_json())
+
+
 class Agent:
     """The agent to control a single VM."""
+
+    # for now a static flag that is reported both by host and local VMs to
+    # enforce VMs only being placed on fc.qemu hosts with software understanding
+    # VM-level Rados advisory locks.
+    SUPPORTED_VM_FEATURE_FLAGS: ClassVar[frozenset[VMFeatureFlags]] = frozenset(
+        {VMFeatureFlags.LOCK_V2}
+    )
 
     # Attributes on this class can be overriden (in a controlled fashion
     # from the sysconfig module. See this class' __init__. The defaults
@@ -502,6 +544,7 @@ class Agent:
 
     @classmethod
     def report_supported_cpu_models(cls):
+        d = directory.connect()
         variations: list[str] = []
         for variation in scan_cpus():
             log.info(
@@ -512,8 +555,37 @@ class Agent:
             )
             variations.append(variation.cpu_arg)
 
-        d = directory.connect()
         d.report_supported_cpu_models(variations)
+
+    @classmethod
+    def report_supported_vm_feature_flags(cls):
+        """Reports the list of flag *this current* fc.qemu instance supports
+        to directory.
+        Only actually calls out to the directory on flag changes, as reported
+        flags from the previous invocation are cached locally."""
+        supported = HostSupportedVMFeatureFlags(cls.SUPPORTED_VM_FEATURE_FLAGS)
+        if supported == HostSupportedVMFeatureFlags.from_host_cache(cls.prefix):
+            return
+        d = directory.connect()
+        flags = supported.as_strings()
+        log.info("supported-vm-feature-flags", flags=flags)
+        d.report_supported_vm_feature_flags(flags)
+        supported.save_to_host_cache(cls.prefix)
+
+    def report_vm_feature_flags(self) -> None:
+        d: ServerProxy = directory.connect()
+
+        flags: list[str] = [
+            # We implicitly migrate to the new locking style and decided to
+            # optimistically report that a VM now relies on a host having
+            # v2 - even if the actual migration may not have happened yet.
+            # We don't have a persistent local flag storage to indicate that
+            # (yet).
+            # `.value`: xmlrpc cannot marshal str subclasses.
+            VMFeatureFlags.LOCK_V2.value,
+        ]
+        log.info("vm-feature-flags", vm=self.name, flags=flags)
+        d.report_vm_feature_flags(self.name, flags)
 
     @classmethod
     def ls(cls):
@@ -1230,6 +1302,14 @@ class Agent:
         self.cleanup()
 
     def ensure_online_local(self):
+        # We report feature flags early and optimistically: we want
+        # to limit the VMs mobility early on as we can't ensure that
+        # potential migration steps have completely successfully and
+        # also can't rely on them completing and then maybe failing
+        # to set the flag.
+        self.report_supported_vm_feature_flags()  # first the host
+        self.report_vm_feature_flags()
+
         self.ceph.attach_volumes()
         # Ensure state
         agent_likely_ready = True
@@ -1271,8 +1351,6 @@ class Agent:
         self.ensure_online_disk_size()
         self.ensure_online_disk_throttle()
         self.ensure_watchdog()
-        # XXX
-        assert self.qemu.is_running()
         # Be aggressive/opportunistic about re-acquiring locks in case
         # they were taken away. This has to happen before `ensure()` to guard
         # the lock transition phase subsumed there.

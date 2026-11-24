@@ -4,6 +4,12 @@ Release notes
 1.8 (unreleased)
 ----------------
 
+- introduce *VM feature flags* for directory VM placement (PL-135840)
+
+  Report feature flags that are supported by certain fc.qemu VM hosts and required by certain VMs
+  for them to run on a certain hosts. The directory can consider these feature support <-> feature
+  requirement dependencies for placing VMs at adequate hosts, similar to how already done for CPU models.
+
 - migration: apply disk throttling to an inmigrated VM right away
 
   I/O limits are no core part of the VM config transmitted via live-migration
