@@ -227,11 +227,19 @@ class VolumeSpecification(ABC):
     def status(self):
         if self.volume:
             locker = self.volume.lock_status()
+            # Only the owning host, not the whole locker: the client id and
+            # address change on every reconnect.
+            status: dict[str, Any] = {"present": True, "locker": None}
+            if locker and locker.is_exclusive_lock:
+                # qemu has the image open and is writing it. Its cookie is a
+                # generated handle, so the address is the only meaningful part
+                status["exclusive_lock"] = locker.address
+            elif locker:
+                status["locker"] = locker.host
             self.log.info(
                 "rbd-status",
                 volume=self.volume.fullname,
-                locker=locker.host if locker else None,
-                present=True,
+                **status,
             )
         else:
             self.log.info(
@@ -985,12 +993,19 @@ class Ceph:
             spec.status()
 
     def is_unlocked(self) -> bool:
-        """Returns True if absolutely no locks for this VM are held anywhere."""
-        lock_states: list[Any] = [self.vm_lock.locker()]
-        lock_states.extend(
-            volume.lock_status() for volume in self.opened_volumes
-        )
-        return not any(lock_states)
+        """Returns True if no fc.qemu advisory lock for this VM is held anywhere.
+        (both per-volume rbd and per-VM rados lock)
+
+        qemu's own automatic exclusive locks are ignored here, they claim no
+        ownership but just serialise low-level I/O.
+        """
+        if self.vm_lock.locker():
+            return False
+        for volume in self.opened_volumes:
+            locker = volume.lock_status()
+            if locker and not locker.is_exclusive_lock:
+                return False
+        return True
 
     def locked_by_me(self) -> bool:
         """Returns True if CEPH_LOCK_HOST holds locks for all volumes."""

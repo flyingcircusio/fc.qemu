@@ -74,9 +74,31 @@ class RbdLockInfo(BaseModel):
     address: str
 
     @property
-    def host(self) -> str:
-        """The host holding this lock. See `RadosLocker.host`."""
-        return self.id
+    def is_exclusive_lock(self) -> bool:
+        """distinguish `rbd lock` advisory locks from ones set by `exclusive-lock`
+
+        rbd exclusive locks automatically set a cookie of the form `auto <handle>`.
+        Every other cookie was handed to `rbd lock add` by a client; we use `Ceph.CEPH_LOCK_HOST`.
+
+        Classifying by the cookie rather than by the image's feature set is
+        relevant for one case: An old fc.qemu predating PL-134255 does not check
+        features and takes an advisory lock unconditionally, so a VM started
+        on such a host after its images were upgraded ends up with our advisory
+        lock on a feature-enabled image - and qemu then cannot acquire the
+        exclusive lock at all.
+        """
+        return self.id.startswith("auto ")
+
+    @property
+    def host(self) -> str | None:
+        """The host that placed this lock, if stored as cookie.
+
+        We lock with `Ceph.CEPH_LOCK_HOST` as the cookie, so for our own locks
+        the cookie is the host. An automatically acquired exclusive lock
+        carries a generated handle instead and says nothing about the host -
+        `address` does.
+        """
+        return None if self.is_exclusive_lock else self.id
 
 
 class Rados:

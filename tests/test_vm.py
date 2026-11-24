@@ -51,6 +51,14 @@ enable-rbd-feature feature=object-map machine=simplevm subsystem=ceph volume=rbd
 #: `fc-qemu status` lock reporting. `locker=` is the owning host, or None -
 #: either because nobody holds the lock, or because the volume does not use
 #: one.
+#:
+#: Note what these do *not* show: on a real host the volumes carrying
+#: `exclusive-lock` also report `exclusive_lock=<addr>` once qemu has taken
+#: the lock, which it does lazily on the guest's first write to that volume.
+#: The test VM is a clone of a base image holding nothing but an empty XFS
+#: partition - no OS, no bootloader - so its guest never writes and never
+#: triggers acquisition. `test_an_exclusive_lock_is_named_auto` and
+#: `test_status_distinguishes_our_lock_from_qemus` cover that instead.
 STATUS_MISSING = """\
 vm-lock-status locker=None machine=simplevm subsystem=ceph
 rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root

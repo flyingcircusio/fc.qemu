@@ -1,4 +1,4 @@
-import subprocess
+import os
 from unittest.mock import Mock, patch
 
 import pytest
@@ -6,6 +6,8 @@ import yaml
 
 from fc.qemu.hazmat import libceph
 from fc.qemu.hazmat.libceph import Image as RealImage
+from fc.qemu.hazmat.volume import Volume
+from fc.qemu.timeout import TimeOut
 from tests.conftest import (
     EXCLUSIVE_LOCK_VOLUMES,
     RBD_LOCK_VOLUMES,
@@ -117,6 +119,33 @@ def test_locks_are_split_between_cidata_and_the_rest(ceph_with_volumes):
         volume = ceph.volumes[suffix]
         assert "exclusive-lock" not in volume.features
         assert volume.lock_status().host == ceph.CEPH_LOCK_HOST
+
+
+def test_status_distinguishes_our_lock_from_qemus(ceph_with_volumes):
+    """`fc-qemu status` has to say which kind of lock it found.
+
+    `vm-lock-status` says who owns the VM; a volume's `exclusive_lock` says
+    which host's qemu is writing it right now. Reporting librbd's generated
+    cookie in the `locker` field instead is no meaningful information.
+    """
+    ceph = ceph_with_volumes
+    ceph.volumes["swap"].rbdimage.lock_exclusive("auto 140019759153120")
+    get_log()
+
+    # Per spec rather than `Ceph.status()`, which also runs `RootSpec`'s
+    # `rbd status` migration probe - a real subprocess against an image that
+    # only exists in the mock.
+    ceph.specs["swap"].status()
+    ceph.specs["tmp"].status()
+    ceph.specs["cidata"].status()
+
+    assert (
+        get_log()
+        == f"""\
+rbd-status exclusive_lock=127.0.0.1:9999 locker=None machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.swap
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.tmp
+rbd-status locker={ceph.CEPH_LOCK_HOST} machine=simplevm present=True subsystem=ceph volume=rbd.hdd/simplevm.cidata"""
+    )
 
 
 def upgrade_features(ceph, *, online=True):
@@ -262,6 +291,50 @@ def test_ceph_stop_leaves_a_foreign_rados_lock_alone(ceph_with_volumes):
 
 
 @pytest.mark.live
+def test_an_exclusive_lock_is_named_auto(ceph_inst):
+    """Pin the cookie format `RbdLockInfo.is_exclusive_lock` distinguishes on.
+
+    That one `startswith("auto ")` decides whether we report a lock as a host
+    or as the client that is writing. If a ceph upgrade ever changed the
+    format we would silently go back to printing a generated handle in the
+    `locker` field, and no mocked test could notice.
+
+    The kernel client is a stand-in for qemu's librbd here: both follow the
+    same convention - `auto <watch cookie>` in the kernel, `auto <handle>` in
+    librbd - and the kernel one holds the lock for as long as the image stays
+    mapped, which makes this deterministic.
+
+    Deliberately on an image with no VM attached. The exclusive lock is
+    cooperative, so writing to a *running* VM's image from here would take the
+    lock away from its qemu process.
+    """
+    pool = ceph_inst.ioctxs["rbd.ssd"]
+    libceph.RBD().create(pool, "lockfmt", 10 * 1024 * 1024)
+    volume = Volume(ceph_inst, pool, "lockfmt")
+    volume.rbdimage.ensure_feature("exclusive-lock")
+    assert volume.lock_status() is None
+
+    # The lock is acquired on the first write, not on open.
+    with volume.mapped() as device:
+        with open(device, "r+b") as f:
+            f.write(b"\0" * 4096)
+            f.flush()
+            os.fsync(f.fileno())
+        timeout = TimeOut(10, interval=0.5, raise_on_timeout=True)
+        while timeout.tick():
+            if locker := volume.lock_status():
+                break
+
+    assert locker.id.startswith("auto "), locker
+    assert locker.is_exclusive_lock is True
+    assert locker.host is None, "a generated handle is not a host"
+    assert locker.address
+
+    volume.close()
+    libceph.RBD().remove(pool, "lockfmt")
+
+
+@pytest.mark.live
 def test_ceph_exclusive_lock_can_be_taken_twice_with_same_cookie(ceph_inst):
     """Test case where failed migrations leave inconsistent locking."""
     ceph = ceph_inst
@@ -289,6 +362,17 @@ def test_is_unlocked_sees_a_leftover_volume_lock(ceph_with_volumes):
     ceph.volumes["cidata"].rbdimage.lock_exclusive("someotherhost")
 
     assert ceph.is_unlocked() is False
+
+
+def test_is_unlocked_ignores_qemus_exclusive_lock(ceph_with_volumes):
+    """qemu writing an image is not an orchestration claim on the VM."""
+    ceph = ceph_with_volumes
+    ceph.unlock()
+    assert ceph.is_unlocked() is True
+
+    ceph.volumes["root"].rbdimage.lock_exclusive("auto 140019759153120")
+
+    assert ceph.is_unlocked() is True
 
 
 def test_lock_roundtrip_reports_ownership(ceph_with_volumes):

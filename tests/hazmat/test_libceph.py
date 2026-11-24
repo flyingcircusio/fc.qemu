@@ -6,7 +6,12 @@ from unittest.mock import MagicMock, Mock
 import pytest
 
 from fc.qemu import util
-from fc.qemu.hazmat.libceph import Image, ImageBusy, ImageNotFound
+from fc.qemu.hazmat.libceph import (
+    Image,
+    ImageBusy,
+    ImageNotFound,
+    RbdLockInfo,
+)
 
 
 @pytest.mark.live
@@ -105,6 +110,28 @@ def test_rbd_unexpected_exception_does_not_cause_image_not_found(
     monkeypatch.setattr(util, "cmd", failing_cmd)
     with pytest.raises(KeyError):
         Image(pool, "test")
+
+
+def test_rbd_lock_info_tells_the_two_lock_kinds_apart():
+    """Who placed a lock decides how it may be reported.
+
+    Our own cookie is the lock host, so it can be shown as one. librbd's is a
+    generated handle that says nothing about where qemu runs - only the
+    address does.
+    """
+    ours = RbdLockInfo(
+        id="host1", locker="client.4405", address="10.12.0.9:0/3688911203"
+    )
+    assert ours.is_exclusive_lock is False
+    assert ours.host == "host1"
+
+    qemus = RbdLockInfo(
+        id="auto 140019759153120",
+        locker="client.4123",
+        address="10.12.0.9:0/2493",
+    )
+    assert qemus.is_exclusive_lock is True
+    assert qemus.host is None
 
 
 def fake_image(size=1024, features=(), flags=(), snapname=None):
