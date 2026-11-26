@@ -1,8 +1,12 @@
 """
-A reimplementation of the Ceph librados/librbd bindings to avoid having to
+A re-implementation of the Ceph librados/librbd bindings to avoid having to
 compile against them.
 
-This helps us to be more version-neutral.
+This helps us to be more version-neutral, reduces low-level (C) linking and combinatorial
+compatibility issues between multiple Ceph and Python versions.
+
+This is - over time - allowed to stray from the librados/librbd structure as we move
+towards the CLI structure.
 
 """
 
@@ -11,17 +15,15 @@ import json
 import shlex
 import subprocess
 import time
+from functools import cached_property
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, ClassVar
 
+from pydantic import BaseModel, TypeAdapter
 from structlog import BoundLogger
 
 from fc.qemu import util
 from fc.qemu.typing import SnapshotInfo
-
-
-class LockerInfo(TypedDict):
-    lockers: list[tuple[str, str, str]]
 
 
 class ImageNotFound(Exception):
@@ -36,8 +38,71 @@ class ImageExists(Exception):
     pass
 
 
+class RadosLocker(BaseModel):
+    name: str
+    cookie: str
+    addr: str
+
+    @property
+    def host(self) -> str:
+        """The host holding this lock.
+
+        We always lock with `Ceph.CEPH_LOCK_HOST` as the cookie, so the cookie
+        identifies the host. The `name`/`addr` are per-connection and change on
+        every reconnect, which makes them useless for identification (but
+        valuable when reporting contention).
+        """
+        return self.cookie
+
+
+class RadosLockInfo(BaseModel):
+    name: str
+    type: str
+    tag: str
+    lockers: list[RadosLocker]
+
+
+class RbdInfo(BaseModel):
+    size: int
+    features: set[str]
+    flags: set[str]
+
+
+class RbdLockInfo(BaseModel):
+    id: str
+    locker: str
+    address: str
+
+    @property
+    def is_exclusive_lock(self) -> bool:
+        """distinguish `rbd lock` advisory locks from ones set by `exclusive-lock`
+
+        rbd exclusive locks automatically set a cookie of the form `auto <handle>`.
+        Every other cookie was handed to `rbd lock add` by a client; we use `Ceph.CEPH_LOCK_HOST`.
+
+        Classifying by the cookie rather than by the image's feature set is
+        relevant for one case: An old fc.qemu predating PL-134255 does not check
+        features and takes an advisory lock unconditionally, so a VM started
+        on such a host after its images were upgraded ends up with our advisory
+        lock on a feature-enabled image - and qemu then cannot acquire the
+        exclusive lock at all.
+        """
+        return self.id.startswith("auto ")
+
+    @property
+    def host(self) -> str | None:
+        """The host that placed this lock, if stored as cookie.
+
+        We lock with `Ceph.CEPH_LOCK_HOST` as the cookie, so for our own locks
+        the cookie is the host. An automatically acquired exclusive lock
+        carries a generated handle instead and says nothing about the host -
+        `address` does.
+        """
+        return None if self.is_exclusive_lock else self.id
+
+
 class Rados:
-    POOLS_CACHE: list[str] = []  # mutable on purpose as a global cache.
+    POOLS_CACHE: ClassVar[list[str]] = []  # global cache
 
     def __init__(self, conffile: str, name: str, log: BoundLogger):
         self.conffile = conffile
@@ -74,6 +139,18 @@ class Rados:
             result = json.loads(result)
         return result
 
+    def rados_(self, *args: str, use_json: bool = True) -> Any:
+        shargs = shlex.join(args)
+        format_arg = "--format json" if use_json else ""
+        result = util.cmd(
+            f"rados -c {self.conffile} --name {self.name} {format_arg} {shargs}",
+            log=self.log,
+            log_error_verbose=False,
+        )
+        if use_json:
+            result = json.loads(result)
+        return result
+
     def list_pools(self):
         # This is a hot-spot, cache it globally so this helps both for
         # multiple calls on a single instances as well as for mass operations
@@ -83,6 +160,91 @@ class Rados:
             pools = self.ceph_("osd", "lspools")
             self.POOLS_CACHE.extend([p["poolname"] for p in pools])
         return self.POOLS_CACHE
+
+    # rados locks are not conveniently accessible in the real librados. As we
+    # are not doing any real context-aware I/O, I've decided to not require a
+    # fake Ioctx for our implementation of rados lock operations.
+
+    def create_obj(
+        self,
+        pool: str,
+        obj_name: str,
+        namespace: str = "",
+    ):
+        try:
+            self.rados_(
+                "-p", pool, "-N", namespace, "create", obj_name, use_json=False
+            )
+        except subprocess.CalledProcessError as e:
+            stdout = e.stdout.strip()
+            if ": (17) File exists" in stdout:
+                raise ImageExists(self.name)
+            raise
+
+    def lock_exclusive(
+        self,
+        pool: str,
+        obj_name: str,
+        lock_name: str,
+        cookie: str,
+        namespace: str = "",
+    ):
+        try:
+            self.rados_(
+                "-p", pool, "-N", namespace,
+                "lock", "get", obj_name, lock_name, "--lock-cookie", cookie,
+                "--lock-type", "exclusive",
+                use_json=False
+            )  # fmt: skip
+        except Exception:
+            for locker in self.lock_info(
+                pool, obj_name, lock_name, namespace
+            ).lockers:
+                if locker.cookie == cookie:
+                    break
+            else:
+                raise ImageBusy(errno.EBUSY, "Image is busy")
+
+    def break_lock(
+        self,
+        pool: str,
+        obj_name: str,
+        lock_name: str,
+        cookie: str,
+        locker_client_name: str,
+        namespace: str = "",
+    ):
+        """Release a lock held by `locker_client_name` with `cookie`.
+
+        This is also the way to release our own locks: rados does not
+        have a dedicated unlock operation.
+        """
+        try:
+            self.rados_(
+                "-p", pool, "-N", namespace,
+                "lock", "break", obj_name, lock_name, locker_client_name,
+                "--lock-cookie", cookie,
+                use_json=False
+            )  # fmt: skip
+        except subprocess.CalledProcessError as e:
+            stdout = e.stdout.strip()
+            if ": (2) No such file or directory" in stdout:
+                # The lock (or the object) is gone already, which is what we
+                # wanted to achieve.
+                return
+            raise
+
+    def lock_info(
+        self,
+        pool: str,
+        obj_name: str,
+        lock_name: str,
+        namespace: str = "",
+    ) -> RadosLockInfo:
+        data = self.rados_(
+            "-p", pool, "-N", namespace, "lock", "info", obj_name, lock_name
+        )
+        return RadosLockInfo.model_validate(data)
 
 
 class Ioctx:
@@ -111,6 +273,8 @@ class RBD:
 
 
 class Image:
+    OBJECT_MAP_TIMEOUT = 10
+
     def __init__(self, ioctx: Ioctx, name: str, snapname: str | None = None):
         self.ioctx = ioctx
         self.rbd = RBD()
@@ -137,19 +301,87 @@ class Image:
                 raise ImageNotFound(self.name)
             raise
 
-    def _info(self):
+    @cached_property
+    def info(self) -> RbdInfo:
         assert not self.closed
-        return self.ioctx.rados.rbd_("info", self._name)
+        return RbdInfo.model_validate(self.ioctx.rados.rbd_("info", self._name))
 
-    def size(self):
+    def refresh(self) -> None:
+        """Drop the cached `rbd info`.
+
+        Needed whenever the image changed behind our back - notably a resize
+        that went through qemu instead of through us.
+
+        """
+        try:
+            del self.info
+        except AttributeError:
+            pass
+
+    def ensure_feature(self, feature: str):
+        """Ensure an RBD image feature is enabled.
+
+        `feature` is a feature *name*, not its number.
+
+        This is *not* idempotent: enabling an already enabled feature fails
+        with `(22) Invalid argument`. Callers have to check `features` first.
+
+        """
         assert not self.closed
-        return self._info()["size"]
+        if feature in self.info.features:
+            return
+        # Slight race condition that may lead to an exception here,
+        # if the feature has been enabled since the check,
+        # but we'll run with it for now.
+        self.ioctx.rados.rbd_(
+            "feature", "enable", self._name, feature, use_json=False
+        )
+        self.refresh()
+
+    def ensure_object_map(self) -> bool:
+        """Rebuild the object-map for the imagespec, if it is reported
+        as invalid.
+        Rebuild happens in the background, so we can just trigger the rebuild and
+        exit after timeout.
+
+        Returns whether a rebuild was started for the particular imagespec."""
+        if "object map invalid" not in self.info.flags:
+            return False
+        log = self.ioctx.rados.log
+        # directly use subcommand instead of rbd runner, because we need a
+        # timeout but no special failure and encoding handling
+        args = (
+            "rbd", "-c", self.ioctx.rados.conffile, "--name", self.ioctx.rados.name,
+            "object-map", "rebuild", self._name,
+        )  # fmt: skip
+        log.debug(args[0], args=" ".join(args[1:]))
+        try:
+            subprocess.run(
+                args,
+                check=True,
+                timeout=self.OBJECT_MAP_TIMEOUT,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.TimeoutExpired:
+            # If qemu has the lock on that image, the map rebuild request is forwarded
+            # to it as the lock holder and will continue there even if we kill this
+            # rbd process.
+            pass
+        except subprocess.CalledProcessError as e:
+            log.error(
+                args[0], stdout=e.stdout, stderr=e.stderr, code=e.returncode
+            )
+        # .info is cached, `flags` need to be invalidated
+        self.refresh()
+        return True
 
     def resize(self, size: int):
         assert not self.closed
         self.ioctx.rados.rbd_(
             "resize", self._name, "--size", f"{size}B", use_json=False
         )
+        self.refresh()
 
     def lock_exclusive(self, cookie: str):
         assert not self.closed
@@ -157,7 +389,7 @@ class Image:
             self.ioctx.rados.rbd_(
                 "lock", "add", self._name, cookie, use_json=False
             )
-        except Exception:
+        except subprocess.SubprocessError:
             for lock in self.ioctx.rados.rbd_("lock", "list", self._name):
                 if lock["id"] == cookie:
                     # XXX slight issue here - can't identify whether it's an
@@ -166,15 +398,12 @@ class Image:
             else:
                 raise ImageBusy(errno.EBUSY, "Image is busy")
 
-    def list_lockers(self) -> LockerInfo:
+    def list_lockers(self) -> list[RbdLockInfo]:
         assert not self.closed
-        # Emulate the librbd format
-        lockers: LockerInfo = {"lockers": []}
-        for locker in self.ioctx.rados.rbd_("lock", "list", self._name):
-            lockers["lockers"].append(
-                (locker["locker"], locker["id"], locker["address"])
-            )
-        return lockers
+        adapter = TypeAdapter(list[RbdLockInfo])
+        return adapter.validate_python(
+            self.ioctx.rados.rbd_("lock", "list", self._name)
+        )
 
     def list_snaps(self) -> list[SnapshotInfo]:
         assert not self.closed
@@ -209,6 +438,11 @@ class Image:
         )
 
     def map(self):
+        """Note on locking: This method does not protect the mapped image against
+        concurrent writes from other mapper.
+        Callers need to ensure sufficient (advisory) locking before calling this
+        to prevent filesystem corruption.
+        This is why the flag `--exclusive` is not used."""
         assert not self.closed
         if not self.mapped_device:
             self.ioctx.rados.rbd_("map", self._name, use_json=False)

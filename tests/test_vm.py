@@ -8,6 +8,7 @@ import subprocess
 import textwrap
 import time
 from typing import Callable
+from unittest import mock
 
 import pytest
 import yaml
@@ -15,10 +16,99 @@ from pytest_patterns.plugin import PatternsLib
 
 from fc.qemu import util
 from fc.qemu.agent import Agent, InvalidCommand, swap_size, tmp_size
+from fc.qemu.hazmat.ceph import VolumeSpecification
 from fc.qemu.typing import RouteDict
 from fc.qemu.util import GiB, MiB
 from tests.conftest import get_log
 from tests.ellipsis import Ellipsis
+
+#: `Ceph.lock()`: the VM's sidecar object first, then the volumes that still
+#: take a lock of their own (only cidata).
+LOCKS = """\
+rados-lock machine=simplevm subsystem=ceph
+lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+"""
+#: `Ceph.unlock()` goes the other way round.
+UNLOCKS = """\
+unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+rados-unlock machine=simplevm subsystem=ceph
+"""
+
+#: Emitted by `VolumeSpecification.ensure_features` for every feature it
+#: actually enables - so once per volume per fresh image, and never for
+#: cidata. `object-map` pulls `fast-diff` in with it. The `rbd feature enable`
+#: calls themselves log under `subsystem=libceph`, which `reset_structlog`
+#: hides.
+ENABLE_FEATURES = """\
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-feature feature=object-map machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+enable-rbd-feature feature=object-map machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+enable-rbd-feature feature=object-map machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+"""
+
+#: `fc-qemu status` lock reporting. `locker=` is the owning host, or None -
+#: either because nobody holds the lock, or because the volume does not use
+#: one.
+#:
+#: Note what these do *not* show: on a real host the volumes carrying
+#: `exclusive-lock` also report `exclusive_lock=<addr>` once qemu has taken
+#: the lock, which it does lazily on the guest's first write to that volume.
+#: The test VM is a clone of a base image holding nothing but an empty XFS
+#: partition - no OS, no bootloader - so its guest never writes and never
+#: triggers acquisition. `test_an_exclusive_lock_is_named_auto` and
+#: `test_status_distinguishes_our_lock_from_qemus` cover that instead.
+STATUS_MISSING = """\
+vm-lock-status locker=None machine=simplevm subsystem=ceph
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+
+STATUS_LOCKED = """\
+vm-lock-status locker=host1 machine=simplevm subsystem=ceph
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status locker=host1 machine=simplevm present=True subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+
+STATUS_UNLOCKED = """\
+vm-lock-status locker=None machine=simplevm subsystem=ceph
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.ssd/simplevm.root
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.ssd/simplevm.swap
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.ssd/simplevm.tmp
+rbd-status locker=None machine=simplevm present=True subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+
+#: The same events as rendered by `fc-qemu -v` for the subprocess tests.
+CLI_LOCKS = """\
+simplevm         ceph rados-lock
+simplevm         ceph lock                           volume='rbd.ssd/simplevm.cidata'
+"""
+CLI_UNLOCKS = """\
+simplevm         ceph unlock                         volume='rbd.ssd/simplevm.cidata'
+simplevm         ceph rados-unlock
+"""
+
+#: `locker=` carries the owning host, so this takes the host as a parameter.
+CLI_STATUS = """\
+simplevm         ceph vm-lock-status                 locker='{host}'
+simplevm         ceph rbd-status                     locker=None present=True volume='rbd.ssd/simplevm.root'
+simplevm         ceph rbd-status                     locker=None present=True volume='rbd.ssd/simplevm.swap'
+simplevm         ceph rbd-status                     locker=None present=True volume='rbd.ssd/simplevm.tmp'
+simplevm         ceph rbd-status                     locker='{host}' present=True volume='rbd.ssd/simplevm.cidata'"""
+
+
+def cli_status(host):
+    return CLI_STATUS.format(host=host)
+
+
+def rbd_status(state):
+    if state == "missing":
+        return STATUS_MISSING
+    if state == "locked":
+        return STATUS_LOCKED
+    return STATUS_UNLOCKED
 
 
 def clean_output(output: str):
@@ -65,13 +155,27 @@ simplevm              acquire-remote-migration-lock  result='success
     )
 
 
+#: A second, known-good recording of a first start.
+#:
+#: Why this exists (1fef1d8, on top of 8639d80): in this sample the `waiting`
+#: line sits on the *root* volume, while a typical run has it on `tmp` or
+#: `cidata`. 8639d80 loosened that line in the pattern below to
+#: `volume=rbd.ssd/simplevm...` because which volume it lands on depends on
+#: timing, and this sample pins that the loosened line still accepts the other
+#: outcome.
+#:
+#: It is therefore hand-made rather than a plain recording, and must stay that
+#: way: re-capturing from a current run would almost certainly catch the
+#: common timing and silently retire the check. This pattern is based on a
+# real run with that `waiting` line put back in.
 TEST_FIRST_START_VARIATION = """\
 acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
 acquire-lock count=1 machine=simplevm result=locked target=/run/qemu.simplevm.lock
+rados-lock machine=simplevm subsystem=ceph
 pre-start machine=simplevm subsystem=ceph volume_spec=root
 ensure-presence machine=simplevm subsystem=ceph volume_spec=root
 create-vm machine=simplevm subsystem=ceph volume=simplevm.root
-/nix/store/zggynl2zs6m9swyqklqf0gr1dnga3dqx-python3.12-fc-agent-1.0/bin/fc-create-vm args=-I simplevm machine=simplevm subsystem=ceph volume=simplevm.root
+/nix/store/czs15708pjni3z5xdcwkg3msabdr1i2z-python3.12-fc-agent-1.0/bin/fc-create-vm args=-I simplevm machine=simplevm subsystem=ceph volume=simplevm.root
 fc-create-vm>
 fc-create-vm> Establishing system identity
 fc-create-vm> ----------------------------
@@ -83,17 +187,23 @@ fc-create-vm> $ rbd --id host1 clone rbd.hdd/fc-21.05-dev@v1 rbd.ssd/simplevm.ro
 fc-create-vm>
 fc-create-vm> Finished
 fc-create-vm> --------
-/nix/store/zggynl2zs6m9swyqklqf0gr1dnga3dqx-python3.12-fc-agent-1.0/bin/fc-create-vm machine=simplevm returncode=0 subsystem=ceph volume=simplevm.root
+/nix/store/czs15708pjni3z5xdcwkg3msabdr1i2z-python3.12-fc-agent-1.0/bin/fc-create-vm machine=simplevm returncode=0 subsystem=ceph volume=simplevm.root
 partprobe args=/dev/rbd/rbd.ssd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.root
+found-partition machine=simplevm path=/dev/rbd/rbd.ssd/simplevm.root-part1 subsystem=ceph target=/dev/rbd0p1 volume=rbd.ssd/simplevm.root
+udevadm args=settle machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+udevadm machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
+blkid args=/dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+blkid> /dev/rbd/rbd.ssd/simplevm.root-part1: UUID="a61845ec-9231-498c-9783-f5f4e5780215" BLOCK_SIZE="512" TYPE="xfs" PARTLABEL="ROOT" PARTUUID="62f28083-9957-4daa-b3f0-e44b99827cdd"
+blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 blkid args=/dev/rbd/rbd.ssd/simplevm.root-part1 -o export machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 blkid> DEVNAME=/dev/rbd/rbd.ssd/simplevm.root-part1
-blkid> UUID=3337fc07-3c0e-47d2-9c99-9c5d5345f7ba
+blkid> UUID=a61845ec-9231-498c-9783-f5f4e5780215
 blkid> BLOCK_SIZE=512
 blkid> TYPE=xfs
 blkid> PARTLABEL=ROOT
-blkid> PARTUUID=d54bed04-c010-44de-a2ce-53390999f51a
+blkid> PARTUUID=62f28083-9957-4daa-b3f0-e44b99827cdd
 blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 partprobe args=/dev/rbd/rbd.ssd/simplevm.root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
@@ -101,7 +211,7 @@ found-partition machine=simplevm path=/dev/rbd/rbd.ssd/simplevm.root-part1 subsy
 udevadm args=settle machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 udevadm machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 blkid args=/dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-blkid> /dev/rbd/rbd.ssd/simplevm.root-part1: UUID="b65d0590-6d3d-4112-a9d6-c7d718a47707" BLOCK_SIZE="512" TYPE="xfs" PARTLABEL="ROOT" PARTUUID="5bf1aed1-70b4-45b6-a0af-5333ff9a0437"
+blkid> /dev/rbd/rbd.ssd/simplevm.root-part1: UUID="a61845ec-9231-498c-9783-f5f4e5780215" BLOCK_SIZE="512" TYPE="xfs" PARTLABEL="ROOT" PARTUUID="62f28083-9957-4daa-b3f0-e44b99827cdd"
 blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
 mount args="/dev/rbd/rbd.ssd/simplevm.root-part1" "/mnt/rbd/rbd.ssd/simplevm.root" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
@@ -111,26 +221,31 @@ regenerate-xfs-uuid device=/dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm
 xfs_db args=-x -c 'uuid generate' /dev/rbd/rbd.ssd/simplevm.root-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 xfs_db> Clearing log and setting UUID
 xfs_db> writing all SBs
-xfs_db> new UUID = 117c71ff-ab7e-4573-8f98-d9e1b3bc6abb
+xfs_db> new UUID = 05d55896-8161-4b7f-acaa-239d286c2ebb
 xfs_db machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.root
-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+enable-rbd-feature feature=object-map machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+pre-start machine=simplevm subsystem=ceph volume_spec=swap
+ensure-presence machine=simplevm subsystem=ceph volume_spec=swap
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+enable-rbd-feature feature=object-map machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+pre-start machine=simplevm subsystem=ceph volume_spec=tmp
+ensure-presence machine=simplevm subsystem=ceph volume_spec=tmp
+enable-rbd-feature feature=exclusive-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+enable-rbd-feature feature=object-map machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+pre-start machine=simplevm subsystem=ceph volume_spec=cidata
+ensure-presence machine=simplevm subsystem=ceph volume_spec=cidata
 ensure-size machine=simplevm subsystem=ceph volume_spec=root
 start machine=simplevm subsystem=ceph volume_spec=root
 start-root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 root-found-in current_pool=rbd.ssd machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-pre-start machine=simplevm subsystem=ceph volume_spec=swap
-ensure-presence machine=simplevm subsystem=ceph volume_spec=swap
-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 ensure-size machine=simplevm subsystem=ceph volume_spec=swap
 start machine=simplevm subsystem=ceph volume_spec=swap
 start-swap machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 mkswap args=-f -L "swap" /dev/rbd/rbd.ssd/simplevm.swap machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 mkswap> Setting up swapspace version 1, size = 1024 MiB (1073737728 bytes)
-mkswap> LABEL=swap, UUID=2ed4bc8c-77af-4eed-b044-fb8678b34210
+mkswap> LABEL=swap, UUID=fd2551ee-e835-42a9-9e53-ca6dfc1f1dd9
 mkswap machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
-pre-start machine=simplevm subsystem=ceph volume_spec=tmp
-ensure-presence machine=simplevm subsystem=ceph volume_spec=tmp
-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 ensure-size machine=simplevm subsystem=ceph volume_spec=tmp
 start machine=simplevm subsystem=ceph volume_spec=tmp
 start-tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -145,22 +260,30 @@ sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+found-partition machine=simplevm path=/dev/rbd/rbd.ssd/simplevm.tmp-part1 subsystem=ceph target=/dev/rbd0p1 volume=rbd.ssd/simplevm.tmp
+udevadm args=settle machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+udevadm machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+blkid args=/dev/rbd/rbd.ssd/simplevm.tmp-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+blkid> /dev/rbd/rbd.ssd/simplevm.tmp-part1: PARTLABEL="tmp" PARTUUID="8bffdf7b-8b14-4d63-9695-58f42a2cb363"
+blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mkfs.xfs args=-q -f -K -m crc=1,finobt=1 -d su=4m,sw=1 -L "tmp" /dev/rbd/rbd.ssd/simplevm.tmp-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mkfs.xfs> mkfs.xfs: Specified data stripe unit 8192 is not the same as the volume stripe unit 128
-mkfs.xfs> log stripe unit (4194304 bytes) is too large (maximum is 256KiB)
-mkfs.xfs> log stripe unit adjusted to 32KiB
 mkfs.xfs machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 seed-fc machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe args=/dev/rbd/rbd.ssd/simplevm.tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+found-partition machine=simplevm path=/dev/rbd/rbd.ssd/simplevm.tmp-part1 subsystem=ceph target=/dev/rbd0p1 volume=rbd.ssd/simplevm.tmp
+udevadm args=settle machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+udevadm machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
+blkid args=/dev/rbd/rbd.ssd/simplevm.tmp-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+blkid> /dev/rbd/rbd.ssd/simplevm.tmp-part1: LABEL="tmp" UUID="4703829a-06f3-4bb7-8e2c-02a5948e6cab" BLOCK_SIZE="512" TYPE="xfs" PARTLABEL="tmp" PARTUUID="8bffdf7b-8b14-4d63-9695-58f42a2cb363"
+blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mount args="/dev/rbd/rbd.ssd/simplevm.tmp-part1" "/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
 guest-properties machine=simplevm properties={'binary_generation': 2, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.tmp
 binary-generation generation=2 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount args="/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
-pre-start machine=simplevm subsystem=ceph volume_spec=cidata
-ensure-presence machine=simplevm subsystem=ceph volume_spec=cidata
 lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 ensure-size machine=simplevm subsystem=ceph volume_spec=cidata
 start machine=simplevm subsystem=ceph volume_spec=cidata
@@ -176,6 +299,12 @@ sgdisk machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cida
 partprobe args=/dev/rbd/rbd.ssd/simplevm.cidata machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 waiting interval=0 machine=simplevm remaining=4 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+found-partition machine=simplevm path=/dev/rbd/rbd.ssd/simplevm.cidata-part1 subsystem=ceph target=/dev/rbd0p1 volume=rbd.ssd/simplevm.cidata
+udevadm args=settle machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+udevadm machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+blkid args=/dev/rbd/rbd.ssd/simplevm.cidata-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+blkid> /dev/rbd/rbd.ssd/simplevm.cidata-part1: PARTLABEL="cidata" PARTUUID="ae98793d-c5fa-40b0-8437-244efe1d2426"
+blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 mkfs.vfat args=-n "cidata" /dev/rbd/rbd.ssd/simplevm.cidata-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 mkfs.vfat> mkfs.fat: Warning: lowercase labels might not work properly on some systems
 mkfs.vfat> mkfs.fat 4.2 (2021-01-31)
@@ -183,16 +312,62 @@ mkfs.vfat machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.c
 seed-fc machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 partprobe args=/dev/rbd/rbd.ssd/simplevm.cidata machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 partprobe machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+found-partition machine=simplevm path=/dev/rbd/rbd.ssd/simplevm.cidata-part1 subsystem=ceph target=/dev/rbd0p1 volume=rbd.ssd/simplevm.cidata
+udevadm args=settle machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+udevadm machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
+blkid args=/dev/rbd/rbd.ssd/simplevm.cidata-part1 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+blkid> /dev/rbd/rbd.ssd/simplevm.cidata-part1: SEC_TYPE="msdos" LABEL_FATBOOT="cidata" LABEL="cidata" UUID="532E-15F2" BLOCK_SIZE="512" TYPE="vfat" PARTLABEL="cidata" PARTUUID="ae98793d-c5fa-40b0-8437-244efe1d2426"
+blkid machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 mount args="/dev/rbd/rbd.ssd/simplevm.cidata-part1" "/mnt/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 mount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 guest-properties machine=simplevm properties={'binary_generation': 2, 'rbd_pool': 'rbd.ssd'} subsystem=ceph volume=rbd.ssd/simplevm.cidata
 umount args="/mnt/rbd/rbd.ssd/simplevm.cidata" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.cidata
 generate-config machine=simplevm
+ip args=-d -j link show dev tfe2345 machine=simplevm subsystem=network
+ip> Device "tfe2345" does not exist.
+ip machine=simplevm returncode=1 subsystem=network
+ip machine=simplevm subsystem=network
+ip args=tuntap add tfe2345 mode tap machine=simplevm subsystem=network
+ip machine=simplevm returncode=0 subsystem=network
+ip args=-d -j link show dev tfe2345 machine=simplevm subsystem=network
+ip> [{"ifindex":358,"ifname":"tfe2345","flags":["BROADCAST","MULTICAST"],"mtu":1500,"qdisc":"noop","operstate":"DOWN","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"1e:1a:1a:b2:74:a3","broadcast":"ff:ff:ff:ff:ff:ff","promiscuity":0,"allmulti":0,"min_mtu":68,"max_mtu":65521,"linkinfo":{"info_kind":"tun","info_data":{"type":"tap","pi":false,"vnet_hdr":false,"multi_queue":false,"persist":true}},"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":65536,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536}]
+ip machine=simplevm returncode=0 subsystem=network
+ip args=link property add dev tfe2345 altname fcqemu-vm-2345-net-2 machine=simplevm subsystem=network
+ip machine=simplevm returncode=0 subsystem=network
+ip args=link set tfe2345 up machine=simplevm subsystem=network
+ip machine=simplevm returncode=0 subsystem=network
+ip args=link set mtu 1500 dev tfe2345 up machine=simplevm subsystem=network
+ip machine=simplevm returncode=0 subsystem=network
+ip args=-d -j link show dev tfe2345 machine=simplevm subsystem=network
+ip> [{"ifindex":358,"ifname":"tfe2345","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"qdisc":"fq_codel","operstate":"DOWN","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"1e:1a:1a:b2:74:a3","broadcast":"ff:ff:ff:ff:ff:ff","promiscuity":0,"allmulti":0,"min_mtu":68,"max_mtu":65521,"linkinfo":{"info_kind":"tun","info_data":{"type":"tap","pi":false,"vnet_hdr":false,"multi_queue":false,"persist":true}},"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":65536,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"altnames":["fcqemu-vm-2345-net-2"]}]
+ip machine=simplevm returncode=0 subsystem=network
+ip args=link set tfe2345 master brfe machine=simplevm subsystem=network
+ip machine=simplevm returncode=0 subsystem=network
+ip args=-d -j link show dev tsrv2345 machine=simplevm subsystem=network
+ip> Device "tsrv2345" does not exist.
+ip machine=simplevm returncode=1 subsystem=network
+ip machine=simplevm subsystem=network
+ip args=tuntap add tsrv2345 mode tap machine=simplevm subsystem=network
+ip machine=simplevm returncode=0 subsystem=network
+ip args=-d -j link show dev tsrv2345 machine=simplevm subsystem=network
+ip> [{"ifindex":359,"ifname":"tsrv2345","flags":["BROADCAST","MULTICAST"],"mtu":1500,"qdisc":"noop","operstate":"DOWN","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"9e:d4:cb:6a:d0:5f","broadcast":"ff:ff:ff:ff:ff:ff","promiscuity":0,"allmulti":0,"min_mtu":68,"max_mtu":65521,"linkinfo":{"info_kind":"tun","info_data":{"type":"tap","pi":false,"vnet_hdr":false,"multi_queue":false,"persist":true}},"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":65536,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536}]
+ip machine=simplevm returncode=0 subsystem=network
+ip args=link property add dev tsrv2345 altname fcqemu-vm-2345-net-3 machine=simplevm subsystem=network
+ip machine=simplevm returncode=0 subsystem=network
+ip args=link set tsrv2345 up machine=simplevm subsystem=network
+ip machine=simplevm returncode=0 subsystem=network
+ip args=link set mtu 1500 dev tsrv2345 up machine=simplevm subsystem=network
+ip machine=simplevm returncode=0 subsystem=network
+ip args=-d -j link show dev tsrv2345 machine=simplevm subsystem=network
+ip> [{"ifindex":359,"ifname":"tsrv2345","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"qdisc":"fq_codel","operstate":"DOWN","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"9e:d4:cb:6a:d0:5f","broadcast":"ff:ff:ff:ff:ff:ff","promiscuity":0,"allmulti":0,"min_mtu":68,"max_mtu":65521,"linkinfo":{"info_kind":"tun","info_data":{"type":"tap","pi":false,"vnet_hdr":false,"multi_queue":false,"persist":true}},"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":65536,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"altnames":["fcqemu-vm-2345-net-3"]}]
+ip machine=simplevm returncode=0 subsystem=network
+ip args=link set tsrv2345 master brsrv machine=simplevm subsystem=network
+ip machine=simplevm returncode=0 subsystem=network
 acquire-global-lock machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
 global-lock-acquire machine=simplevm result=locked subsystem=qemu target=/run/fc-qemu.lock
 global-lock-status count=1 machine=simplevm subsystem=qemu target=/run/fc-qemu.lock
-sufficient-host-memory available_real=10769.54296875 bookable=2000 machine=simplevm required=384 subsystem=qemu
+sufficient-host-memory available_real=6138.1796875 bookable=2000 machine=simplevm required=384 subsystem=qemu
 start-qemu machine=simplevm subsystem=qemu
 qemu-system-x86_64 additional_args=() local_args=['-nodefaults', '-only-migratable', '-cpu qemu64,enforce', '-name simplevm,process=kvm.simplevm', '-run-with chroot=/srv/vm/simplevm', '-run-with user=nobody', '-serial file:/var/log/vm/simplevm.log', '-display vnc=127.0.0.1:2345', '-pidfile /run/qemu.simplevm.pid', '-vga std', '-m 256', '-readconfig /run/qemu.simplevm.cfg'] machine=simplevm subsystem=qemu
 exec cmd=supervised-qemu qemu-system-x86_64 -nodefaults -only-migratable -cpu qemu64,enforce -name simplevm,process=kvm.simplevm -run-with chroot=/srv/vm/simplevm -run-with user=nobody -serial file:/var/log/vm/simplevm.log -display vnc=127.0.0.1:2345 -pidfile /run/qemu.simplevm.pid -vga std -m 256 -readconfig /run/qemu.simplevm.cfg -D /var/log/vm/simplevm.qemu.internal.log simplevm /var/log/vm/simplevm.supervisor.log machine=simplevm subsystem=qemu
@@ -228,16 +403,14 @@ release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
 def test_simple_vm_lifecycle_start_stop(vm: Agent, patterns: PatternsLib):
     status = patterns.status
     status.continuous(
-        """
-vm-status machine=simplevm result=offline
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.cidata
-"""
+        "vm-status machine=simplevm result=offline\n" + rbd_status("missing")
     )
 
-    util.test_log_options["show_events"] = ["vm-status", "rbd-status"]
+    util.test_log_options["show_events"] = [
+        "vm-status",
+        "rbd-status",
+        "vm-lock-status",
+    ]
     vm.status()
     assert status == get_log()
 
@@ -254,18 +427,11 @@ rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simpl
 acquire-lock machine=simplevm target=/run/qemu.simplevm.lock
 acquire-lock count=1 machine=simplevm result=locked target=/run/qemu.simplevm.lock
 
-pre-start machine=simplevm subsystem=ceph volume_spec=root
-
-ensure-presence machine=simplevm subsystem=ceph volume_spec=root
-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 ensure-size machine=simplevm subsystem=ceph volume_spec=root
 start machine=simplevm subsystem=ceph volume_spec=root
 start-root machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 root-found-in current_pool=rbd.ssd machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
 
-pre-start machine=simplevm subsystem=ceph volume_spec=swap
-ensure-presence machine=simplevm subsystem=ceph volume_spec=swap
-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
 ensure-size machine=simplevm subsystem=ceph volume_spec=swap
 start machine=simplevm subsystem=ceph volume_spec=swap
 start-swap machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
@@ -274,9 +440,6 @@ mkswap> Setting up swapspace version 1, size = 1024 MiB (1073737728 bytes)
 mkswap> LABEL=swap, UUID=...-...-...-...-...
 mkswap machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.swap
 
-pre-start machine=simplevm subsystem=ceph volume_spec=tmp
-ensure-presence machine=simplevm subsystem=ceph volume_spec=tmp
-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 ensure-size machine=simplevm subsystem=ceph volume_spec=tmp
 start machine=simplevm subsystem=ceph volume_spec=tmp
 start-tmp machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
@@ -300,9 +463,6 @@ guest-properties machine=simplevm properties={'binary_generation': 2, 'rbd_pool'
 binary-generation generation=2 machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount args="/mnt/rbd/rbd.ssd/simplevm.tmp" machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
 umount machine=simplevm returncode=0 subsystem=ceph volume=rbd.ssd/simplevm.tmp
-pre-start machine=simplevm subsystem=ceph volume_spec=cidata
-ensure-presence machine=simplevm subsystem=ceph volume_spec=cidata
-lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
 ensure-size machine=simplevm subsystem=ceph volume_spec=cidata
 start machine=simplevm subsystem=ceph volume_spec=cidata
 start-cloud-init machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
@@ -362,6 +522,36 @@ release-lock count=0 machine=simplevm target=/run/qemu.simplevm.lock
 release-lock machine=simplevm result=unlocked target=/run/qemu.simplevm.lock
 """
     )
+    # `Ceph.start()` runs in phases: every volume is pre-started and ensured
+    # present first, then the features are settled and the lock method is
+    # decided, and only then does each volume get locked, sized and started.
+    # This is a separate `in_order` op so that the per-spec work above keeps
+    # being checked in order without also pinning how the two phases
+    # interleave with it.
+    start.in_order(
+        """
+pre-start machine=simplevm subsystem=ceph volume_spec=root
+ensure-presence machine=simplevm subsystem=ceph volume_spec=root
+pre-start machine=simplevm subsystem=ceph volume_spec=swap
+ensure-presence machine=simplevm subsystem=ceph volume_spec=swap
+pre-start machine=simplevm subsystem=ceph volume_spec=tmp
+ensure-presence machine=simplevm subsystem=ceph volume_spec=tmp
+pre-start machine=simplevm subsystem=ceph volume_spec=cidata
+ensure-presence machine=simplevm subsystem=ceph volume_spec=cidata
+"""
+    )
+    start.in_order(LOCKS)
+    # The volumes covered by the rados lock must never be rbd-locked: unlocking
+    # `exclusive-lock` images works different, so a lock placed here
+    # would be permanent.
+    start.refused(
+        """
+lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
+lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
+lock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
+"""
+    )
+
     start.optional(
         """
 ip ...
@@ -448,6 +638,10 @@ waiting interval=0 machine=simplevm remaining=... subsystem=ceph volume=rbd.ssd/
 qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
 """
     )
+    # Only the first start of a fresh image enables the features; from then on
+    # `ensure_features` finds them already set and stays quiet, which is why
+    # this belongs to `bootstrap` and not to `start`.
+    bootstrap.in_order(ENABLE_FEATURES)
 
     first_start = patterns.first_start
     first_start.merge("start", "bootstrap")
@@ -456,9 +650,17 @@ qmp_capabilities arguments={} id=None machine=simplevm subsystem=qemu/qmp
     assert TEST_FIRST_START_VARIATION == first_start
     assert out == first_start
 
+    # The feature upgrade is the whole point of those log lines, so check it
+    # actually landed on the images rather than only in the log.
+    for suffix in ["root", "swap", "tmp"]:
+        volume = vm.ceph.volumes[suffix]
+        assert volume.features >= {"exclusive-lock", "object-map", "fast-diff"}
+    assert "exclusive-lock" not in vm.ceph.volumes["cidata"].features
+
     util.test_log_options["show_events"] = [
         "vm-status",
         "rbd-status",
+        "vm-lock-status",
         "disk-throttle",
     ]
 
@@ -470,24 +672,16 @@ disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio0 iops_rd=10000 iop
 disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio1 iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60 machine=simplevm
 disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio2 iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60 machine=simplevm
 disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio3 iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60 machine=simplevm
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+"""
+        + rbd_status("locked")
     )
 
     vm.stop()
     get_log()
 
     vm.status()
-    assert (
-        get_log()
-        == """\
-vm-status machine=simplevm result=offline
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+    assert get_log() == (
+        "vm-status machine=simplevm result=offline\n" + rbd_status("unlocked")
     )
 
     # Starting a second time doesn't show the bootstrap code!
@@ -537,18 +731,13 @@ def test_simple_vm_lifecycle_ensure_going_offline(vm, capsys, caplog):
     util.test_log_options["show_events"] = [
         "vm-status",
         "rbd-status",
+        "vm-lock-status",
         "ensure-state",
         "disk-throttle",
     ]
     vm.status()
-    assert (
-        get_log()
-        == """\
-vm-status machine=simplevm result=offline
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+    assert get_log() == (
+        "vm-status machine=simplevm result=offline\n" + rbd_status("missing")
     )
 
     vm.ensure()
@@ -566,10 +755,8 @@ disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio0 iops_rd=10000 iop
 disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio1 iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60 machine=simplevm
 disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio2 iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60 machine=simplevm
 disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio3 iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60 machine=simplevm
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+"""
+        + rbd_status("locked")
     )
 
     vm.enc["parameters"]["online"] = False
@@ -586,14 +773,8 @@ ensure-state action=stop found=online machine=simplevm wanted=offline"""
     )
 
     vm.status()
-    assert (
-        get_log()
-        == """\
-vm-status machine=simplevm result=offline
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+    assert get_log() == (
+        "vm-status machine=simplevm result=offline\n" + rbd_status("unlocked")
     )
 
     # A VM that is offline and should stay offline should be very fast to evaluate.
@@ -621,17 +802,15 @@ ensure-state action=none found=offline machine=simplevm wanted=offline"""
 
 @pytest.mark.live
 def test_vm_not_running_here(vm, capsys):
-    util.test_log_options["show_events"] = ["vm-status", "rbd-status"]
+    util.test_log_options["show_events"] = [
+        "vm-status",
+        "rbd-status",
+        "vm-lock-status",
+    ]
 
     vm.status()
-    assert (
-        get_log()
-        == """\
-vm-status machine=simplevm result=offline
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+    assert get_log() == (
+        "vm-status machine=simplevm result=offline\n" + rbd_status("missing")
     )
 
     vm.enc["parameters"]["kvm_host"] = "otherhost"
@@ -641,19 +820,59 @@ rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simpl
     vm.ensure()
     vm.status()
     assert get_log() == Ellipsis(
-        """\
-vm-status machine=simplevm result=offline
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+        "vm-status machine=simplevm result=offline\n" + rbd_status("missing")
     )
+
+
+@pytest.mark.live
+def test_ensure_upgrades_a_running_legacy_vm(vm: Agent):
+    """The PL-134255 rollout, on a VM that is already running.
+
+    A host running a pre-PL-134255 fc.qemu leaves layering-only images with a
+    per-volume rbd lock on each of them - whether it started the VM itself or
+    took it over in a migration, since the destination took those same locks.
+    Updating the software then has to move that *running* VM onto the rados
+    lock, which means enabling `exclusive-lock` on images qemu holds open and
+    dropping the rbd locks while doing so.
+
+    The old software is simulated by taking the expected features away for the
+    duration of the start - that, plus the per-volume locks, is the whole of
+    what makes the state "old".
+    """
+    with mock.patch.object(VolumeSpecification, "expected_features", ()):
+        vm.start()
+    # The old software has no sidecar lock, only the per-volume ones.
+    vm.ceph.vm_lock.unlock()
+    for suffix, volume in vm.ceph.volumes.items():
+        assert volume.features == {"layering"}, suffix
+        assert volume.lock_status().host == vm.ceph.CEPH_LOCK_HOST, suffix
+    get_log()
+
+    vm.ensure()
+
+    assert vm.qemu.is_running(), "the VM must survive its own upgrade"
+    assert vm.ceph.vm_lock.locker().host == vm.ceph.CEPH_LOCK_HOST
+    for suffix in ["root", "swap", "tmp"]:
+        volume = vm.ceph.volumes[suffix]
+        assert volume.features >= {"exclusive-lock", "object-map", "fast-diff"}
+        # The pre-upgrade lock cannot be removed once the feature is on, so if
+        # it is still here it is here for good.
+        assert volume.lock_status() is None, suffix
+    cidata = vm.ceph.volumes["cidata"]
+    assert "exclusive-lock" not in cidata.features
+    assert cidata.lock_status().host == vm.ceph.CEPH_LOCK_HOST
+
+    # A second pass has nothing left to do.
+    get_log()
+    vm.ensure()
+    assert "enable-rbd-feature" not in get_log()
 
 
 @pytest.mark.live
 def test_crashed_vm_clean_restart(vm, patterns):
     util.test_log_options["show_events"] = [
         "rbd-status",
+        "vm-lock-status",
         "vm-status",
         "ensure",
         "throttle",
@@ -664,12 +883,7 @@ def test_crashed_vm_clean_restart(vm, patterns):
     vm.status()
 
     assert get_log() == Ellipsis(
-        """\
-vm-status machine=simplevm result=offline
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd-status machine=simplevm presence=missing subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+        "vm-status machine=simplevm result=offline\n" + rbd_status("missing")
     )
 
     util.test_log_print("=== Running ensure() ... ===")
@@ -689,10 +903,8 @@ disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio0 iops_rd=10000 iop
 disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio1 iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60 machine=simplevm
 disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio2 iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60 machine=simplevm
 disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio3 iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60 machine=simplevm
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+"""
+        + rbd_status("locked")
     )
 
     util.test_log_print("=== Killing the qemu process ===")
@@ -704,12 +916,7 @@ rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rb
     util.test_log_print("=== Running status() ===")
     vm.status()
     assert get_log() == Ellipsis(
-        """\
-vm-status machine=simplevm result=offline
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+        "vm-status machine=simplevm result=offline\n" + rbd_status("locked")
     )
 
     util.test_log_print("=== Running ensure() ===")
@@ -727,10 +934,8 @@ disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio0 iops_rd=10000 iop
 disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio1 iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60 machine=simplevm
 disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio2 iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60 machine=simplevm
 disk-throttle bps_rd=524288000 bps_wr=524288000 device=virtio3 iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60 machine=simplevm
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata"""
+"""
+        + rbd_status("locked")
     )
 
     util.test_log_options["show_events"] = [
@@ -742,6 +947,9 @@ rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rb
         "consul",
         "clean",
         "rbd-status",
+        # `show_events` matches by substring, so "unlock" already lets
+        # `rados-unlock` through - but `rados-lock-status` needs naming.
+        "vm-lock-status",
     ]
     util.test_log_print("=== Running stop() ===")
     vm.stop()
@@ -752,11 +960,9 @@ rbd-status locker=('client...', '...') machine=simplevm subsystem=ceph volume=rb
 graceful-shutdown machine=simplevm
 graceful-shutdown-failed machine=simplevm reason=timeout
 vm-destroy-vm-via-qmp machine=simplevm subsystem=qemu
-unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-unlock machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
-consul-deregister machine=simplevm
+"""
+        + UNLOCKS
+        + """consul-deregister machine=simplevm
 clean-run-files machine=simplevm subsystem=qemu
 """
     )
@@ -772,12 +978,9 @@ vm-destroy-kill-supervisor attempt=... machine=simplevm subsystem=qemu
 
     status = patterns.status
     status.in_order(
-        """
-vm-status machine=simplevm result=offline
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.root
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.swap
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.tmp
-rbd-status locker=None machine=simplevm subsystem=ceph volume=rbd.ssd/simplevm.cidata
+        "vm-status machine=simplevm result=offline\n"
+        + rbd_status("unlocked")
+        + """
 consul machine=simplevm service=<not registered>
 """
     )
@@ -1381,10 +1584,9 @@ simplevm              acquire-local-migration-lock   result='success'
 simplevm              acquire-remote-migration-lock
 simplevm              acquire-remote-migration-lock  result='success'
 
-simplevm         ceph unlock                         volume='rbd.ssd/simplevm.root'
-simplevm         ceph unlock                         volume='rbd.ssd/simplevm.swap'
-simplevm         ceph unlock                         volume='rbd.ssd/simplevm.tmp'
-simplevm         ceph unlock                         volume='rbd.ssd/simplevm.cidata'
+"""
+        + CLI_UNLOCKS
+        + """
 
 simplevm              prepare-remote-environment
 simplevm              start-migration                target='tcp:...:...'
@@ -1490,11 +1692,7 @@ simplevm         qemu acquire-migration-lock         result='success'
 simplevm              acquire-local-migration-lock   result='success'
 simplevm              acquire-remote-migration-lock
 simplevm              acquire-remote-migration-lock  result='success'
-simplevm         ceph unlock                         volume='rbd.ssd/simplevm.root'
-simplevm         ceph unlock                         volume='rbd.ssd/simplevm.swap'
-simplevm         ceph unlock                         volume='rbd.ssd/simplevm.tmp'
-simplevm         ceph unlock                         volume='rbd.ssd/simplevm.cidata'
-simplevm              prepare-remote-environment
+{unlocks}simplevm              prepare-remote-environment
 simplevm              start-migration                target='tcp:...:2345'
 simplevm         qemu migrate
 simplevm     qemu/qmp migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None
@@ -1765,7 +1963,7 @@ simplevm              stopped-heartbeat-ping
 simplevm              outmigrate-finished            exitcode=0
 simplevm              release-lock                   count=0 target='/run/qemu.simplevm.lock'
 simplevm              release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
-"""
+""".replace("{unlocks}", CLI_UNLOCKS)
     )
 
     # This one is missing the "stopped-heartbeat-ping". This can happen
@@ -1795,11 +1993,7 @@ simplevm         qemu acquire-migration-lock         result='success'
 simplevm              acquire-local-migration-lock   result='success'
 simplevm              acquire-remote-migration-lock
 simplevm              acquire-remote-migration-lock  result='success'
-simplevm         ceph unlock                         volume='rbd.ssd/simplevm.root'
-simplevm         ceph unlock                         volume='rbd.ssd/simplevm.swap'
-simplevm         ceph unlock                         volume='rbd.ssd/simplevm.tmp'
-simplevm         ceph unlock                         volume='rbd.ssd/simplevm.cidata'
-simplevm              prepare-remote-environment
+{unlocks}simplevm              prepare-remote-environment
 simplevm              start-migration                target='tcp:...:2345'
 simplevm         qemu migrate
 simplevm     qemu/qmp migrate-set-capabilities       arguments={'capabilities': [{'capability': 'xbzrle', 'state': False}, {'capability': 'auto-converge', 'state': True}]} id=None
@@ -2043,7 +2237,7 @@ simplevm              finish-remote
 simplevm              outmigrate-finished            exitcode=0
 simplevm              release-lock                   count=0 target='/run/qemu.simplevm.lock'
 simplevm              release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
-"""
+""".replace("{unlocks}", CLI_UNLOCKS)
     )
 
 
@@ -2055,6 +2249,7 @@ def test_vm_migration(
     outmigrate_pattern: PatternsLib,
     patterns: PatternsLib,
     kill_vms_host2: None,
+    reap_subprocesses,
 ):
     def call(cmd, wait=True, host=None, fail_on_exit_code=True):
         for ssh_cmd in ["scp", "ssh"]:
@@ -2098,12 +2293,27 @@ def test_vm_migration(
                 print(output)
                 return output
 
-    call("fc-qemu start simplevm")
+    vm.start()
+    get_log()
+    # `named_vm` keeps the agent entered for the whole test, so the QMP
+    # connection that `start()` opened stays open in this process. qemu serves
+    # a single monitor client, so the `fc-qemu` subprocesses below would block
+    # on connect until their (production) 300s QMP timeout. Give the socket
+    # back, the same way the CLI does when its agent context exits. The `qmp`
+    # property reconnects lazily if we need it again.
+    vm.qemu.__exit__(None, None, None)
+
     call("sed -i -e 's/host1/host2/' /etc/qemu/vm/simplevm.cfg")
     call("scp /etc/qemu/vm/simplevm.cfg host2:/etc/qemu/vm/")
 
     inmigrate = call("ssh host2 'fc-qemu -v inmigrate simplevm'", wait=False)
     outmigrate = call("fc-qemu -v outmigrate simplevm", wait=False)
+    # If this test does not reach the end of its body - a timeout while
+    # waiting for either side, say - these two keep running and the local
+    # `fc-qemu` holds `/run/qemu.simplevm.lock` for the rest of its hour-long
+    # `connect_timeout`, taking every later test on this VM down with it.
+    reap_subprocesses(inmigrate)
+    reap_subprocesses(outmigrate)
 
     # Consume both process outputs so in a failing test we see both
     # in the test output and can more easily compare what's going on.
@@ -2126,11 +2336,7 @@ simplevm              consul-register-inmigrate
 simplevm              received-acquire-migration-lock
 simplevm         qemu acquire-migration-lock         result='success'
 simplevm              received-acquire-ceph-locks
-simplevm         ceph lock                           volume='rbd.ssd/simplevm.root'
-simplevm         ceph lock                           volume='rbd.ssd/simplevm.swap'
-simplevm         ceph lock                           volume='rbd.ssd/simplevm.tmp'
-simplevm         ceph lock                           volume='rbd.ssd/simplevm.cidata'
-
+{locks}
 simplevm              received-prepare-incoming
 simplevm         qemu acquire-global-lock            target='/run/fc-qemu.lock'
 simplevm         qemu global-lock-acquire            result='locked' target='/run/fc-qemu.lock'
@@ -2152,11 +2358,23 @@ simplevm              received-finish-incoming
 simplevm     qemu/qmp query-status                   arguments={} id=None
 simplevm              consul-deregister-inmigrate
 simplevm              stop-server                    result='success' type='incoming'
+vm-feature-flags               flags=['lockv2'] vm='simplevm'
+simplevm              ensure-state                   action='' found='online' wanted='online'
 simplevm              consul-register
+simplevm              check-disk-size                action='none' found=... wanted=...
+simplevm              ensure-throttle...action='throttle' device='virtio0'
+simplevm              ensure-throttle...action='throttle' device='virtio1'
+simplevm              ensure-throttle...action='throttle' device='virtio2'
+simplevm              ensure-throttle...action='throttle' device='virtio3'
+simplevm              ensure-watchdog                action='none'
+{locks}
+simplevm              ensure-thawed                  volume='root'
+simplevm              mark-qemu-binary-generation    generation=...
+simplevm              mark-qemu-guest-properties     properties=...
 simplevm              inmigrate-finished             exitcode=0
 simplevm              release-lock                   count=0 target='/run/qemu.simplevm.lock'
 simplevm              release-lock                   result='unlocked' target='/run/qemu.simplevm.lock'
-"""
+""".replace("{locks}", CLI_LOCKS)
     )
     inmigrate_pattern.optional(
         f"""
@@ -2169,7 +2387,53 @@ simplevm              guest-disconnect
 simplevm      libceph...
 simplevm> rbd...
 simplevm> ceph...
+simplevm> rados...
 """
+    )
+    # A successful inmigration ends in `ensure_online_local()`, so everything
+    # an ordinary `ensure` does happens here too. The events worth pinning are
+    # in the `in_order` block above; this is the chatter around them.
+    # `ceph rbd...` is `RootSpec.ensure_migration()`'s `rbd status` probe -
+    # a command echo only, the root-migration events have their own names.
+    inmigrate_pattern.optional(
+        """
+simplevm     qemu/qmp query-status                   arguments={} id=None
+simplevm     qemu/qmp query-block                    arguments={} id=None
+simplevm     qemu/qmp block_set_io_throttle...
+simplevm     qemu/qmp human-monitor-command...
+simplevm              ensure-throttle...
+simplevm              ensure-throttle-params...
+simplevm      network ip...
+simplevm> ip ...
+simplevm         ceph rbd...
+simplevm> rbd status --format json...
+supported-vm-feature-flags     flags=['lockv2']
+"""
+    )
+    # The test VM has no guest agent, so every guest interaction that
+    # `ensure_online_local` performs after the migration runs into its
+    # timeout. `Qemu.thaw` logs the traceback on purpose before retrying, so
+    # allow-list it here rather than making the code quieter.
+    inmigrate_pattern.optional(
+        """
+simplevm   qemu/guest ...
+simplevm         qemu guest-fsfreeze-thaw-failed
+simplevm         qemu guest-fsfreeze-thaw-try-agent-reset
+simplevm              ensure-thawed-failed...reason='timed out'
+simplevm              mark-qemu-binary-generation...reason='timed out'
+simplevm              mark-qemu-guest-properties...reason='timed out'
+simplevm> Traceback (most recent call last):
+simplevm>   File "...
+simplevm>     ...
+simplevm> TimeoutError: timed out
+"""
+    )
+    # `VMLockManager._ensure_lock_object` creates the sidecar object
+    # gratuitously on every run and swallows the failure, so the second and
+    # all later runs log this. Allow-listed explicitly rather than via a
+    # `simplevm>...` catch-all, so that other command errors keep failing.
+    inmigrate_pattern.optional(
+        "simplevm> error creating fcio/simplevm: (17) File exists"
     )
 
     assert outmigrate_pattern == outmigrate_result
@@ -2186,26 +2450,25 @@ simplevm> ceph...
     assert local_status == Ellipsis(
         """\
 simplevm              vm-status                      result='offline'
-simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.root'
-simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.swap'
-simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.tmp'
-simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.cidata'
+"""
+        + cli_status("host2")
+        + """
 simplevm              consul                         address='host2' service='qemu-simplevm'
 """
     )
 
     remote_status = call("ssh host2 'fc-qemu status simplevm'")
+    # The throttle settings are applied immediately, as the inmigrate ends up calling ensure_online_local.
     assert remote_status == Ellipsis(
         """\
 simplevm              vm-status                      result='online'
-simplevm              disk-throttle                  device='virtio0...
-simplevm              disk-throttle                  device='virtio1...
-simplevm              disk-throttle                  device='virtio2...
-simplevm              disk-throttle                  device='virtio3...
-simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.root'
-simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.swap'
-simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.tmp'
-simplevm         ceph rbd-status                     locker=('client...', 'host2') volume='rbd.ssd/simplevm.cidata'
+simplevm              disk-throttle                  bps_rd=524288000 bps_wr=524288000 device='virtio0' iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60
+simplevm              disk-throttle                  bps_rd=524288000 bps_wr=524288000 device='virtio1' iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60
+simplevm              disk-throttle                  bps_rd=524288000 bps_wr=524288000 device='virtio2' iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60
+simplevm              disk-throttle                  bps_rd=524288000 bps_wr=524288000 device='virtio3' iops_rd=10000 iops_rd_max=20000 iops_rd_max_length=60 iops_wr=10000 iops_wr_max=20000 iops_wr_max_length=60
+"""
+        + cli_status("host2")
+        + """
 simplevm              consul                         address='host2' service='qemu-simplevm'
 """
     )

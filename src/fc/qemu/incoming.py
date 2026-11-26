@@ -3,13 +3,11 @@ import functools
 import re
 import time
 import xmlrpc.server
+from collections.abc import Callable
 from typing import (
     TYPE_CHECKING,
-    Callable,
     Concatenate,
-    ParamSpec,
     Protocol,
-    TypeVar,
 )
 
 import consulate.models.agent
@@ -29,12 +27,7 @@ class SupportsAuthentication(Protocol):
     log: BoundLogger
 
 
-P = ParamSpec("P")
-R = TypeVar("R")
-S = TypeVar("S", bound=SupportsAuthentication)
-
-
-def authenticated(
+def authenticated[S: SupportsAuthentication, **P, R](
     f: Callable[Concatenate[S, P], R],
 ) -> Callable[Concatenate[S, str, P], R]:
     """Decorator to express that authentication is required."""
@@ -58,12 +51,7 @@ class SupportsTimeoutReset(Protocol):
     log: BoundLogger
 
 
-P1 = ParamSpec("P1")
-R1 = TypeVar("R1")
-S1 = TypeVar("S1", bound=SupportsTimeoutReset)
-
-
-def reset_timeout(
+def reset_timeout[S1: SupportsTimeoutReset, **P1, R1](
     f: Callable[Concatenate[S1, P1], R1],
 ) -> Callable[Concatenate[S1, P1], R1]:
     """Reset the timeout when interacting with the wrapped method."""
@@ -78,7 +66,7 @@ def reset_timeout(
     return wrapper
 
 
-class IncomingServer(object):
+class IncomingServer:
     """Run an XML-RPC server to orchestrate a single migration."""
 
     finished = False
@@ -122,7 +110,7 @@ class IncomingServer(object):
             address=self.bind_address[0],
             port=self.bind_address[1],
             check=consulate.models.agent.Check(
-                name="migration-ttl", ttl="{}s".format(self.timeout.remaining)
+                name="migration-ttl", ttl=f"{self.timeout.remaining}s"
             ),
         )
         try:
@@ -195,9 +183,8 @@ class IncomingServer(object):
         # minutes but expect communication to move fast.
         if hard_timeout:
             self.timeout.cutoff = self._now() + hard_timeout
-        if soft_timeout:
-            if self.timeout.remaining < soft_timeout:
-                self.timeout.cutoff = self._now() + soft_timeout
+        if soft_timeout and self.timeout.remaining < soft_timeout:
+            self.timeout.cutoff = self._now() + soft_timeout
 
     def screen_config(self, config: str):
         """Remove obsolete items from transferred Qemu config."""
@@ -205,7 +192,7 @@ class IncomingServer(object):
         # use. This is just a placeholder to demonstrate and check functionality
         # of the mechanism in tests.
         config, count = re.subn(
-            r"^\s*MYMAGICFEATURE\s*=.*$", "", config, flags=re.M
+            r"^\s*MYMAGICFEATURE\s*=.*$", "", config, flags=re.MULTILINE
         )
         if count:
             self.log.info(
@@ -320,7 +307,7 @@ class IncomingServer(object):
         self.agent.destroy()
 
 
-class IncomingAPI(object):
+class IncomingAPI:
     def __init__(self, server: IncomingServer):
         self.server = server
         self.log = self.server.log

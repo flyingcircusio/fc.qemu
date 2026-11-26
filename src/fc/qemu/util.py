@@ -10,8 +10,9 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import IO, Any, Callable, Dict, List, Literal, TypedDict, TypeVar
+from typing import IO, Any, Literal, TypedDict
 
 import consulate
 import structlog
@@ -27,9 +28,9 @@ GiB = 2**30
 log: structlog.BoundLogger = get_logger()
 
 # Test harnesses
-log_data: List[str]
+log_data: list[str]
 test_log_start: float
-test_log_options: Dict[str, List[str]]
+test_log_options: dict[str, list[str]]
 test_log_print: Callable[..., None]
 
 
@@ -176,7 +177,7 @@ def timeit(label: str):
     start = time.time()
     yield
     print(
-        "run time for {}: {}".format(label, time.time() - start),
+        f"run time for {label}: {time.time() - start}",
         file=sys.stderr,
     )
 
@@ -196,7 +197,7 @@ def ensure_separate_cgroup():
                 raise
             # The directory exists now. We've run into a race condition.
             # Keep going.
-    with open("{}/cgroup.procs".format(CGROUP), "w") as f:
+    with open(f"{CGROUP}/cgroup.procs", "w") as f:
         f.write(str(os.getpid()))
 
 
@@ -264,12 +265,12 @@ def inplace_update(filename: str, data: Any):
 
 
 def generate_cloudinit_ssh_keyfile(
-    users: List[Dict[str, Any]], resource_group: str
+    users: list[dict[str, Any]], resource_group: str
 ) -> str:
     authorized_ssh_keys: list[str] = [
         u["ssh_pubkey"]
         for u in users
-        if set(u["permissions"][resource_group]) & set(["sudo-srv", "manager"])
+        if set(u["permissions"][resource_group]) & {"sudo-srv", "manager"}
     ]
     start: list[str] = []
     flattened_ssh_keys = sum(authorized_ssh_keys, start)
@@ -280,9 +281,8 @@ def generate_cloudinit_ssh_keyfile(
     )
 
 
-T = TypeVar("T", bound=BaseModel)
-
-
-def model_from_json_cmd(model: type[T], *args: Any, **kw: Any) -> T:
+def model_from_json_cmd[T: BaseModel](
+    model: type[T], *args: Any, **kw: Any
+) -> T:
     output = cmd(*args, **kw)
     return model.model_validate_json(output)

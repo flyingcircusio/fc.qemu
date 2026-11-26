@@ -17,6 +17,7 @@ REQUIRED_BINARIES = set(
         "qemu-system-x86_64",
         "rbd",
         "rbd-locktool",
+        "rados",
         "sgdisk",
         "systemctl",
         "udevadm",

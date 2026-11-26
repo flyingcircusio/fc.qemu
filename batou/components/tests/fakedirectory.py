@@ -22,10 +22,16 @@ class Directory(object):
     def list_users(self, rg):
         return []
 
+    def report_supported_vm_feature_flags(self, flags):
+        return ""
+
+    def report_vm_feature_flags(self, vm_name, flags):
+        return ""
+
 
 # Create server
 with SimpleXMLRPCServer(
-    ("0.0.0.0", 82), requestHandler=RequestHandler
+    ("0.0.0.0", 80), requestHandler=RequestHandler
 ) as server:
     server.register_introspection_functions()
     server.register_instance(Directory())

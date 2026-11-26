@@ -4,6 +4,43 @@ Release notes
 1.8 (unreleased)
 ----------------
 
+- introduce *VM feature flags* for directory VM placement (PL-135840)
+
+  Report feature flags that are supported by certain fc.qemu VM hosts and required by certain VMs
+  for them to run on a certain hosts. The directory can consider these feature support <-> feature
+  requirement dependencies for placing VMs at adequate hosts, similar to how already done for CPU models.
+
+- migration: apply disk throttling to an inmigrated VM right away
+
+  I/O limits are no core part of the VM config transmitted via live-migration
+  and need to be explicitly applied over QMP on a running VM. This now happens during
+  `inmigrate` via `ensure_online_local()`.
+
+- ceph: report only the owning host in `vm-lock-status`/`rbd-status`, and log
+  an `enable-rbd-feature` event for each image feature actually enabled
+  (PL-134255)
+
+- tests: fail the test that leaks an `fc-qemu` process instead of letting it
+  cascade
+
+  A leaked `fc-qemu` holds `/run/qemu.<vm>.lock` for as long as it runs, so
+  every later test touching that VM blocks in `flock` until its own timeout.
+  `test_vm_migration` now reaps its subprocesses at teardown, `kill_vms_host2`
+  also pkills `fc-qemu`, and an autouse guard reports whichever test leaked.
+
+- ceph rbd: rebuild object-map in background if reported as invalid (PL-134255)
+
+- ceph locks: separate per-VM sidecar advisory lock, enable `exclusive-lock`, `fast-diff`, `object-map` rbd features (PL-134255)
+
+  We need to enable the `exclusive-lock` rbd feature for VM disk images as parts of Ceph now assume it to be enabled anyways, causing stability issues.
+  Each VM gets a sidecar rados object in a separate pool, where locks on that object signal the atomic advisory ownership of which fc.qemu host is the main
+  owner of that VM.
+  Migration from the old per-volume RBD lock system happens during VM operation in `ensure_online_local`, enabling the features and removing old locks.
+  The cidata volume is deliberately excluded from that migration for now, continuing to exhibit the old behaviour and locking surface without `exclusive-lock`.
+  This keeps the ownership signalling to older fc.qemu versions intact.
+  Outmigration to older fc.qemu releases is deliberately broken by changing the migration cookie calculation, to prevent VMs migrating to an fc.qemu host not
+  understanding their new locking protocol.
+
 - tests: fix race for lock in `test_crashed_vm_clean_restart` (PL-134257)
 
   Ensure the reduced guest-agent timeouts are also used by daemonised background processes, by

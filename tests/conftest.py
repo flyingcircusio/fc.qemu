@@ -10,10 +10,10 @@ import time
 import traceback
 from pathlib import Path
 from subprocess import check_call, getoutput
-from typing import List
+from unittest import mock
 from unittest.mock import Mock, patch
 
-import mock
+import psutil
 import pytest
 import structlog
 from structlog.typing import WrappedLogger
@@ -23,45 +23,129 @@ import fc.qemu.hazmat.qemu
 import fc.qemu.logging
 from fc.qemu.agent import Agent
 from fc.qemu.hazmat import libceph
-from fc.qemu.hazmat.ceph import Ceph, RootSpec, VolumeSpecification
+from fc.qemu.hazmat.ceph import (
+    Ceph,
+    RootSpec,
+    VMLockManager,
+    VolumeSpecification,
+)
 from fc.qemu.hazmat.iproute2 import TunTap
+from fc.qemu.sysconfig import sysconfig
+from fc.qemu.timeout import TimeOut
 from fc.qemu.util import GiB, cmd
 
 ########################################################
 # ceph fixtures
 
 
-class RadosMock(object):
+class RadosMock:
     tmp_path: Path
+    # The feature set images are born with, mirroring the cluster's
+    # `rbd_default_features`. fc-nixos pins this to 1 (layering only), so every
+    # image starts out layering-only and the expected features are enabled by
+    # `VolumeSpecification.ensure_features` - at cold boot via `Ceph.start()`,
+    # or online via `Ceph.ensure()`. That makes the upgrade path the default
+    # the whole suite exercises. Tests that need a different starting point
+    # override this.
+    default_features: list[str] = ["layering"]
 
     def __init__(self, conffile, name, log):
         self.conffile = conffile
         self.name = name
         self._ioctx = {}
+        # Advisory rados locks on sidecar objects, keyed by
+        # (pool, namespace, object name) -> {lock name: RadosLocker}
+        self._objects: dict[
+            tuple[str, str, str], dict[str, libceph.RadosLocker]
+        ] = {}
+        self._lock_nonce = 0
 
     def open_ioctx(self, pool):
         if pool not in self._ioctx:
-            self._ioctx[pool] = IoctxMock(pool, self.tmp_path)
+            self._ioctx[pool] = IoctxMock(
+                pool, self.tmp_path, self.default_features
+            )
         return self._ioctx[pool]
 
     def list_pools(self):
-        return ["rbd", "data", "rbd.ssd", "rbd.hdd", "rbd.rgw.foo"]
+        return ["rbd", "data", "rbd.ssd", "rbd.hdd", "rbd.rgw.foo", "fcio"]
+
+    ####################################################
+    # rados objects and their advisory locks
+
+    def create_obj(self, pool, obj_name, namespace=""):
+        key = (pool, namespace, obj_name)
+        if key in self._objects:
+            raise libceph.ImageExists(obj_name)
+        self._objects[key] = {}
+
+    def lock_exclusive(self, pool, obj_name, lock_name, cookie, namespace=""):
+        locks = self._objects.setdefault((pool, namespace, obj_name), {})
+        locker = locks.get(lock_name)
+        if locker is not None and locker.cookie != cookie:
+            raise libceph.ImageBusy(errno.EBUSY, "Image is busy")
+        # Taking our own lock again is fine, the real `rados lock get` fails
+        # but `Rados.lock_exclusive` looks the lock up and accepts it as ours.
+        # The address carries a per-connection nonce on a real cluster, which
+        # `Ceph.auth_cookie` depends on to tell lock holders apart.
+        self._lock_nonce += 1
+        locks[lock_name] = libceph.RadosLocker(
+            name="client." + self.name.replace("client.", ""),
+            cookie=cookie,
+            addr=f"127.0.0.1:0/{self._lock_nonce}",
+        )
+
+    def break_lock(
+        self,
+        pool,
+        obj_name,
+        lock_name,
+        cookie,
+        locker_client_name,
+        namespace="",
+    ):
+        # The real implementation swallows a missing object or lock, as that is
+        # the state we wanted to reach anyway.
+        locks = self._objects.get((pool, namespace, obj_name))
+        if not locks:
+            return
+        locks.pop(lock_name, None)
+
+    def lock_info(self, pool, obj_name, lock_name, namespace=""):
+        locks = self._objects.get((pool, namespace, obj_name), {})
+        locker = locks.get(lock_name)
+        return libceph.RadosLockInfo(
+            name=lock_name,
+            type="exclusive",
+            tag="",
+            lockers=[] if locker is None else [locker],
+        )
 
 
-class IoctxMock(object):
+class IoctxMock:
     """Mock access to a pool."""
 
-    def __init__(self, name: str, tmp_path: Path):
+    def __init__(
+        self, name: str, tmp_path: Path, default_features: list[str] = None
+    ):
         # the rados implementation takes the name as a str, but later returns
         # that attribute as bytes
         self.tmp_path = tmp_path
         self.name = name
         self.rbd_images = {}
         self._snapids = 0
+        self.default_features = (
+            ["layering"] if default_features is None else default_features
+        )
 
     def _rbd_create(self, name, size):
         assert name not in self.rbd_images
-        self.rbd_images[name] = image = dict(size=size, lock=None)
+        self.rbd_images[name] = image = dict(
+            size=size,
+            lock=None,
+            features=list(self.default_features),
+            flags=[],
+        )
         image["path"] = path = self.tmp_path / f"{self.name}-{name}.raw"
         if not path.exists():
             with path.open("wb") as f:
@@ -76,13 +160,13 @@ class IoctxMock(object):
         self.rbd_images[fullname] = snap = self.rbd_images[name].copy()
         snap["lock"] = None
         snap["snapid"] = self._snapids
+        # `.copy()` is shallow, so give the snapshot its own feature and flag
+        # lists instead of aliasing the image's.
+        snap["features"] = list(snap["features"])
+        snap["flags"] = list(snap["flags"])
         base_path = self.rbd_images[name]["path"]
         snap["path"] = self.tmp_path / f"{self.name}-{name}-{snapname}.raw"
-        with base_path.open("rb") as source:
-            count = source.seek(0, os.SEEK_END)
-            source.seek(0)
-            with snap["path"].open("wb") as dest:
-                os.copy_file_range(source.fileno(), dest.fileno(), count)
+        shutil.copyfile(base_path, snap["path"])
 
     def _rbd_remove(self, name):
         # XXX prohibit while snapshots exist and if locked/opened
@@ -98,7 +182,7 @@ class IoctxMock(object):
         pass
 
 
-class RBDMock(object):
+class RBDMock:
     def list(self, ioctx):
         return list(ioctx.rbd_images.keys())
 
@@ -109,7 +193,7 @@ class RBDMock(object):
         ioctx._rbd_remove(name)
 
 
-class ImageMock(object):
+class ImageMock:
     def __init__(self, ioctx, name, snapname=None):
         self.ioctx = ioctx
         self.name = name
@@ -123,9 +207,9 @@ class ImageMock(object):
         if self._name not in ioctx.rbd_images:
             raise libceph.ImageNotFound(self.name)
 
-    def size(self):
-        assert not self.closed
-        return self.ioctx.rbd_images[self.name]["size"]
+    @property
+    def _image(self) -> dict:
+        return self.ioctx.rbd_images[self._name]
 
     def resize(self, size):
         assert not self.closed
@@ -135,25 +219,19 @@ class ImageMock(object):
         assert not self.closed
         lock = self.ioctx.rbd_images[self.name]["lock"]
         if lock is None:
-            self.ioctx.rbd_images[self.name]["lock"] = {
-                "tag": None,
-                "exclusive": True,
-                "lockers": [("client.xyz", cookie, "127.0.0.1:9999")],
-            }
+            self.ioctx.rbd_images[self.name]["lock"] = libceph.RbdLockInfo(
+                id=cookie, locker="client.xyz", address="127.0.0.1:9999"
+            )
             return
-        else:
-            assert lock["exclusive"]
-            if not lock["lockers"][0][1] == cookie:
-                raise libceph.ImageBusy(errno.EBUSY, "Image is busy")
-            return
-        raise RuntimeError("unsupported mock path")
+        if lock.id != cookie:
+            raise libceph.ImageBusy(errno.EBUSY, "Image is busy")
 
-    def list_lockers(self):
+    def list_lockers(self) -> list:
         assert not self.closed
         if self.name not in self.ioctx.rbd_images:
             raise libceph.ImageNotFound(self.name)
         lock = self.ioctx.rbd_images[self.name]["lock"]
-        return [] if lock is None else lock
+        return [] if lock is None else [lock]
 
     def list_snaps(self):
         assert not self.closed
@@ -177,16 +255,11 @@ class ImageMock(object):
     def unlock(self, cookie):
         assert not self.closed
         lock = self.ioctx.rbd_images[self.name]["lock"]
-        if lock:
-            assert lock["lockers"][0][1] == cookie
-            self.ioctx.rbd_images[self.name]["lock"] = None
-
-    def break_lock(self, client, cookie):
-        assert not self.closed
-        lock = self.ioctx.rbd_images[self.name]["lock"]
-        if lock:
-            assert lock["lockers"][0][0] == client
-            assert lock["lockers"][0][1] == cookie
+        # `libceph.Image.unlock` looks the cookie up in `rbd lock list` first
+        # and refuses if it isn't there, rather than asking rbd to remove a
+        # lock that doesn't exist.
+        if lock is None or lock.id != cookie:
+            raise libceph.ImageBusy(errno.EBUSY, "Lock cookie not found")
         self.ioctx.rbd_images[self.name]["lock"] = None
 
     def close(self):
@@ -213,6 +286,97 @@ class ImageMock(object):
         if not (device := image.pop("mapped_device")):
             return
         subprocess.check_output(["losetup", "-d", device]).strip()
+
+    @property
+    def _image(self) -> dict:
+        return self.ioctx.rbd_images[self._name]
+
+    @property
+    def info(self) -> libceph.RbdInfo:
+        # Mirrors `libceph.Image.info`, except that the real one is a
+        # `cached_property` invalidated by `ensure_feature`/`resize`. Reading
+        # live state here keeps the mock simple; the caching behaviour itself
+        # is covered against the real class in
+        # `test_ensure_feature_invalidates_the_info_cache`.
+        assert not self.closed
+        image = self._image
+        return libceph.RbdInfo(
+            size=image["size"],
+            features=set(image["features"]),
+            flags=set(image["flags"]),
+        )
+
+    def refresh(self):
+        # A no-op here: `info` reads live state rather than caching it. The
+        # real one drops a `cached_property`.
+        pass
+
+    #: librbd's `update_features` also enables dependencies of the requested
+    #: feature: fast-diff pulls in object-map, which pulls in exclusive-lock.
+    #: however, fast-diff and object-map are interlocked in ceph so that
+    #: enabling one implicitly enables the other.
+    FEATURE_DEPENDENCIES: dict[str, set[str]] = {
+        "fast-diff": set(("object-map", "exclusive-lock")),
+        "object-map": set(("fast-diff", "exclusive-lock")),
+    }
+
+    def _enable_feature(self, feature: str):
+        """The raw `rbd feature enable`, warts included.
+
+        `libceph.Image.ensure_feature` is the idempotent wrapper around this.
+        """
+        assert not self.closed
+        features = self._image["features"]
+        if feature in features:
+            # Reproduce ceph's non-idempotence here, otherwise a regression in
+            # `ensure_feature`'s pre-check would pass the mocked suite and
+            # only blow up against a real cluster.
+            raise subprocess.CalledProcessError(
+                returncode=22,
+                cmd=f"rbd feature enable {self._name} {feature}",
+                output=(
+                    "rbd: failed to update image features: one or more "
+                    "requested features are already enabled\n"
+                    "(22) Invalid argument"
+                ),
+            )
+        deps = [feature]
+        implied = []
+        while deps:
+            feat = deps.pop(0)
+            implied.append(feat)
+            if nextdeps := self.FEATURE_DEPENDENCIES.get(feat):
+                deps.extend(
+                    f for f in nextdeps if f not in implied and f not in deps
+                )
+
+        features.extend(f for f in implied if f not in features)
+        flags = self._image["flags"]
+        if "object-map" in implied and "object map invalid" not in flags:
+            # Enabling object-map on an image that already holds data leaves
+            # the map unbuilt, which ceph reports as a flag until someone runs
+            # `rbd object-map rebuild`.
+            flags.append("object map invalid")
+
+    def ensure_feature(self, feature: str):
+        assert not self.closed
+        if feature in self._image["features"]:
+            return
+        self._enable_feature(feature)
+
+    def ensure_object_map(self) -> bool:
+        """Rebuild the object map if it is flagged invalid.
+
+        The real one shells out to `rbd object-map rebuild` and tolerates the
+        rebuild continuing in the background, see
+        `tests/hazmat/test_libceph.py`.
+        """
+        assert not self.closed
+        flags = self._image["flags"]
+        if "object map invalid" not in flags:
+            return False
+        flags.remove("object map invalid")
+        return True
 
 
 def setup_loopback_device(path, size):
@@ -302,11 +466,23 @@ def ceph_live_setup():
     call("ceph osd pool create rbd.hdd 32")
     call("ceph osd pool set rbd.hdd size 1 --yes-i-really-mean-it")
     call("ceph osd pool set rbd.hdd min_size 1")
+    call("ceph osd pool create fcio 32")
+    call("ceph osd pool set fcio min_size 1")
+    call("ceph osd pool application enable fcio orchestration")
     call("ceph osd lspools")
     call("rbd pool init rbd")
     call("rbd pool init rbd.ssd")
     call("rbd pool init rbd.hdd")
+    # PL-134255: pin the legacy feature set (1 = layering), matching what
+    # fc-nixos pins. Images are therefore born without `exclusive-lock` and
+    # every start has to run them through
+    # `VolumeSpecification.ensure_features`, which is exactly the upgrade path
+    # we want exercised. Keep this even if the platform raises its own
+    # rbdDefaultFeatures.
+    call("ceph config set client rbd_default_features 1")
     call("rbd create --size 500 rbd.hdd/fc-21.05-dev")
+    # XXX: `--exclusive` or not should not matter here, assuming this setup
+    # is run without concurrency
     call("rbd map rbd.hdd/fc-21.05-dev")
     call("sgdisk /dev/rbd0 -o -a 2048 -n 1:8192:0 -c 1:ROOT -t 1:8300")
     call("partprobe")
@@ -316,6 +492,16 @@ def ceph_live_setup():
     call("rbd snap create rbd.hdd/fc-21.05-dev@v1")
     call("rbd snap protect rbd.hdd/fc-21.05-dev@v1")
     call("rbd create -s 1M rbd/.maintenance")
+
+
+########################################################
+# which lock protects which volume
+#
+#: The volumes that end up on the rados lock, in `Ceph.volumes` order.
+EXCLUSIVE_LOCK_VOLUMES = ["root", "swap", "tmp"]
+
+#: The volume that keeps its advisory rbd lock.
+RBD_LOCK_VOLUMES = ["cidata"]
 
 
 @pytest.fixture
@@ -336,6 +522,9 @@ def ceph_mock(request, monkeypatch, tmp_path):
     monkeypatch.setattr(libceph, "Image", ImageMock)
     monkeypatch.setattr(RootSpec, "ensure_presence", ensure_presence)
     RadosMock.tmp_path = tmp_path
+    monkeypatch.setattr(
+        RadosMock, "default_features", list(RadosMock.default_features)
+    )
     yield
 
 
@@ -365,6 +554,45 @@ def ceph_inst(request, ceph_mock):
         yield ceph
     finally:
         ceph.__exit__(None, None, None)
+
+
+def make_legacy_images(ceph: Ceph, locked_by: str | None = None):
+    """Reproduce the state a pre-PL-134255 host leaves behind.
+
+    That host knows nothing about image features or the rados sidecar lock: it
+    creates the images with whatever `rbd_default_features` gives (layering
+    only, as pinned by fc-nixos) and holds a per-volume advisory rbd lock on
+    every one of them, cidata included.
+
+    This is all that makes a host "old" as far as the ceph layer is concerned,
+    so it is also all we need to exercise both halves of the upgrade - no
+    second host running old software required:
+
+    `locked_by` defaults to this host, which is the in-place upgrade: the VM
+    was started here by the old software and the new one takes over. Pass
+    another host to model a VM that is still running over there.
+    """
+    locked_by = locked_by or ceph.CEPH_LOCK_HOST
+    for spec in ceph.specs.values():
+        spec.ensure_presence()
+        volume = spec.volume
+        assert volume, spec.name
+        assert volume.features == {"layering"}, (
+            f"{volume.fullname} was not born layering-only: "
+            f"{volume.features}. Check `rbd_default_features`."
+        )
+        volume.rbdimage.lock_exclusive(locked_by)
+    assert ceph.vm_lock.locker() is None, (
+        "an old host cannot have taken the rados lock"
+    )
+
+
+@pytest.fixture
+def legacy_images(ceph_inst):
+    """`ceph_inst` with the four volumes in pre-upgrade shape."""
+    make_legacy_images(ceph_inst)
+    yield ceph_inst
+    ceph_inst.force_unlock()
 
 
 @pytest.fixture
@@ -417,7 +645,7 @@ def clean_rbd_pools(request, kill_vms, ceph_mock):
     if not is_live:
         return
 
-    def images_to_clean() -> List[str]:
+    def images_to_clean() -> list[str]:
         images = []
         for pool in ["rbd.hdd", "rbd.ssd"]:
             print2(f"rbd ls {pool}")
@@ -462,13 +690,18 @@ def clean_rbd_pools(request, kill_vms, ceph_mock):
                 )
             time.sleep(5)
 
-        psauxf = subprocess.run(
-            ["ps", "auxf"],
-            capture_output=True,
-            text=True,
-            shell=False,
-        )
-        print2(psauxf.stdout)
+        if passes:
+            # The first attempt did not get rid of the images, so something is
+            # still holding them - show what. Only from the second pass on:
+            # dumping the whole process tree for every live test buries the
+            # rest of the output
+            psauxf = subprocess.run(
+                ["ps", "auxf"],
+                capture_output=True,
+                text=True,
+                shell=False,
+            )
+            print2(psauxf.stdout)
 
         for image in images:
             # Clean up any remaining locks before deleting the image.
@@ -518,6 +751,26 @@ def clean_rbd_pools(request, kill_vms, ceph_mock):
     subprocess.check_call(
         ["rbd-locktool", "-vvvv", "-u", "-f", "rbd/.maintenance"],
     )
+
+    # Drop the per-VM rados lock sidecar objects. A leftover object is
+    # harmless - `VMLockManager._ensure_lock_object` is idempotent - but a lock
+    # still held on one would block the next test. Removing the object drops
+    # the lock.
+    pool = sysconfig.ceph["orchestration_pool"]
+    namespace = VMLockManager.NAMESPACE
+    print2(f"rados -p {pool} -N {namespace} ls")
+    sidecars = subprocess.run(
+        ["rados", "-p", pool, "-N", namespace, "ls"],
+        capture_output=True,
+        text=True,
+    )
+    for line in sidecars.stdout.splitlines():
+        if not (obj := line.strip()):
+            continue
+        print2(f"rados -p {pool} -N {namespace} rm {obj}")
+        subprocess.run(
+            ["rados", "-p", pool, "-N", namespace, "rm", obj],
+        )
 
 
 ########################################################
@@ -603,13 +856,90 @@ def kill_vms(request, ceph_mock):
     assert_call(["pkill", "-A", "-f", "qemu-system-x86_64"], exit_codes=[0, 1])
 
 
+def running_fc_qemu_processes() -> list[psutil.Process]:
+    """Local `fc-qemu` processes, excluding our own.
+
+    Matches the basename of the first two argv entries rather than using
+    `pkill -f fc-qemu`: that pattern would be fine, but one written with a
+    `.` instead of a `-` silently matches pytest's own command line, because
+    the checkout lives in a directory called `fc.qemu`.
+    """
+    result = []
+    for proc in psutil.process_iter(["cmdline"]):
+        try:
+            cmdline = proc.info["cmdline"] or []
+            if any(Path(arg).name == "fc-qemu" for arg in cmdline[:2]):
+                result.append(proc)
+        except psutil.Error:  # pragma: no cover - the process went away
+            continue
+    return result
+
+
+@pytest.fixture(autouse=True)
+def no_leftover_fc_qemu(request, kill_vms):
+    """Fail the test that leaves an `fc-qemu` process behind.
+
+    A leaked `fc-qemu` keeps `/run/qemu.<vm>.lock` for as long as it runs -
+    up to an hour for an outmigrate that cannot reach its destination - and
+    every later test that touches that VM then blocks in `flock` until its own
+    timeout. That turns one broken test into a whole cascade of unrelated
+    failures, so catch it where it happens.
+    """
+    is_live = request.node.get_closest_marker("live")
+    yield
+    if not is_live:
+        return
+    # Supervisors spawn `fc-qemu ensure` in the background, so give whatever
+    # is still running a moment to finish on its own before calling it a leak.
+    timeout = TimeOut(10, interval=0.5, raise_on_timeout=False)
+    while timeout.tick():
+        if not (leftover := running_fc_qemu_processes()):
+            return
+    for proc in leftover:
+        print2(f"killing leaked fc-qemu {proc.pid}: {proc.info['cmdline']}")
+        proc.kill()
+    pytest.fail(
+        f"{request.node.name} leaked {len(leftover)} fc-qemu process(es): "
+        + "; ".join(" ".join(p.info["cmdline"] or []) for p in leftover)
+    )
+
+
 @pytest.fixture
 def kill_vms_host2(call_host2):
-    call_host2(["pkill", "-A", "-f", "supervised-qemu"], exit_codes=[0, 1])
-    call_host2(["pkill", "-A", "-f", "qemu-system-x86_64"], exit_codes=[0, 1])
+    # `fc-qemu` as well as the VMs: an inmigrate server that outlives its test
+    # keeps holding host2's VM lock and stays registered in consul as
+    # `vm-inmigrate-<vm>` for up to an hour, which derails every later test
+    # that touches the same VM.
+    def pkill():
+        for pattern in ["supervised-qemu", "qemu-system-x86_64", "fc-qemu"]:
+            call_host2(["pkill", "-A", "-f", pattern], exit_codes=[0, 1])
+
+    pkill()
     yield
-    call_host2(["pkill", "-A", "-f", "supervised-qemu"], exit_codes=[0, 1])
-    call_host2(["pkill", "-A", "-f", "qemu-system-x86_64"], exit_codes=[0, 1])
+    pkill()
+
+
+@pytest.fixture
+def reap_subprocesses():
+    """Register long-running subprocesses to be killed at teardown.
+
+    Tests that spawn `fc-qemu` and wait for it have to clean up even when they
+    do not reach the end of their body - a pytest-timeout fires as an
+    exception inside the test, so only teardown is guaranteed to run. A
+    surviving `fc-qemu` holds `/run/qemu.<vm>.lock` for as long as it keeps
+    retrying, which blocks every subsequent test on the same VM.
+    """
+    procs: list[subprocess.Popen] = []
+    yield procs.append
+    for proc in procs:
+        if proc.poll() is not None:
+            continue
+        print2(f"reaping leftover subprocess {proc.pid}: {proc.args}")
+        proc.kill()
+        try:
+            proc.wait(10)
+        except subprocess.TimeoutExpired:
+            print2(f"subprocess {proc.pid} did not die")
 
 
 ########################################################
@@ -719,7 +1049,7 @@ def setup_structlog():
             if event_name:
                 result_.append(event_name)
             for key in sorted(event):
-                result_.append("{}={}".format(key, str(event[key]).strip()))
+                result_.append(f"{key}={str(event[key]).strip()}")
             result = " ".join(result_)
 
         # Ensure we get something to read on stdout in case we have errors.
